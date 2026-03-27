@@ -114,7 +114,7 @@ function Dashboard() {
           
           <div className="mt-6 p-3 bg-yellow-100 rounded-lg border border-yellow-300 text-center">
             <p className="text-yellow-800 font-bold">
-              Public Registration Link: <span className="text-blue-600 underline">localhost:5173/register-player</span>
+              Public Registration Link: <span className="text-blue-600 underline">https://live-cric-auction.netlify.app/register-player</span>
             </p>
           </div>
         </div>
