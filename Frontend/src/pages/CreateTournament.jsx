@@ -31,7 +31,7 @@ function CreateTournament() {
   const handleSave = async (e) => {
     e.preventDefault();
     try {
-      await axios.post('http://localhost:5000/api/tournament', formData);
+      await axios.post('https://cricket-auction-backend-h8ud.onrender.com/api/tournament', formData);
       
       // 🌟 गोडाउन में सेव होते ही ग्लोबल डब्बे को रिफ्रेश करो!
       await fetchTournament(); 

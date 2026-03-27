@@ -4,7 +4,7 @@ import axios from 'axios';
 import { io } from 'socket.io-client';
 import { TournamentContext } from '../context/TournamentContext';
 
-const socket = io('http://localhost:5000');
+const socket = io('https://cricket-auction-backend-h8ud.onrender.com');
 
 function ControlPanel() {
   const navigate = useNavigate();
@@ -25,14 +25,14 @@ function ControlPanel() {
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
 
-      const playersRes = await axios.get('http://localhost:5000/api/players', { headers });
+      const playersRes = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/players', { headers });
       const unsoldPlayers = playersRes.data.filter(player => 
         player.auctionStatus?.trim().toLowerCase() === 'unsold' && 
         player.approvalStatus?.trim().toLowerCase() === 'approved'
       );
       setPlayers(unsoldPlayers);
 
-      const teamsRes = await axios.get('http://localhost:5000/api/teams', { headers });
+      const teamsRes = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/teams', { headers });
       setTeams(teamsRes.data);
     } catch (error) {
       console.error("डेटा लाने में दिक्कत:", error);
@@ -133,7 +133,7 @@ function ControlPanel() {
       const endpoint = status === 'Sold' ? `/api/players/sell/${currentPlayer._id}` : `/api/players/unsold/${currentPlayer._id}`;
       const payload = status === 'Sold' ? { teamName: biddingTeam, soldPrice: currentBid } : {};
       
-      await axios.put(`http://localhost:5000${endpoint}`, payload, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.put(`https://cricket-auction-backend-h8ud.onrender.com${endpoint}`, payload, { headers: { Authorization: `Bearer ${token}` } });
 
       const updatedPlayers = players.filter(p => p._id !== currentPlayer._id);
       setPlayers(updatedPlayers);
@@ -154,7 +154,7 @@ function ControlPanel() {
     if (lastAction.actionType === 'SOLD' || lastAction.actionType === 'UNSOLD') {
       try {
         const token = localStorage.getItem('token');
-        await axios.put(`http://localhost:5000/api/players/undo/${lastAction.affectedPlayer._id}`, {}, {
+        await axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/players/undo/${lastAction.affectedPlayer._id}`, {}, {
           headers: { Authorization: `Bearer ${token}` }
         });
       } catch (error) {

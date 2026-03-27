@@ -25,9 +25,9 @@ function Dashboard() {
         if (!token) return;
 
         const headers = { Authorization: `Bearer ${token}` };
-        const teamsResponse = await axios.get('http://localhost:5000/api/teams', { headers });
+        const teamsResponse = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/teams', { headers });
         setTotalTeams(teamsResponse.data.length);
-        const playersResponse = await axios.get('http://localhost:5000/api/players', { headers });
+        const playersResponse = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/players', { headers });
         setTotalPlayers(playersResponse.data.length);
       } catch (error) {
         console.error("डेटा लाने में दिक्कत:", error);

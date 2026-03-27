@@ -42,7 +42,7 @@ function AddPlayer() {
 
     try {
       const token = localStorage.getItem('token');
-      await axios.post('http://localhost:5000/api/players', formData, {
+      await axios.post('https://cricket-auction-backend-h8ud.onrender.com/api/players', formData, {
         headers: { Authorization: `Bearer ${token}` }
       });
       alert(`🎉 खिलाड़ी '${formData.name}' को सफलतापूर्वक ऐड कर लिया गया है!`);

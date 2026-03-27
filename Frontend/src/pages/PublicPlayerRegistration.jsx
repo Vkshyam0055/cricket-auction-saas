@@ -44,7 +44,7 @@ function PublicPlayerRegistration() {
     if (isUploading) { alert("कृपया फोटो अपलोड होने का इंतज़ार करें..."); return; }
     
     try {
-      await axios.post('http://localhost:5000/api/players', formData);
+      await axios.post('https://cricket-auction-backend-h8ud.onrender.com/api/players', formData);
       setIsSuccess(true);
     } catch (err) {
       alert("Registration failed! Please try again.");

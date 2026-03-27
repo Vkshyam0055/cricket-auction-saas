@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client'; 
 import { TournamentContext } from '../context/TournamentContext'; 
 
-const socket = io('http://localhost:5000'); 
+const socket = io('https://cricket-auction-backend-h8ud.onrender.com'); 
 
 function LiveScreen() {
   const navigate = useNavigate();

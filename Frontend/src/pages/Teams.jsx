@@ -15,11 +15,11 @@ function Teams() {
         const headers = { Authorization: `Bearer ${token}` };
 
         // टीमें लाओ
-        const teamsRes = await axios.get('http://localhost:5000/api/teams', { headers });
+        const teamsRes = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/teams', { headers });
         setTeams(teamsRes.data);
 
         // खिलाड़ी लाओ
-        const playersRes = await axios.get('http://localhost:5000/api/players', { headers });
+        const playersRes = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/players', { headers });
         setPlayers(playersRes.data);
 
       } catch (error) {

@@ -11,7 +11,7 @@ export const TournamentProvider = ({ children }) => {
 
     const fetchTournament = async () => {
         try {
-            const res = await axios.get('http://localhost:5000/api/tournament');
+            const res = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/tournament');
             // अगर गोडाउन में डेटा है, तो डब्बे में डाल दो, नहीं तो null रहने दो
             setTournament(res.data ? res.data : null); 
         } catch (error) {

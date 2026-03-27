@@ -14,7 +14,7 @@ function AddTeam() {
       const token = localStorage.getItem('token');
 
       // यहाँ हम बैकएंड को गोडाउन की भाषा (teamName और totalPurse) में डेटा भेज रहे हैं
-      await axios.post('http://localhost:5000/api/teams', 
+      await axios.post('https://cricket-auction-backend-h8ud.onrender.com/api/teams', 
         {
           teamName: teamName,
           totalPurse: Number(budget) // इसे नंबर बनाकर भेज रहे हैं

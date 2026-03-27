@@ -12,7 +12,7 @@ function Login() {
     
     try {
       // 1. डाकिया (Axios) बैकएंड के पास नंबर और पासवर्ड लेकर जा रहा है
-      const response = await axios.post('http://localhost:5000/api/auth/login', {
+      const response = await axios.post('https://cricket-auction-backend-h8ud.onrender.com/api/auth/login', {
         phone: phone,
         password: password
       });
