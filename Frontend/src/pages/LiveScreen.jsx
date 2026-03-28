@@ -9,16 +9,20 @@ function LiveScreen() {
   const navigate = useNavigate();
   const { tournament } = useContext(TournamentContext);
   
-  // 🌟 अब स्क्रीन पूरी तरह से सॉकेट के कंट्रोल में है 🌟
   const [currentPlayer, setCurrentPlayer] = useState(null);
   const [liveBid, setLiveBid] = useState(0);
   const [liveTeam, setLiveTeam] = useState('');
+  const [playerStatus, setPlayerStatus] = useState('bidding'); // नया स्टेटस
 
   useEffect(() => {
     socket.on('updateAudienceScreen', (data) => {
       setLiveBid(data.bidAmount);
       setLiveTeam(data.teamName);
-      // कंट्रोल पैनल से जो प्लेयर आएगा, वही स्क्रीन पर दिखेगा!
+      if (data.status) {
+        setPlayerStatus(data.status);
+      } else {
+        setPlayerStatus('bidding');
+      }
       if (data.player !== undefined) {
         setCurrentPlayer(data.player);
       }
@@ -43,7 +47,7 @@ function LiveScreen() {
          </div>
          
          <button onClick={() => navigate('/dashboard')} className="absolute top-6 right-6 bg-gray-800 px-6 py-2 rounded-xl font-bold hover:bg-gray-700 transition z-20 border border-gray-600">
-           Exit
+            Exit
          </button>
        </div>
     );
@@ -52,6 +56,23 @@ function LiveScreen() {
   return (
     <div className="min-h-screen bg-black text-white flex flex-col relative overflow-hidden font-sans">
       <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-900 via-gray-900 to-black opacity-70 z-0"></div>
+
+      {/* 🌟 JADOO: SOLD / UNSOLD STAMP (यह प्लेयर के ऊपर दिखेगा) 🌟 */}
+      {playerStatus !== 'bidding' && (
+         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm">
+            <div className={`transform -rotate-12 border-8 rounded-3xl p-12 text-center shadow-[0_0_100px_rgba(0,0,0,0.8)] ${playerStatus === 'sold' ? 'border-green-500 text-green-500' : 'border-red-600 text-red-600'}`}>
+                <h1 className="text-[150px] font-black uppercase tracking-tighter leading-none">
+                    {playerStatus}
+                </h1>
+                {playerStatus === 'sold' && liveTeam && (
+                    <div className="mt-6 bg-green-500 text-black px-8 py-4 rounded-xl inline-block">
+                        <p className="text-4xl font-black uppercase">{liveTeam}</p>
+                        <p className="text-5xl font-black mt-2">₹ {liveBid.toLocaleString()}</p>
+                    </div>
+                )}
+            </div>
+         </div>
+      )}
 
       <header className="relative z-10 p-4 px-8 flex justify-between items-center shadow-2xl bg-black bg-opacity-80 border-b-2 border-gray-700">
         <div className="flex items-center space-x-4">
