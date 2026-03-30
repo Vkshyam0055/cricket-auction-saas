@@ -20,9 +20,12 @@ function ControlPanel() {
   const [customBid, setCustomBid] = useState(''); 
 
   const [actionHistory, setActionHistory] = useState([]);
-
   const [showUnsoldModal, setShowUnsoldModal] = useState(false);
   const [unsoldDatabase, setUnsoldDatabase] = useState([]);
+
+  // 🌟 UNIVERSE TOOL: Traffic Controller (Delay Function) 🌟
+  // यह बैकएंड को क्रैश होने से बचाएगा
+  const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
   useEffect(() => {
     localStorage.setItem('currentPlayer', JSON.stringify(currentPlayer));
@@ -37,11 +40,13 @@ function ControlPanel() {
       const headers = { Authorization: `Bearer ${token}` };
 
       const playersRes = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/players', { headers });
-      const unsoldPlayers = playersRes.data.filter(player => 
-        player.auctionStatus?.trim().toLowerCase() === 'unsold' && 
-        player.approvalStatus?.trim().toLowerCase() === 'approved'
+      
+      const availablePlayers = playersRes.data.filter(player => 
+        player.approvalStatus?.trim().toLowerCase() === 'approved' &&
+        player.auctionStatus?.trim().toLowerCase() !== 'sold' &&
+        player.auctionStatus?.trim().toLowerCase() !== 'unsold'
       );
-      setPlayers(unsoldPlayers);
+      setPlayers(availablePlayers);
 
       const teamsRes = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/teams', { headers });
       setTeams(teamsRes.data);
@@ -81,7 +86,7 @@ function ControlPanel() {
   const pickRandomPlayer = () => {
     const availablePlayers = players.filter(p => p._id !== currentPlayer?._id);
     if (availablePlayers.length === 0) {
-      alert("ऑक्शन के लिए कोई नया खिलाड़ी नहीं बचा है! (शायद सब बिक गए या Unsold हो गए)");
+      alert("ऑक्शन के लिए कोई नया खिलाड़ी नहीं बचा है!");
       return;
     }
     
@@ -202,7 +207,7 @@ function ControlPanel() {
 
       const passedPlayers = res.data.filter(p => 
         p.approvalStatus?.trim().toLowerCase() === 'approved' &&
-        p.auctionStatus?.trim().toLowerCase() !== 'sold' &&
+        p.auctionStatus?.trim().toLowerCase() === 'unsold' &&
         !currentPendingIds.includes(p._id)
       );
 
@@ -213,7 +218,6 @@ function ControlPanel() {
     }
   };
 
-  // 🌟 UPDATE 1: Single Player Bring Back (With Database Sync) 🌟
   const bringBackToAuction = async (playerToBring) => {
     try {
       const token = localStorage.getItem('token');
@@ -229,29 +233,87 @@ function ControlPanel() {
     }
   };
 
-  // 🌟 UPDATE 2: Bring ALL Back Logic (With Database Sync) 🌟
   const bringAllBackToAuction = async () => {
     const confirmAction = window.confirm("क्या आप सभी Unsold प्लेयर्स को एक साथ वापस ऑक्शन में लाना चाहते हैं?");
     if (confirmAction) {
       try {
         const token = localStorage.getItem('token');
         
-        // एक साथ सभी प्लेयर्स का डेटाबेस अपडेट करना
-        await Promise.all(
-          unsoldDatabase.map(p => 
-            axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/players/undo/${p._id}`, {}, {
+        // 🌟 UNIVERSE LOGIC: Traffic Controller Enabled 🌟
+        for (const p of unsoldDatabase) {
+           await axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/players/undo/${p._id}`, {}, {
               headers: { Authorization: `Bearer ${token}` }
-            })
-          )
-        );
+           });
+           await delay(400); // 400ms delay to protect backend
+        }
 
         setPlayers(prev => [...prev, ...unsoldDatabase]);
         setUnsoldDatabase([]);
         setShowUnsoldModal(false);
-        alert("✅ सभी अनसोल्ड प्लेयर्स ऑक्शन में वापस आ गए हैं और डेटाबेस अपडेट हो गया है!");
+        alert("✅ सभी अनसोल्ड प्लेयर्स सुरक्षित रूप से वापस आ गए हैं!");
       } catch (error) {
-        alert("एरर: प्लेयर्स को वापस लाने में दिक्कत हुई।");
+        console.error(error);
+        alert("एरर: कुछ प्लेयर्स वापस नहीं आ पाए, इंटरनेट चेक करें।");
       }
+    }
+  };
+
+  // 🌟 UNIVERSE LOGIC: Safe Master Reset 🌟
+  const resetWholeAuction = async () => {
+    const confirmReset = window.confirm("⚠️ चेतावनी! क्या आप पूरा ऑक्शन रीसेट करना चाहते हैं?");
+    if (!confirmReset) return;
+
+    const confirmAgain = window.prompt("सुरक्षा के लिए, कृपया बॉक्स में 'RESET' टाइप करें (बिना सिंगल कोट्स के):");
+    if (confirmAgain !== "RESET") {
+        alert("❌ रीसेट कैंसल कर दिया गया।");
+        return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/players', { headers: { Authorization: `Bearer ${token}` } });
+      
+      const playersToReset = res.data.filter(p => 
+        p.auctionStatus?.trim().toLowerCase() === 'sold' || 
+        p.auctionStatus?.trim().toLowerCase() === 'unsold'
+      );
+
+      if(playersToReset.length > 0) {
+          alert(`⏳ ${playersToReset.length} खिलाड़ियों का डेटा वापस लाया जा रहा है... कृपया इस पेज को बंद न करें, इसमें कुछ सेकंड लगेंगे।`);
+          
+          // 🌟 Traffic Controller: One by One to prevent Server Crash 🌟
+          for (const p of playersToReset) {
+              try {
+                  await axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/players/undo/${p._id}`, {}, {
+                      headers: { Authorization: `Bearer ${token}` }
+                  });
+                  await delay(500); // आधा सेकंड का ब्रेक ताकि डेटाबेस लॉक न हो!
+              } catch(err) {
+                  console.error(`Failed to undo player ${p.name}`, err);
+              }
+          }
+      }
+
+      // Clear Screen
+      setCurrentPlayer(null);
+      setCurrentBid(0);
+      setBiddingTeam('');
+      setPlayerStatus('bidding');
+      setActionHistory([]);
+      
+      localStorage.removeItem('currentPlayer');
+      localStorage.removeItem('currentBid');
+      localStorage.removeItem('biddingTeam');
+      localStorage.removeItem('playerStatus');
+
+      socket.emit('newLiveBid', { bidAmount: 0, teamName: '', player: null, status: 'bidding' });
+
+      await fetchData(); 
+      alert("✅ 100% UNIVERSE RESET SUCCESSFUL! \n\n(नोट: यदि किसी टीम का पर्स अभी भी 5 करोड़ से ज़्यादा दिख रहा है, तो कृपया उसे MongoDB Atlas से एक बार मैन्युअली सही कर लें।)");
+
+    } catch (error) {
+      console.error(error);
+      alert("एरर: रीसेट करने में दिक्कत आई।");
     }
   };
 
@@ -259,13 +321,17 @@ function ControlPanel() {
     <div className="min-h-screen bg-gray-200">
       <header className="bg-blue-900 p-4 px-6 flex justify-between items-center shadow-lg text-white">
         <h1 className="text-2xl font-black">⚙️ {tournament?.name} - Master Control</h1>
-        <div className="flex space-x-4">
+        <div className="flex space-x-3">
           
+          <button onClick={resetWholeAuction} className="bg-red-700 border border-red-500 px-4 py-2 rounded hover:bg-red-800 font-bold transition flex items-center shadow-lg" title="Reset for Real Auction">
+              ⚠️ Reset Auction
+          </button>
+
           <button onClick={openUnsoldModal} className="bg-orange-500 border border-orange-400 px-4 py-2 rounded hover:bg-orange-400 font-bold transition flex items-center shadow-lg">
               ♻️ View Unsold
           </button>
 
-          <button onClick={fetchData} className="bg-blue-600 border border-blue-400 px-4 py-2 rounded hover:bg-blue-500 font-bold transition flex items-center shadow-lg">
+          <button onClick={fetchData} className="bg-blue-600 border border-blue-400 px-4 py-2 rounded hover:bg-blue-500 font-bold transition flex items-center shadow-lg" title="नया प्लेयर आने पर रिफ्रेश करें">
               🔄 Refresh List
           </button>
 
@@ -277,7 +343,7 @@ function ControlPanel() {
             ⏪ UNDO {actionHistory.length > 0 && `(${actionHistory.length})`}
           </button>
           
-          <button onClick={() => navigate('/dashboard')} className="bg-red-500 px-4 py-2 rounded hover:bg-red-600 font-bold transition">Exit</button>
+          <button onClick={() => navigate('/dashboard')} className="bg-gray-700 px-4 py-2 rounded hover:bg-gray-800 font-bold transition">Exit</button>
         </div>
       </header>
 
@@ -368,8 +434,7 @@ function ControlPanel() {
                       <span className={`font-black text-sm ${team.remainingPurse < 50000 ? 'text-red-500' : 'text-green-600'}`}>₹{team.remainingPurse.toLocaleString()}</span>
                     </div>
                   </div>
-                  <div className="grid grid-cols-4 gap-1">
-                    <button onClick={() => { updateBid(team.teamName, currentPlayer.basePrice, true) }} className="bg-gray-200 text-gray-700 font-bold py-1 px-1 rounded hover:bg-gray-300 text-xs border border-gray-300">Base</button>
+                  <div className="grid grid-cols-3 gap-1">
                     <button onClick={() => updateBid(team.teamName, 500)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm">+500</button>
                     <button onClick={() => updateBid(team.teamName, 1000)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm">+1K</button>
                     <button onClick={() => updateBid(team.teamName, 5000)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm">+5K</button>
