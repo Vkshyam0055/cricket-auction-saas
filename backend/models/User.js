@@ -6,7 +6,7 @@ const userSchema = new mongoose.Schema({
     password: { type: String, required: true },
     role: { type: String, default: 'Organizer' }, // SuperAdmin या Organizer
     plan: { type: String, default: 'Silver' }, // Silver, Gold, Platinum
-    activeDevices: { type: Number, default: 0 } // आपका शानदार डिवाइस ट्रैकिंग फीचर
+    activeDevices: { type: Number, default: 0 } // शानदार डिवाइस ट्रैकिंग फीचर
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

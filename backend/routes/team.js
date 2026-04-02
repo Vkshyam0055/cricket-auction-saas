@@ -1,20 +1,26 @@
 const express = require('express');
 const router = express.Router();
 const Team = require('../models/Team');
+const fetchOrganizer = require('../middleware/fetchOrganizer');
+
+router.use(fetchOrganizer);
 
 router.post('/', async (req, res) => {
     try {
-        const { teamName, totalPurse } = req.body;
+        const { teamName, totalPurse, ownerName, mobile, logoUrl } = req.body;
 
-        let existingTeam = await Team.findOne({ teamName });
+        // चेक करें कि क्या इसी मालिक की कोई और टीम इस नाम से है?
+        let existingTeam = await Team.findOne({ teamName, organizer: req.user.id });
         if (existingTeam) {
             return res.status(400).json({ message: "यह टीम पहले से मौजूद है!" });
         }
 
         const newTeam = new Team({
-            teamName: teamName,
-            totalPurse: totalPurse,
-            remainingPurse: totalPurse 
+            teamName,
+            totalPurse,
+            remainingPurse: totalPurse,
+            ownerName, mobile, logoUrl,
+            organizer: req.user.id // मालिक का ठप्पा
         });
 
         const savedTeam = await newTeam.save();
@@ -28,7 +34,8 @@ router.post('/', async (req, res) => {
 
 router.get('/', async (req, res) => {
     try {
-        const teams = await Team.find(); 
+        // सिर्फ उसी मालिक की टीमें लाओ
+        const teams = await Team.find({ organizer: req.user.id }); 
         res.json(teams); 
     } catch (error) {
         console.error("एरर:", error.message);
@@ -36,12 +43,11 @@ router.get('/', async (req, res) => {
     }
 });
 
-// 🌟 MASTER EDIT: Update Team Details 🌟
 router.put('/:id', async (req, res) => {
   try {
     const { teamName, totalPurse, remainingPurse, ownerName, mobile, logoUrl } = req.body;
-    const updatedTeam = await Team.findByIdAndUpdate(
-      req.params.id,
+    const updatedTeam = await Team.findOneAndUpdate(
+      { _id: req.params.id, organizer: req.user.id }, // सुरक्षा: सिर्फ अपना ही एडिट कर सके
       { teamName, totalPurse, remainingPurse, ownerName, mobile, logoUrl },
       { new: true }
     );

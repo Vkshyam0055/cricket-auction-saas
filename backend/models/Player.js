@@ -10,14 +10,15 @@ const playerSchema = new mongoose.Schema({
     basePrice: { type: Number, default: 0 },
     photoUrl: { type: String, default: 'https://via.placeholder.com/150' },
     
-    // 🌟 नए फीचर्स 🌟
-    approvalStatus: { type: String, default: 'Pending' }, // Pending, Approved, Rejected
-    isIcon: { type: Boolean, default: false }, // क्या यह आइकॉन प्लेयर है?
+    // 🌟 SaaS Feature: यह खिलाड़ी किस ऑर्गेनाइजर के पास रजिस्टर हुआ है?
+    organizer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 
-    // ऑक्शन स्टेटस
+    approvalStatus: { type: String, default: 'Pending' }, 
+    isIcon: { type: Boolean, default: false }, 
+
     soldTo: { type: String, default: 'Unsold' },
     soldPrice: { type: Number, default: 0 },
-    auctionStatus: { type: String, default: 'Unsold' }
-});
+    auctionStatus: { type: String, default: 'Unsold' } // Pending, Sold, Unsold
+}, { timestamps: true });
 
 module.exports = mongoose.model('Player', playerSchema);
