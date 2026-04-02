@@ -23,8 +23,6 @@ function ControlPanel() {
   const [showUnsoldModal, setShowUnsoldModal] = useState(false);
   const [unsoldDatabase, setUnsoldDatabase] = useState([]);
 
-  // 🌟 UNIVERSE TOOL: Traffic Controller (Delay Function) 🌟
-  // यह बैकएंड को क्रैश होने से बचाएगा
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
   useEffect(() => {
@@ -44,7 +42,8 @@ function ControlPanel() {
       const availablePlayers = playersRes.data.filter(player => 
         player.approvalStatus?.trim().toLowerCase() === 'approved' &&
         player.auctionStatus?.trim().toLowerCase() !== 'sold' &&
-        player.auctionStatus?.trim().toLowerCase() !== 'unsold'
+        player.auctionStatus?.trim().toLowerCase() !== 'unsold' &&
+        player.auctionStatus?.trim().toLowerCase() !== 'passed'
       );
       setPlayers(availablePlayers);
 
@@ -207,7 +206,7 @@ function ControlPanel() {
 
       const passedPlayers = res.data.filter(p => 
         p.approvalStatus?.trim().toLowerCase() === 'approved' &&
-        p.auctionStatus?.trim().toLowerCase() === 'unsold' &&
+        (p.auctionStatus?.trim().toLowerCase() === 'unsold' || p.auctionStatus?.trim().toLowerCase() === 'passed') &&
         !currentPendingIds.includes(p._id)
       );
 
@@ -239,12 +238,11 @@ function ControlPanel() {
       try {
         const token = localStorage.getItem('token');
         
-        // 🌟 UNIVERSE LOGIC: Traffic Controller Enabled 🌟
         for (const p of unsoldDatabase) {
            await axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/players/undo/${p._id}`, {}, {
               headers: { Authorization: `Bearer ${token}` }
            });
-           await delay(400); // 400ms delay to protect backend
+           await delay(400); 
         }
 
         setPlayers(prev => [...prev, ...unsoldDatabase]);
@@ -258,7 +256,6 @@ function ControlPanel() {
     }
   };
 
-  // 🌟 UNIVERSE LOGIC: Safe Master Reset 🌟
   const resetWholeAuction = async () => {
     const confirmReset = window.confirm("⚠️ चेतावनी! क्या आप पूरा ऑक्शन रीसेट करना चाहते हैं?");
     if (!confirmReset) return;
@@ -273,28 +270,28 @@ function ControlPanel() {
       const token = localStorage.getItem('token');
       const res = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/players', { headers: { Authorization: `Bearer ${token}` } });
       
+      // 🌟 FIX: पुराने Passed स्टेटस वाले प्लेयर्स को भी रीसेट करने के लिए फ़िल्टर को मजबूत किया गया है 🌟
       const playersToReset = res.data.filter(p => 
         p.auctionStatus?.trim().toLowerCase() === 'sold' || 
-        p.auctionStatus?.trim().toLowerCase() === 'unsold'
+        p.auctionStatus?.trim().toLowerCase() === 'unsold' ||
+        p.auctionStatus?.trim().toLowerCase() === 'passed'
       );
 
       if(playersToReset.length > 0) {
           alert(`⏳ ${playersToReset.length} खिलाड़ियों का डेटा वापस लाया जा रहा है... कृपया इस पेज को बंद न करें, इसमें कुछ सेकंड लगेंगे।`);
           
-          // 🌟 Traffic Controller: One by One to prevent Server Crash 🌟
           for (const p of playersToReset) {
               try {
                   await axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/players/undo/${p._id}`, {}, {
                       headers: { Authorization: `Bearer ${token}` }
                   });
-                  await delay(500); // आधा सेकंड का ब्रेक ताकि डेटाबेस लॉक न हो!
+                  await delay(500); 
               } catch(err) {
                   console.error(`Failed to undo player ${p.name}`, err);
               }
           }
       }
 
-      // Clear Screen
       setCurrentPlayer(null);
       setCurrentBid(0);
       setBiddingTeam('');
@@ -309,7 +306,7 @@ function ControlPanel() {
       socket.emit('newLiveBid', { bidAmount: 0, teamName: '', player: null, status: 'bidding' });
 
       await fetchData(); 
-      alert("✅ 100% UNIVERSE RESET SUCCESSFUL! \n\n(नोट: यदि किसी टीम का पर्स अभी भी 5 करोड़ से ज़्यादा दिख रहा है, तो कृपया उसे MongoDB Atlas से एक बार मैन्युअली सही कर लें।)");
+      alert("✅ 100% UNIVERSE RESET SUCCESSFUL! \n\nसभी प्लेयर अब Pending स्टेटस के साथ वापस ऑक्शन पूल में आ गए हैं।");
 
     } catch (error) {
       console.error(error);

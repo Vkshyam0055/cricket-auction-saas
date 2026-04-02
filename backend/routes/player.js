@@ -44,7 +44,6 @@ router.put('/sell/:id', async (req, res) => {
     }
 });
 
-// 🌟 FIX 1: यहाँ 'Passed' की जगह 'Unsold' कर दिया है 🌟
 router.put('/unsold/:id', async (req, res) => {
     try {
         const player = await Player.findById(req.params.id);
@@ -56,13 +55,12 @@ router.put('/unsold/:id', async (req, res) => {
     }
 });
 
-// 🌟 FIX 2: UNDO करने पर प्लेयर 'Pending' होकर वापस ऑक्शन में आएगा 🌟
+// 🌟 मजबूत UNDO लॉजिक: प्लेयर को पूरी तरह 'Pending' बनाएगा 🌟
 router.put('/undo/:id', async (req, res) => {
     try {
         const player = await Player.findById(req.params.id);
         if (!player) return res.status(404).json({ message: "खिलाड़ी नहीं मिला" });
 
-        // अगर खिलाड़ी बिका था, तो टीम के पैसे वापस करो
         if (player.auctionStatus === 'Sold' && player.soldTo && player.soldTo !== 'Unsold') {
             const team = await Team.findOne({ teamName: player.soldTo });
             if (team) {
@@ -71,7 +69,6 @@ router.put('/undo/:id', async (req, res) => {
             }
         }
 
-        // खिलाड़ी को वापस एकदम फ्रेश 'Pending' लिस्ट में डालो
         player.auctionStatus = 'Pending';
         player.soldTo = '';
         player.soldPrice = 0;
@@ -119,15 +116,13 @@ router.put('/make-icon/:id', async (req, res) => {
         const { teamName, iconPrice } = req.body;
         const player = await Player.findById(req.params.id);
 
-        // खिलाड़ी को आइकॉन बनाओ और टीम को सौंप दो
         player.soldTo = teamName;
         player.soldPrice = Number(iconPrice);
-        player.auctionStatus = 'Icon'; // ताकि यह ऑक्शन में ना जाए
+        player.auctionStatus = 'Icon'; 
         player.isIcon = true;
-        player.approvalStatus = 'Approved'; // आइकॉन है तो अप्रूव्ड ही होगा
+        player.approvalStatus = 'Approved'; 
         await player.save();
 
-        // टीम के पर्स से पैसे काटो
         const team = await Team.findOne({ teamName: teamName });
         if (team) {
             team.remainingPurse -= Number(iconPrice);
@@ -140,7 +135,6 @@ router.put('/make-icon/:id', async (req, res) => {
     }
 });
 
-// 🌟 MASTER EDIT: Update Player Details 🌟
 router.put('/:id', async (req, res) => {
   try {
     const { auctionStatus, isIcon, soldTo, soldPrice } = req.body;
