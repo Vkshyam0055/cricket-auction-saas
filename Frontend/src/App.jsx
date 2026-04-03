@@ -1,13 +1,12 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import Auth from './pages/Auth';
+import LandingPage from './pages/LandingPage'; // 🌟 नया होमपेज
+import Auth from './pages/Auth'; // 🌟 लॉगिन/रजिस्टर पेज
 import Dashboard from './pages/Dashboard';
 import AddTeam from './pages/AddTeam';
 import ManagePlayers from './pages/ManagePlayers';
 import ControlPanel from './pages/ControlPanel';
 import LiveScreen from './pages/LiveScreen';
-
-// 🌟 जो 3 पेजेज़ छूट गए थे, उन्हें यहाँ इम्पोर्ट कर लिया है 🌟
 import CreateTournament from './pages/CreateTournament';
 import AddPlayer from './pages/AddPlayer';
 import Teams from './pages/Teams';
@@ -19,7 +18,8 @@ const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem('token');
   
   if (!token) {
-    return <Navigate to="/" />;
+    // अगर टोकन नहीं है, तो लॉगिन पेज पर भेजो
+    return <Navigate to="/auth" />;
   }
   
   return children;
@@ -30,16 +30,15 @@ function App() {
     <TournamentProvider>
       <BrowserRouter>
         <Routes>
-          {/* 🔓 Open Route */}
-          <Route path="/" element={<Auth />} />
+          {/* 🌟 Open Routes: कोई भी देख सकता है 🌟 */}
+          <Route path="/" element={<LandingPage />} /> {/* दुकान का फ्रंट */}
+          <Route path="/auth" element={<Auth />} /> {/* लॉगिन दरवाज़ा */}
           
-          {/* 🔒 Protected Routes */}
+          {/* 🔒 Protected Routes: सिर्फ लॉगिन वाले यूज़र ही देख सकते हैं */}
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/add-team" element={<ProtectedRoute><AddTeam /></ProtectedRoute>} />
           <Route path="/manage-players" element={<ProtectedRoute><ManagePlayers /></ProtectedRoute>} />
           <Route path="/control-panel" element={<ProtectedRoute><ControlPanel /></ProtectedRoute>} />
-          
-          {/* 🌟 छूटे हुए राउट्स अब यहाँ जोड़ दिए गए हैं 🌟 */}
           <Route path="/create-tournament" element={<ProtectedRoute><CreateTournament /></ProtectedRoute>} />
           <Route path="/add-player" element={<ProtectedRoute><AddPlayer /></ProtectedRoute>} />
           <Route path="/teams" element={<ProtectedRoute><Teams /></ProtectedRoute>} />

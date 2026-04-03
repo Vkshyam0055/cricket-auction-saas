@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { TournamentContext } from '../context/TournamentContext'; // 🌟 इम्पोर्ट
+import { TournamentContext } from '../context/TournamentContext';
 
 function CreateTournament() {
   const navigate = useNavigate();
-  const { tournament, fetchTournament } = useContext(TournamentContext); // 🌟 ग्लोबल डब्बा
+  const { tournament, fetchTournament } = useContext(TournamentContext);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -13,7 +13,6 @@ function CreateTournament() {
     venue: ''
   });
 
-  // अगर पहले से बना है तो डेटा भर दो
   useEffect(() => {
     if (tournament) {
       setFormData({
@@ -31,15 +30,20 @@ function CreateTournament() {
   const handleSave = async (e) => {
     e.preventDefault();
     try {
-      await axios.post('https://cricket-auction-backend-h8ud.onrender.com/api/tournament', formData);
+      // 🌟 FIX: लोकल स्टोरेज से डिजिटल चाबी (टोकन) निकाली 🌟
+      const token = localStorage.getItem('token');
+      const headers = { Authorization: `Bearer ${token}` };
+
+      // 🌟 FIX: डेटा के साथ चाबी (headers) भी बैकएंड को भेजी 🌟
+      await axios.post('https://cricket-auction-backend-h8ud.onrender.com/api/tournament', formData, { headers });
       
-      // 🌟 गोडाउन में सेव होते ही ग्लोबल डब्बे को रिफ्रेश करो!
       await fetchTournament(); 
       
       alert('🎉 टूर्नामेंट की जानकारी सफलतापूर्वक सेट हो गई!');
-      navigate('/dashboard'); // अब डैशबोर्ड खुल जाएगा
+      navigate('/dashboard'); 
     } catch (error) {
-      alert('सेव करने में कोई दिक्कत आई!');
+      console.error(error);
+      alert('सेव करने में कोई दिक्कत आई! (शायद आपका लॉगिन एक्सपायर हो गया है)');
     }
   };
 
