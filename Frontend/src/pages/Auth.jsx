@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react'; // 🌟 useContext जोड़ा गया
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { TournamentContext } from '../context/TournamentContext'; // 🌟 ग्लोबल डब्बा इम्पोर्ट किया
 
 function Auth() {
   const navigate = useNavigate();
-  const [isLogin, setIsLogin] = useState(true); // True = Login Page, False = Register Page
+  const [isLogin, setIsLogin] = useState(true);
   
-  // Form States
+  // 🌟 डब्बे में से fetchTournament फंक्शन निकाला 🌟
+  const { fetchTournament } = useContext(TournamentContext);
+  
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -16,25 +19,21 @@ function Auth() {
     
     try {
       if (isLogin) {
-        // 🌟 LOGIN LOGIC 🌟
         const res = await axios.post('https://cricket-auction-backend-h8ud.onrender.com/api/auth/login', { 
             phone, 
             password 
         });
         
-        // टोकन (डिजिटल चाबी) को ब्राउज़र में सेव करना
         localStorage.setItem('token', res.data.token);
-        
-        // 🌟 ऑर्गेनाइजर का नाम डैशबोर्ड के लिए सेव करना 🌟
         localStorage.setItem('organizerName', res.data.user.name);
         
-        alert(`लॉगिन सफल! 🎉 स्वागत है ${res.data.user.name}`);
+        // 🌟 FIX: लॉगिन होते ही बैकएंड से तुरंत टूर्नामेंट का डेटा मंगाओ 🌟
+        await fetchTournament();
         
-        // लॉगिन होते ही सीधा डैशबोर्ड पर भेज दो
+        alert(`लॉगिन सफल! 🎉 स्वागत है ${res.data.user.name}`);
         navigate('/dashboard'); 
         
       } else {
-        // 🌟 REGISTER LOGIC 🌟
         await axios.post('https://cricket-auction-backend-h8ud.onrender.com/api/auth/register', { 
             name, 
             phone, 
@@ -42,8 +41,8 @@ function Auth() {
         });
         
         alert("रजिस्ट्रेशन सफल रहा! ✅ कृपया अब अपने नंबर और पासवर्ड से लॉगिन करें।");
-        setIsLogin(true); // रजिस्ट्रेशन के बाद यूज़र को वापस लॉगिन फॉर्म पर ले आओ
-        setPassword(''); // सुरक्षा के लिए पासवर्ड फील्ड खाली कर दो
+        setIsLogin(true); 
+        setPassword(''); 
       }
     } catch (error) {
       alert("एरर: " + (error.response?.data?.message || "सर्वर से कनेक्ट नहीं हो पाया!"));
@@ -52,10 +51,8 @@ function Auth() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 via-indigo-900 to-gray-900 flex items-center justify-center p-4">
-      
       <div className="bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row w-full max-w-4xl">
         
-        {/* 🌟 Left Side: Branding (दुकान का बैनर) 🌟 */}
         <div className="bg-blue-600 w-full md:w-1/2 p-10 text-white flex flex-col justify-center relative overflow-hidden">
           <div className="absolute top-0 right-0 -mr-16 -mt-16 w-48 h-48 bg-blue-500 rounded-full opacity-50 blur-2xl"></div>
           <div className="absolute bottom-0 left-0 -ml-16 -mb-16 w-48 h-48 bg-indigo-500 rounded-full opacity-50 blur-2xl"></div>
@@ -84,7 +81,6 @@ function Auth() {
           </div>
         </div>
 
-        {/* 🌟 Right Side: Form (लॉगिन/रजिस्टर) 🌟 */}
         <div className="w-full md:w-1/2 p-10 md:p-12 bg-white">
           <h2 className="text-3xl font-black text-gray-800 mb-2">
             {isLogin ? 'Welcome Back! 👋' : 'Create Organizer Account 🚀'}
@@ -94,8 +90,6 @@ function Auth() {
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            
-            {/* नाम का फील्ड (सिर्फ रजिस्टर करते वक्त दिखेगा) */}
             {!isLogin && (
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">Full Name</label>
@@ -133,7 +127,6 @@ function Auth() {
             </button>
           </form>
 
-          {/* Toggle Button */}
           <div className="mt-8 text-center">
             <p className="text-gray-600 font-bold">
               {isLogin ? "खाता नहीं है?" : "पहले से खाता है?"}

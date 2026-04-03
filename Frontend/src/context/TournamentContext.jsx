@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect } from 'react';
+import React, { createContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 
 export const TournamentContext = createContext();
@@ -7,9 +7,10 @@ export const TournamentProvider = ({ children }) => {
   const [tournament, setTournament] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchTournament = async () => {
+  // 🌟 FIX: useCallback जोड़ा गया ताकि इसे Auth.jsx से सुरक्षित रूप से कॉल किया जा सके 🌟
+  const fetchTournament = useCallback(async () => {
+    setLoading(true);
     try {
-      // 🌟 FIX: ग्लोबल डब्बे को भी डिजिटल चाबी (टोकन) दे दी 🌟
       const token = localStorage.getItem('token');
       
       if (!token) {
@@ -20,24 +21,23 @@ export const TournamentProvider = ({ children }) => {
 
       const headers = { Authorization: `Bearer ${token}` };
       
-      // 🌟 अब यह चाबी के साथ बैकएंड से सिर्फ लॉगिन वाले यूज़र का टूर्नामेंट लाएगा
       const response = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/tournament', { headers });
       
-      setTournament(response.data);
+      setTournament(response.data || null);
     } catch (error) {
       console.error("Error fetching tournament:", error);
       setTournament(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchTournament();
-  }, []);
+  }, [fetchTournament]);
 
   return (
-    <TournamentContext.Provider value={{ tournament, loading, fetchTournament }}>
+    <TournamentContext.Provider value={{ tournament, loading, fetchTournament, setTournament }}>
       {children}
     </TournamentContext.Provider>
   );
