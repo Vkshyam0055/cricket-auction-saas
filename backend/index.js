@@ -33,6 +33,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/teams', require('./routes/team'));
 app.use('/api/players', require('./routes/player'));
 app.use('/api/tournament', require('./routes/tournament'));
+app.use('/api/admin', require('./routes/admin'));
 
 mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/cricket_auction')
     .then(() => console.log('Database Connection Successful! (गोडाउन से जुड़ गए)'))
