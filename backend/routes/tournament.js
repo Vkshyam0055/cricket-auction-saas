@@ -18,7 +18,8 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
     try {
-        const { name, logoUrl, venue } = req.body;
+        // 🌟 FIX: नए बिड बटन्स के पैरामीटर्स भी ले लिए
+        const { name, logoUrl, venue, bidButton1, bidButton2, bidButton3 } = req.body;
         
         let tournament = await Tournament.findOne({ organizer: req.user.id });
         
@@ -26,11 +27,19 @@ router.post('/', async (req, res) => {
             tournament.name = name;
             tournament.logoUrl = logoUrl;
             tournament.venue = venue;
+            // 🌟 Update Bid Buttons
+            if (bidButton1) tournament.bidButton1 = Number(bidButton1);
+            if (bidButton2) tournament.bidButton2 = Number(bidButton2);
+            if (bidButton3) tournament.bidButton3 = Number(bidButton3);
+
             await tournament.save();
             res.json({ message: "टूर्नामेंट अपडेट हो गया!", tournament });
         } else {
             const newTournament = new Tournament({ 
                 name, logoUrl, venue, 
+                bidButton1: bidButton1 ? Number(bidButton1) : 500,
+                bidButton2: bidButton2 ? Number(bidButton2) : 1000,
+                bidButton3: bidButton3 ? Number(bidButton3) : 5000,
                 organizer: req.user.id // मालिक का ठप्पा
             });
             await newTournament.save();
