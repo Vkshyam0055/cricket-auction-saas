@@ -10,7 +10,7 @@ import LiveScreen from './pages/LiveScreen';
 import CreateTournament from './pages/CreateTournament';
 import AddPlayer from './pages/AddPlayer';
 import Teams from './pages/Teams';
-
+import SuperAdmin from './pages/SuperAdmin'; // 🌟 ऊपर इम्पोर्ट करें
 import { TournamentContext, TournamentProvider } from './context/TournamentContext';
 
 // 🛡️ Frontend Security Guard 🛡️
@@ -33,7 +33,7 @@ function App() {
           {/* 🌟 Open Routes: कोई भी देख सकता है 🌟 */}
           <Route path="/" element={<LandingPage />} /> {/* दुकान का फ्रंट */}
           <Route path="/auth" element={<Auth />} /> {/* लॉगिन दरवाज़ा */}
-          
+          <Route path="/super-admin" element={<ProtectedRoute><SuperAdmin /></ProtectedRoute>} />
           {/* 🔒 Protected Routes: सिर्फ लॉगिन वाले यूज़र ही देख सकते हैं */}
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/add-team" element={<ProtectedRoute><AddTeam /></ProtectedRoute>} />

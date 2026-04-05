@@ -5,100 +5,249 @@ import axios from 'axios';
 function Teams() {
   const navigate = useNavigate();
   const [teams, setTeams] = useState([]);
-  const [players, setPlayers] = useState([]); // खिलाड़ियों को रखने का डिब्बा
+  const [players, setPlayers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Tabs: 'summary' or 'squads'
+  const [activeTab, setActiveTab] = useState('summary');
+  const [selectedTeam, setSelectedTeam] = useState('');
 
-  // गोडाउन से टीमें और खिलाड़ी दोनों एक साथ लाओ
   useEffect(() => {
     const fetchData = async () => {
       try {
         const token = localStorage.getItem('token');
         const headers = { Authorization: `Bearer ${token}` };
 
-        // टीमें लाओ
-        const teamsRes = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/teams', { headers });
+        const [teamsRes, playersRes] = await Promise.all([
+          axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/teams', { headers }),
+          axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/players', { headers })
+        ]);
+
         setTeams(teamsRes.data);
-
-        // खिलाड़ी लाओ
-        const playersRes = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/players', { headers });
         setPlayers(playersRes.data);
-
+        
+        // By default, select the first team if available
+        if (teamsRes.data.length > 0) {
+          setSelectedTeam(teamsRes.data[0].teamName);
+        }
       } catch (error) {
         console.error("डेटा लाने में दिक्कत:", error);
+      } finally {
+        setLoading(false);
       }
     };
+
     fetchData();
   }, []);
 
+  // 📊 Calculations for Auction Summary
+  const totalRegistered = players.length;
+  const totalSold = players.filter(p => p.auctionStatus === 'Sold' || p.auctionStatus === 'Icon').length;
+  const totalUnsold = players.filter(p => p.auctionStatus === 'Unsold').length;
+
+  // 🛡️ Calculations for Team Dashboard
+  // 🌟 FIX: Icon Players हमेशा लिस्ट में सबसे ऊपर (Top) आएंगे!
+  const squadPlayers = players
+    .filter(p => p.soldTo === selectedTeam)
+    .sort((a, b) => Number(b.isIcon || 0) - Number(a.isIcon || 0)); 
+
+  const activeTeamData = teams.find(t => t.teamName === selectedTeam);
+  const teamSpentAmount = squadPlayers.reduce((acc, p) => acc + (p.soldPrice || 0), 0);
+  const teamTotalPurse = (activeTeamData?.remainingPurse || 0) + teamSpentAmount;
+
+  if (loading) {
+    return <div className="min-h-screen bg-[#0B172A] flex items-center justify-center text-yellow-400 font-black text-2xl">Loading Dashboard... ⏳</div>;
+  }
+
   return (
-    <div className="min-h-screen bg-gray-100 p-8">
+    <div className="min-h-screen bg-[#0B172A] text-gray-100 p-4 md:p-8 font-sans">
       <div className="max-w-7xl mx-auto">
         
-        {/* हेडर */}
-        <div className="flex justify-between items-center mb-8 bg-white p-6 rounded-xl shadow-md border-t-4 border-blue-800">
-          <h2 className="text-3xl font-black text-gray-800">🏆 Teams, Budgets & Squads</h2>
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="bg-gray-800 text-white px-6 py-3 rounded-lg font-bold hover:bg-gray-700 transition shadow-lg"
-          >
-            ⬅ Back to Dashboard
+        {/* Header */}
+        <div className="flex flex-col md:flex-row justify-between items-center mb-8 bg-[#1E293B] p-6 rounded-2xl shadow-2xl border-b-4 border-yellow-400">
+          <h1 className="text-3xl md:text-4xl font-black text-white tracking-wider uppercase">
+            <span className="text-yellow-400">🏆 Master</span> Dashboard
+          </h1>
+          <button onClick={() => navigate('/dashboard')} className="mt-4 md:mt-0 bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded-lg font-bold transition shadow-lg border border-gray-500">
+            ⬅ Back to Control Room
           </button>
         </div>
 
-        {/* टीमों के कार्ड्स का ग्रिड */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {teams.map((team) => {
-            
-            // इस टीम ने जो खिलाड़ी खरीदे हैं, उन्हें फिल्टर करो
-            const teamSquad = players.filter(player => player.soldTo === team.teamName);
+        {/* Custom Tabs */}
+        <div className="flex space-x-2 md:space-x-4 mb-8">
+          <button 
+            onClick={() => setActiveTab('summary')} 
+            className={`flex-1 py-4 text-lg font-black uppercase tracking-widest rounded-xl transition-all duration-300 ${activeTab === 'summary' ? 'bg-yellow-400 text-[#0B172A] shadow-[0_0_15px_rgba(250,204,21,0.5)] scale-105' : 'bg-[#1E293B] text-gray-400 hover:bg-gray-700 border border-gray-700'}`}
+          >
+            📊 Auction Summary
+          </button>
+          <button 
+            onClick={() => setActiveTab('squads')} 
+            className={`flex-1 py-4 text-lg font-black uppercase tracking-widest rounded-xl transition-all duration-300 ${activeTab === 'squads' ? 'bg-yellow-400 text-[#0B172A] shadow-[0_0_15px_rgba(250,204,21,0.5)] scale-105' : 'bg-[#1E293B] text-gray-400 hover:bg-gray-700 border border-gray-700'}`}
+          >
+            🛡️ Team Dashboard
+          </button>
+        </div>
 
-            return (
-              <div key={team._id} className="bg-white rounded-2xl shadow-xl border-t-8 border-blue-600 overflow-hidden hover:shadow-2xl transition-all">
-                
-                {/* टीम का नाम और बजट */}
-                <div className="p-6 bg-gray-50 border-b-2 border-gray-200">
-                  <h3 className="text-3xl font-black text-gray-800 mb-4">{team.teamName}</h3>
-                  <div className="space-y-2">
-                    <p className="flex justify-between text-gray-500 font-bold">
-                      <span>Total Purse:</span>
-                      <span className="text-gray-800">₹ {team.totalPurse.toLocaleString()}</span>
-                    </p>
-                    <p className="flex justify-between text-lg font-black mt-2 pt-2 border-t border-gray-300">
-                      <span className="text-red-500">Remaining:</span>
-                      <span className="text-green-600">₹ {team.remainingPurse.toLocaleString()}</span>
-                    </p>
+        {/* =========================================
+            TAB 1: AUCTION SUMMARY
+        ========================================== */}
+        {activeTab === 'summary' && (
+          <div className="animate-fade-in">
+            {/* Top Stat Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              <div className="bg-[#1E293B] p-6 rounded-2xl border-l-8 border-blue-500 shadow-xl flex flex-col items-center justify-center">
+                <span className="text-gray-400 font-bold uppercase tracking-wider mb-2">Total Registered</span>
+                <span className="text-5xl font-black text-blue-400">{totalRegistered}</span>
+              </div>
+              <div className="bg-[#1E293B] p-6 rounded-2xl border-l-8 border-green-500 shadow-xl flex flex-col items-center justify-center">
+                <span className="text-gray-400 font-bold uppercase tracking-wider mb-2">Total Sold</span>
+                <span className="text-5xl font-black text-green-400">{totalSold}</span>
+              </div>
+              <div className="bg-[#1E293B] p-6 rounded-2xl border-l-8 border-red-500 shadow-xl flex flex-col items-center justify-center">
+                <span className="text-gray-400 font-bold uppercase tracking-wider mb-2">Total Unsold</span>
+                <span className="text-5xl font-black text-red-400">{totalUnsold}</span>
+              </div>
+            </div>
+
+            {/* Summary Table */}
+            <div className="bg-[#1E293B] rounded-2xl shadow-2xl overflow-hidden border border-gray-700">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#0F172A] text-yellow-400 text-sm uppercase tracking-widest border-b-2 border-gray-700">
+                      <th className="p-5 font-black">Team Name</th>
+                      <th className="p-5 font-black text-center">Total Purse</th>
+                      <th className="p-5 font-black text-center">Spent</th>
+                      <th className="p-5 font-black text-center">Remaining</th>
+                      <th className="p-5 font-black text-center">Players</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {teams.map((team) => {
+                      const tPlayers = players.filter(p => p.soldTo === team.teamName);
+                      const tSpent = tPlayers.reduce((acc, p) => acc + (p.soldPrice || 0), 0);
+                      const tTotal = team.remainingPurse + tSpent;
+                      
+                      return (
+                        <tr key={team._id} className="hover:bg-[#192236] transition-colors">
+                          <td className="p-5 font-black text-white text-lg uppercase">{team.teamName}</td>
+                          <td className="p-5 text-center font-bold text-gray-300">₹{tTotal.toLocaleString()}</td>
+                          <td className="p-5 text-center font-black text-blue-400">₹{tSpent.toLocaleString()}</td>
+                          <td className="p-5 text-center font-black text-green-400">₹{team.remainingPurse.toLocaleString()}</td>
+                          <td className="p-5 text-center font-bold text-yellow-100">{tPlayers.length}</td>
+                        </tr>
+                      );
+                    })}
+                    {teams.length === 0 && (
+                      <tr>
+                        <td colSpan="5" className="p-8 text-center text-gray-500 font-bold">No teams registered yet.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* =========================================
+            TAB 2: TEAM DASHBOARD (SQUADS)
+        ========================================== */}
+        {activeTab === 'squads' && (
+          <div className="animate-fade-in grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            {/* Sidebar / Top Panel: Team Selection & Stats */}
+            <div className="lg:col-span-3 space-y-6">
+              <div className="bg-[#1E293B] p-5 rounded-2xl shadow-xl border border-gray-700">
+                <label className="block text-yellow-400 font-black uppercase tracking-widest mb-3 text-sm">Select Team</label>
+                <select 
+                  value={selectedTeam} 
+                  onChange={(e) => setSelectedTeam(e.target.value)} 
+                  className="w-full p-4 bg-[#0F172A] border-2 border-gray-600 text-white rounded-xl font-bold focus:border-yellow-400 outline-none uppercase"
+                >
+                  {teams.map(t => <option key={t._id} value={t.teamName}>{t.teamName}</option>)}
+                </select>
+              </div>
+
+              {activeTeamData && (
+                <div className="bg-[#1E293B] p-6 rounded-2xl shadow-xl border-t-8 border-yellow-400 flex flex-col space-y-4">
+                  <div className="flex justify-between items-center border-b border-gray-700 pb-2">
+                    <span className="text-gray-400 font-bold uppercase text-xs tracking-wider">Total Purse</span>
+                    <span className="text-xl font-black text-white">₹{teamTotalPurse.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-gray-700 pb-2">
+                    <span className="text-gray-400 font-bold uppercase text-xs tracking-wider">Spent Amount</span>
+                    <span className="text-xl font-black text-blue-400">₹{teamSpentAmount.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-gray-700 pb-2">
+                    <span className="text-gray-400 font-bold uppercase text-xs tracking-wider">Remaining Balance</span>
+                    <span className="text-2xl font-black text-green-400">₹{activeTeamData.remainingPurse.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2">
+                    <span className="text-gray-400 font-bold uppercase text-xs tracking-wider">Total Players</span>
+                    <span className="text-2xl font-black text-yellow-400">{squadPlayers.length}</span>
                   </div>
                 </div>
+              )}
+            </div>
 
-                {/* खिलाड़ियों की लिस्ट (Squad) */}
-                <div className="p-6 bg-white">
-                  <h4 className="text-lg font-bold text-gray-700 mb-4 border-b pb-2 flex justify-between">
-                    <span>Squad Members</span>
-                    <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">{teamSquad.length} Players</span>
-                  </h4>
-                  
-                  {teamSquad.length === 0 ? (
-                    <p className="text-gray-400 italic text-center py-4">No players bought yet.</p>
-                  ) : (
-                    <ul className="space-y-3">
-                      {teamSquad.map((player) => (
-                        <li key={player._id} className="flex justify-between items-center bg-gray-50 p-3 rounded-lg border border-gray-100">
-                          <div>
-                            <p className="font-bold text-gray-800 capitalize">{player.name}</p>
-                            <p className="text-xs text-gray-500 font-bold uppercase">{player.role}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-bold text-green-600 text-sm">₹ {player.soldPrice.toLocaleString()}</p>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-
+            {/* Main Panel: Squad List */}
+            <div className="lg:col-span-9 bg-[#1E293B] rounded-2xl shadow-2xl overflow-hidden border border-gray-700">
+              <div className="bg-[#0F172A] p-5 border-b border-gray-700 flex items-center justify-between">
+                <h2 className="text-2xl font-black text-white uppercase tracking-wider flex items-center">
+                  <span className="text-yellow-400 mr-2">🛡️</span> {selectedTeam || 'Squad'} <span className="font-normal text-gray-500 ml-2">| Squad Members</span>
+                </h2>
               </div>
-            );
-          })}
-        </div>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#192236] text-gray-400 text-xs uppercase tracking-widest border-b border-gray-700">
+                      <th className="p-4 font-bold text-center w-16">S.No.</th>
+                      <th className="p-4 font-bold">Player Name</th>
+                      <th className="p-4 font-bold">Role</th>
+                      <th className="p-4 font-bold">Village/City</th>
+                      <th className="p-4 font-bold text-center">Mobile No.</th>
+                      <th className="p-4 font-bold text-right">Sold Price</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {squadPlayers.map((player, index) => (
+                      <tr key={player._id} className={`hover:bg-[#0F172A] transition-colors ${player.isIcon ? 'bg-gradient-to-r from-yellow-900/20 to-transparent' : ''}`}>
+                        <td className="p-4 text-center font-bold text-gray-500">{index + 1}</td>
+                        <td className="p-4">
+                          <div className="flex items-center space-x-3">
+                            <img src={player.photoUrl || 'https://via.placeholder.com/50'} alt="p" className={`w-10 h-10 rounded-full object-cover shadow-sm ${player.isIcon ? 'border-2 border-yellow-400' : 'border border-gray-600'}`} />
+                            <div>
+                              <p className={`font-black text-base uppercase ${player.isIcon ? 'text-yellow-400' : 'text-white'}`}>
+                                {player.name} {player.isIcon && '⭐'}
+                              </p>
+                              {player.isIcon && <p className="text-[10px] text-yellow-500 font-bold uppercase tracking-widest">Icon Player</p>}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-4 font-bold text-gray-300">{player.role}</td>
+                        <td className="p-4 font-semibold text-gray-400">{player.city || '-'}</td>
+                        <td className="p-4 text-center font-mono text-gray-400">{player.mobile}</td>
+                        <td className="p-4 text-right font-black text-green-400 text-lg">₹{player.soldPrice?.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                    {squadPlayers.length === 0 && (
+                      <tr>
+                        <td colSpan="6" className="p-12 text-center text-gray-500 font-bold">
+                          <div className="text-4xl mb-3">🕸️</div>
+                          इस टीम ने अभी तक कोई खिलाड़ी नहीं ख़रीदा है।
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        )}
 
       </div>
     </div>

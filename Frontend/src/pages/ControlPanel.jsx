@@ -23,6 +23,18 @@ function ControlPanel() {
   const [showUnsoldModal, setShowUnsoldModal] = useState(false);
   const [unsoldDatabase, setUnsoldDatabase] = useState([]);
 
+  // 🌟 DYNAMIC BID BUTTONS VALUES 🌟
+  const btn1 = tournament?.bidButton1 || 500;
+  const btn2 = tournament?.bidButton2 || 1000;
+  const btn3 = tournament?.bidButton3 || 5000;
+
+  // 🌟 स्मार्ट फॉर्मेटिंग (1000 = 1K, 100000 = 1L) 🌟
+  const formatBidButton = (value) => {
+    if (value >= 100000) return `+${value / 100000}L`;
+    if (value >= 1000) return `+${value / 1000}K`;
+    return `+${value}`;
+  };
+
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
   useEffect(() => {
@@ -270,7 +282,6 @@ function ControlPanel() {
       const token = localStorage.getItem('token');
       const res = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/players', { headers: { Authorization: `Bearer ${token}` } });
       
-      // 🌟 FIX: पुराने Passed स्टेटस वाले प्लेयर्स को भी रीसेट करने के लिए फ़िल्टर को मजबूत किया गया है 🌟
       const playersToReset = res.data.filter(p => 
         p.auctionStatus?.trim().toLowerCase() === 'sold' || 
         p.auctionStatus?.trim().toLowerCase() === 'unsold' ||
@@ -353,7 +364,7 @@ function ControlPanel() {
 
           {!currentPlayer ? (
             <div className="text-center py-12 text-gray-400 font-bold text-lg border-4 border-dashed rounded-xl">
-                कोई खिलाड़ी स्क्रीन पर नहीं है।<br/>ऊपर से नया प्लेयर लाएं!
+                कोई खिलाड़ी स्क्रीन पर नहीं है。<br/>ऊपर से नया प्लेयर लाएं!
             </div>
           ) : (
             <>
@@ -431,11 +442,14 @@ function ControlPanel() {
                       <span className={`font-black text-sm ${team.remainingPurse < 50000 ? 'text-red-500' : 'text-green-600'}`}>₹{team.remainingPurse.toLocaleString()}</span>
                     </div>
                   </div>
+                  
+                  {/* 🌟 FIX: यहाँ अब डायनामिक बटन्स लगा दिए गए हैं 🌟 */}
                   <div className="grid grid-cols-3 gap-1">
-                    <button onClick={() => updateBid(team.teamName, 500)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm">+500</button>
-                    <button onClick={() => updateBid(team.teamName, 1000)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm">+1K</button>
-                    <button onClick={() => updateBid(team.teamName, 5000)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm">+5K</button>
+                    <button onClick={() => updateBid(team.teamName, btn1)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm">{formatBidButton(btn1)}</button>
+                    <button onClick={() => updateBid(team.teamName, btn2)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm">{formatBidButton(btn2)}</button>
+                    <button onClick={() => updateBid(team.teamName, btn3)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm">{formatBidButton(btn3)}</button>
                   </div>
+
                 </div>
               );
             })}
@@ -444,6 +458,7 @@ function ControlPanel() {
         </div>
       </div>
 
+      {/* Unsold Modal Code Remains Same */}
       {showUnsoldModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-sm">
           <div className="bg-white w-11/12 max-w-4xl rounded-2xl shadow-2xl flex flex-col max-h-[85vh]">

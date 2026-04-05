@@ -61,14 +61,12 @@ function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-100">
       
-      {/* 🌟 PRO NAVBAR WITH PROFILE SECTION 🌟 */}
       <nav className="bg-blue-800 p-4 text-white flex flex-col md:flex-row justify-between items-center shadow-lg gap-4 md:gap-0">
         <div className="flex items-center space-x-3">
           {tournament.logoUrl && <img src={tournament.logoUrl} alt="Logo" className="w-10 h-10 rounded-full bg-white border-2 border-blue-400" />}
           <h1 className="text-xl md:text-2xl font-black tracking-wide">🏏 {tournament.name} <span className="font-normal text-blue-300">| Control Room</span></h1>
         </div>
         
-        {/* Profile & Logout Section */}
         <div className="flex items-center space-x-4 bg-blue-900 py-1.5 px-2 rounded-full border border-blue-700 shadow-inner">
           <div className="flex items-center space-x-2 pl-2 pr-1 cursor-default">
             <div className="bg-yellow-400 text-blue-900 font-black rounded-full w-8 h-8 flex items-center justify-center text-lg shadow-sm">
@@ -122,7 +120,7 @@ function Dashboard() {
 
         <div className="bg-white p-6 md:p-8 rounded-xl shadow-lg border-2 border-gray-100">
           <h3 className="text-xl font-black text-gray-800 mb-6 border-b pb-3 uppercase tracking-wide">📂 Data Management & Settings</h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
             <button onClick={() => navigate('/create-tournament')} className="bg-gray-50 text-gray-800 px-4 py-4 rounded-xl font-bold hover:bg-gray-100 shadow-sm border border-gray-200 transition flex flex-col items-center text-center text-sm">
               <span className="text-2xl mb-1">🏆</span> Edit Tournament Info
             </button>
@@ -133,11 +131,18 @@ function Dashboard() {
               <span className="text-2xl mb-1">➕</span> Add Player
             </button>
             <button onClick={() => navigate('/teams')} className="bg-orange-50 text-orange-800 px-4 py-4 rounded-xl font-bold hover:bg-orange-100 shadow-sm border border-orange-200 transition flex flex-col items-center text-center text-sm">
-              <span className="text-2xl mb-1">📊</span> View Teams & Budgets
+              <span className="text-2xl mb-1">📊</span> View Teams
             </button>
             <button onClick={() => navigate('/manage-players')} className="bg-red-50 text-red-800 px-4 py-4 rounded-xl font-bold hover:bg-red-100 shadow-sm border border-red-200 transition flex flex-col items-center text-center text-sm">
               <span className="text-2xl mb-1">🛠️</span> Manage Players
             </button>
+
+            {/* 🌟 सिर्फ Super Admin को दिखने वाला बटन 🌟 */}
+            {organizerName === 'Vivek Super Admin' && (
+              <button onClick={() => navigate('/super-admin')} className="bg-purple-900 text-white px-4 py-4 rounded-xl font-black hover:bg-purple-800 shadow-lg border border-purple-700 transition flex flex-col items-center text-center text-sm animate-pulse">
+                <span className="text-2xl mb-1">👑</span> Developer Panel
+              </button>
+            )}
           </div>
           
           <div className="mt-8 p-4 bg-blue-50 rounded-xl border border-blue-200 text-center flex flex-col md:flex-row items-center justify-center gap-2">

@@ -10,7 +10,10 @@ function CreateTournament() {
   const [formData, setFormData] = useState({
     name: '',
     logoUrl: '',
-    venue: ''
+    venue: '',
+    bidButton1: 500,
+    bidButton2: 1000,
+    bidButton3: 5000
   });
 
   useEffect(() => {
@@ -18,7 +21,10 @@ function CreateTournament() {
       setFormData({
         name: tournament.name || '',
         logoUrl: tournament.logoUrl || '',
-        venue: tournament.venue || ''
+        venue: tournament.venue || '',
+        bidButton1: tournament.bidButton1 || 500,
+        bidButton2: tournament.bidButton2 || 1000,
+        bidButton3: tournament.bidButton3 || 5000
       });
     }
   }, [tournament]);
@@ -30,11 +36,9 @@ function CreateTournament() {
   const handleSave = async (e) => {
     e.preventDefault();
     try {
-      // 🌟 FIX: लोकल स्टोरेज से डिजिटल चाबी (टोकन) निकाली 🌟
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
 
-      // 🌟 FIX: डेटा के साथ चाबी (headers) भी बैकएंड को भेजी 🌟
       await axios.post('https://cricket-auction-backend-h8ud.onrender.com/api/tournament', formData, { headers });
       
       await fetchTournament(); 
@@ -43,7 +47,7 @@ function CreateTournament() {
       navigate('/dashboard'); 
     } catch (error) {
       console.error(error);
-      alert('सेव करने में कोई दिक्कत आई! (शायद आपका लॉगिन एक्सपायर हो गया है)');
+      alert('सेव करने में कोई दिक्कत आई!');
     }
   };
 
@@ -59,10 +63,7 @@ function CreateTournament() {
           <div>
             <label className="block text-sm font-black text-gray-500 uppercase mb-2">Tournament Name *</label>
             <input 
-              name="name" 
-              value={formData.name} 
-              onChange={handleChange} 
-              required 
+              name="name" value={formData.name} onChange={handleChange} required 
               className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all" 
               placeholder="e.g. Rajasthan Premier League" 
             />
@@ -71,9 +72,7 @@ function CreateTournament() {
           <div>
             <label className="block text-sm font-black text-gray-500 uppercase mb-2">Tournament Logo (URL)</label>
             <input 
-              name="logoUrl" 
-              value={formData.logoUrl} 
-              onChange={handleChange} 
+              name="logoUrl" value={formData.logoUrl} onChange={handleChange} 
               className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all" 
               placeholder="Paste image link here" 
             />
@@ -82,12 +81,30 @@ function CreateTournament() {
           <div>
             <label className="block text-sm font-black text-gray-500 uppercase mb-2">Venue (Ground Name)</label>
             <input 
-              name="venue" 
-              value={formData.venue} 
-              onChange={handleChange} 
+              name="venue" value={formData.venue} onChange={handleChange} 
               className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all" 
               placeholder="e.g. SMS Stadium, Jaipur" 
             />
+          </div>
+
+          {/* 🌟 DYNAMIC BID BUTTONS SETUP 🌟 */}
+          <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+            <label className="block text-sm font-black text-indigo-800 uppercase mb-3">Custom Bidding Buttons (₹)</label>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <span className="text-xs font-bold text-gray-500">Button 1</span>
+                <input name="bidButton1" type="number" value={formData.bidButton1} onChange={handleChange} className="w-full p-2 mt-1 bg-white border border-gray-300 rounded-lg font-bold text-center" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-gray-500">Button 2</span>
+                <input name="bidButton2" type="number" value={formData.bidButton2} onChange={handleChange} className="w-full p-2 mt-1 bg-white border border-gray-300 rounded-lg font-bold text-center" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-gray-500">Button 3</span>
+                <input name="bidButton3" type="number" value={formData.bidButton3} onChange={handleChange} className="w-full p-2 mt-1 bg-white border border-gray-300 rounded-lg font-bold text-center" />
+              </div>
+            </div>
+            <p className="text-xs text-indigo-500 font-bold mt-3 text-center">These values will be used on the Master Control Panel during live auction.</p>
           </div>
 
           <div className="flex gap-4 pt-4">
