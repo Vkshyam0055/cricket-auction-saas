@@ -43,9 +43,23 @@ function Dashboard() {
     }
   }, [tournament]);
 
-  const handleLogout = () => {
+  // 🌟 FIX: Logout फंक्शन को स्मार्ट बना दिया गया है 🌟
+  const handleLogout = async () => {
+    try {
+      // बैकएंड को बताओ कि यह डिवाइस अब लॉगआउट हो रहा है (ताकि लिमिट फ्री हो जाए)
+      const phone = localStorage.getItem('organizerPhone'); 
+      const deviceId = localStorage.getItem('deviceId');
+      if (deviceId) {
+         await axios.post('https://cricket-auction-backend-h8ud.onrender.com/api/auth/logout', { phone, deviceId });
+      }
+    } catch(e) { 
+      console.error("लॉगआउट सर्वर एरर:", e); 
+    }
+
+    // ब्राउज़र की मेमोरी साफ करो (deviceId को मत हटाना)
     localStorage.removeItem('token');
     localStorage.removeItem('organizerName');
+    localStorage.removeItem('organizerPhone');
     localStorage.removeItem('currentPlayer');
     localStorage.removeItem('currentBid');
     localStorage.removeItem('biddingTeam');

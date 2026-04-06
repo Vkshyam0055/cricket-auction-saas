@@ -1,33 +1,43 @@
-import React, { useState, useContext } from 'react'; // 🌟 useContext जोड़ा गया
+import React, { useState, useContext, useEffect } from 'react'; 
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { TournamentContext } from '../context/TournamentContext'; // 🌟 ग्लोबल डब्बा इम्पोर्ट किया
+import { TournamentContext } from '../context/TournamentContext'; 
 
 function Auth() {
   const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
   
-  // 🌟 डब्बे में से fetchTournament फंक्शन निकाला 🌟
   const { fetchTournament } = useContext(TournamentContext);
   
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
 
+  // 🌟 SaaS Feature: ब्राउज़र के लिए एक यूनीक Device ID बनाना 🌟
+  useEffect(() => {
+    if (!localStorage.getItem('deviceId')) {
+      const uniqueId = 'device_' + Math.random().toString(36).substr(2, 10);
+      localStorage.setItem('deviceId', uniqueId);
+    }
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     try {
       if (isLogin) {
+        // 🌟 लॉगिन के समय Device ID बैकएंड को भेजो
+        const deviceId = localStorage.getItem('deviceId');
         const res = await axios.post('https://cricket-auction-backend-h8ud.onrender.com/api/auth/login', { 
             phone, 
-            password 
+            password,
+            deviceId 
         });
         
         localStorage.setItem('token', res.data.token);
         localStorage.setItem('organizerName', res.data.user.name);
+        localStorage.setItem('organizerPhone', phone);
         
-        // 🌟 FIX: लॉगिन होते ही बैकएंड से तुरंत टूर्नामेंट का डेटा मंगाओ 🌟
         await fetchTournament();
         
         alert(`लॉगिन सफल! 🎉 स्वागत है ${res.data.user.name}`);
@@ -45,6 +55,7 @@ function Auth() {
         setPassword(''); 
       }
     } catch (error) {
+      // 🌟 अगर डिवाइस लिमिट पूरी हो गई या यूज़र ब्लॉक है, तो यह असली एरर दिखाएगा
       alert("एरर: " + (error.response?.data?.message || "सर्वर से कनेक्ट नहीं हो पाया!"));
     }
   };

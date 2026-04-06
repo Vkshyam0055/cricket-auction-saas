@@ -1,8 +1,31 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 
 function LandingPage() {
   const navigate = useNavigate();
+  
+  // 🌟 स्मार्ट फॉलबैक: जब तक बैकएंड से डेटा नहीं आता, तब तक डिफ़ॉल्ट दिखेगा
+  const [plans, setPlans] = useState([
+    { _id: '1', name: 'Basic', price: 499, subtitle: 'छोटी लीग और क्लब्स के लिए', features: ['Up to 50 Players', 'Unlimited Teams', 'Live Projector Screen'] },
+    { _id: '2', name: 'Pro', price: 999, subtitle: 'प्रोफेशनल टूर्नामेंट्स के लिए', isPopular: true, features: ['Up to 200 Players', 'Unlimited Teams', 'Live Projector Screen', 'Public Registration Link'] },
+    { _id: '3', name: 'Premium', price: 1999, subtitle: 'बड़ी लीग और अनलिमिटेड यूज़', features: ['Unlimited Players', 'Unlimited Teams', 'Custom Branding & Logo', 'Priority Support'] }
+  ]);
+
+  // 🌟 डेटाबेस से लाइव प्लान्स मंगाना
+  useEffect(() => {
+    const fetchPlans = async () => {
+      try {
+        const res = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/plans');
+        if (res.data && res.data.length > 0) {
+          setPlans(res.data);
+        }
+      } catch (error) {
+        console.log("लाइव प्लान्स लाने में देरी हो रही है, फॉलबैक का इस्तेमाल कर रहे हैं।");
+      }
+    };
+    fetchPlans();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
@@ -64,56 +87,43 @@ function LandingPage() {
         </div>
       </div>
 
-      {/* 🌟 PRICING SECTION 🌟 */}
+      {/* 🌟 DYNAMIC PRICING SECTION 🌟 */}
       <div className="bg-gray-100 py-20 px-4">
         <div className="max-w-7xl mx-auto">
           <h3 className="text-3xl font-black text-center text-gray-800 mb-4 uppercase tracking-wider">Simple & Transparent Pricing</h3>
           <p className="text-center text-gray-500 font-bold mb-12">अपनी ज़रूरत के हिसाब से प्लान चुनें और तुरंत शुरू करें।</p>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            
-            {/* Basic Plan */}
-            <div className="bg-white p-8 rounded-3xl shadow-lg border border-gray-200 flex flex-col">
-              <h4 className="text-2xl font-black text-gray-800 mb-2">Basic</h4>
-              <p className="text-gray-500 font-medium mb-6">छोटी लीग और क्लब्स के लिए</p>
-              <div className="text-4xl font-black text-blue-600 mb-6">₹499 <span className="text-lg text-gray-400 font-medium">/tourney</span></div>
-              <ul className="space-y-4 mb-8 flex-1">
-                <li className="flex items-center font-bold text-gray-700"><span className="mr-2 text-green-500">✔</span> Up to 50 Players</li>
-                <li className="flex items-center font-bold text-gray-700"><span className="mr-2 text-green-500">✔</span> Unlimited Teams</li>
-                <li className="flex items-center font-bold text-gray-700"><span className="mr-2 text-green-500">✔</span> Live Projector Screen</li>
-              </ul>
-              <button onClick={() => navigate('/auth')} className="w-full py-3 rounded-xl font-black text-blue-600 bg-blue-50 border-2 border-blue-200 hover:bg-blue-100 transition">Get Started</button>
-            </div>
-
-            {/* Pro Plan (Highlighted) */}
-            <div className="bg-blue-900 p-8 rounded-3xl shadow-2xl border border-blue-700 flex flex-col transform md:-translate-y-4 relative">
-              <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -mt-4 bg-yellow-400 text-blue-900 px-4 py-1 rounded-full font-black text-sm uppercase tracking-wider">Most Popular</div>
-              <h4 className="text-2xl font-black text-white mb-2">Pro</h4>
-              <p className="text-blue-200 font-medium mb-6">प्रोफेशनल टूर्नामेंट्स के लिए</p>
-              <div className="text-4xl font-black text-yellow-400 mb-6">₹999 <span className="text-lg text-blue-300 font-medium">/tourney</span></div>
-              <ul className="space-y-4 mb-8 flex-1">
-                <li className="flex items-center font-bold text-white"><span className="mr-2 text-yellow-400">✔</span> Up to 200 Players</li>
-                <li className="flex items-center font-bold text-white"><span className="mr-2 text-yellow-400">✔</span> Unlimited Teams</li>
-                <li className="flex items-center font-bold text-white"><span className="mr-2 text-yellow-400">✔</span> Live Projector Screen</li>
-                <li className="flex items-center font-bold text-white"><span className="mr-2 text-yellow-400">✔</span> Public Registration Link</li>
-              </ul>
-              <button onClick={() => navigate('/auth')} className="w-full py-3 rounded-xl font-black text-blue-900 bg-yellow-400 hover:bg-yellow-300 shadow-lg transition">Get Started</button>
-            </div>
-
-            {/* Premium Plan */}
-            <div className="bg-white p-8 rounded-3xl shadow-lg border border-gray-200 flex flex-col">
-              <h4 className="text-2xl font-black text-gray-800 mb-2">Premium</h4>
-              <p className="text-gray-500 font-medium mb-6">बड़ी लीग और अनलिमिटेड यूज़</p>
-              <div className="text-4xl font-black text-purple-600 mb-6">₹1999 <span className="text-lg text-gray-400 font-medium">/tourney</span></div>
-              <ul className="space-y-4 mb-8 flex-1">
-                <li className="flex items-center font-bold text-gray-700"><span className="mr-2 text-green-500">✔</span> Unlimited Players</li>
-                <li className="flex items-center font-bold text-gray-700"><span className="mr-2 text-green-500">✔</span> Unlimited Teams</li>
-                <li className="flex items-center font-bold text-gray-700"><span className="mr-2 text-green-500">✔</span> Custom Branding & Logo</li>
-                <li className="flex items-center font-bold text-gray-700"><span className="mr-2 text-green-500">✔</span> Priority Support</li>
-              </ul>
-              <button onClick={() => navigate('/auth')} className="w-full py-3 rounded-xl font-black text-purple-600 bg-purple-50 border-2 border-purple-200 hover:bg-purple-100 transition">Get Started</button>
-            </div>
-
+            {plans.map((plan) => (
+              plan.isPopular ? (
+                /* 🌟 Pro Plan (Highlighted) 🌟 */
+                <div key={plan._id} className="bg-blue-900 p-8 rounded-3xl shadow-2xl border border-blue-700 flex flex-col transform md:-translate-y-4 relative">
+                  <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -mt-4 bg-yellow-400 text-blue-900 px-4 py-1 rounded-full font-black text-sm uppercase tracking-wider">Most Popular</div>
+                  <h4 className="text-2xl font-black text-white mb-2">{plan.name}</h4>
+                  <p className="text-blue-200 font-medium mb-6">{plan.subtitle}</p>
+                  <div className="text-4xl font-black text-yellow-400 mb-6">₹{plan.price} <span className="text-lg text-blue-300 font-medium">/tourney</span></div>
+                  <ul className="space-y-4 mb-8 flex-1">
+                    {plan.features.map((feature, index) => (
+                      <li key={index} className="flex items-center font-bold text-white"><span className="mr-2 text-yellow-400">✔</span> {feature}</li>
+                    ))}
+                  </ul>
+                  <button onClick={() => navigate('/auth')} className="w-full py-3 rounded-xl font-black text-blue-900 bg-yellow-400 hover:bg-yellow-300 shadow-lg transition">Get Started</button>
+                </div>
+              ) : (
+                /* 🌟 Basic & Premium Plans 🌟 */
+                <div key={plan._id} className="bg-white p-8 rounded-3xl shadow-lg border border-gray-200 flex flex-col">
+                  <h4 className="text-2xl font-black text-gray-800 mb-2">{plan.name}</h4>
+                  <p className="text-gray-500 font-medium mb-6">{plan.subtitle}</p>
+                  <div className={`text-4xl font-black mb-6 ${plan.name === 'Premium' ? 'text-purple-600' : 'text-blue-600'}`}>₹{plan.price} <span className="text-lg text-gray-400 font-medium">/tourney</span></div>
+                  <ul className="space-y-4 mb-8 flex-1">
+                    {plan.features.map((feature, index) => (
+                      <li key={index} className="flex items-center font-bold text-gray-700"><span className="mr-2 text-green-500">✔</span> {feature}</li>
+                    ))}
+                  </ul>
+                  <button onClick={() => navigate('/auth')} className={`w-full py-3 rounded-xl font-black transition ${plan.name === 'Premium' ? 'text-purple-600 bg-purple-50 border-2 border-purple-200 hover:bg-purple-100' : 'text-blue-600 bg-blue-50 border-2 border-blue-200 hover:bg-blue-100'}`}>Get Started</button>
+                </div>
+              )
+            ))}
           </div>
         </div>
       </div>
