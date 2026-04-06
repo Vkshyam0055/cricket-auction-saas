@@ -9,12 +9,10 @@ const fetchOrganizer = require('../middleware/fetchOrganizer');
 // 🌟 सिर्फ SuperAdmin के लिए पूरा डेटा लाने वाला रास्ता 🌟
 router.get('/all-data', fetchOrganizer, async (req, res) => {
     try {
-        // चेक करो कि क्या रिक्वेस्ट करने वाला असली मालिक (SuperAdmin) है?
         if (req.user.role !== 'SuperAdmin') {
             return res.status(403).json({ message: "Access Denied: सिर्फ Developer ही इसे देख सकता है!" });
         }
 
-        // सारे ऑर्गेनाइजर्स को ढूंढो (SuperAdmin को छोड़कर)
         const users = await User.find({ role: 'Organizer' }).sort({ createdAt: -1 });
         const allData = [];
 
@@ -30,7 +28,13 @@ router.get('/all-data', fetchOrganizer, async (req, res) => {
                 registeredAt: user.createdAt,
                 tournamentName: tournament ? tournament.name : 'Not Created Yet',
                 totalTeams: teamCount,
-                totalPlayers: playerCount
+                totalPlayers: playerCount,
+                // 🌟 नए फीचर्स का डेटा
+                plan: user.plan,
+                isActive: user.isActive,
+                isLifetimeFree: user.isLifetimeFree,
+                maxDevicesAllowed: user.maxDevicesAllowed,
+                activeDevicesCount: user.activeDevices.length
             });
         }
         
@@ -38,6 +42,39 @@ router.get('/all-data', fetchOrganizer, async (req, res) => {
     } catch (error) {
         res.status(500).json({ message: "मास्टर डेटा लाने में सर्वर एरर!" });
     }
+});
+
+// 🌟 SUPER ADMIN POWER: यूज़र का प्लान और एक्सेस अपडेट करना
+router.put('/update-user/:id', fetchOrganizer, async (req, res) => {
+    try {
+        if (req.user.role !== 'SuperAdmin') return res.status(403).json({ message: "Access Denied!" });
+
+        const { plan, isActive, isLifetimeFree, maxDevicesAllowed } = req.body;
+        
+        const updatedUser = await User.findByIdAndUpdate(
+            req.params.id, 
+            { plan, isActive, isLifetimeFree, maxDevicesAllowed },
+            { new: true }
+        );
+
+        res.json({ message: "यूज़र डेटा सफलतापूर्वक अपडेट हो गया!", user: updatedUser });
+    } catch (error) {
+        res.status(500).json({ message: "यूज़र अपडेट करने में एरर!" });
+    }
+});
+
+// 🌟 SUPER ADMIN POWER: यूज़र के डिवाइस रीसेट करना (अगर वो फंस जाए)
+router.put('/clear-devices/:id', fetchOrganizer, async (req, res) => {
+     try {
+        if (req.user.role !== 'SuperAdmin') return res.status(403).json({ message: "Access Denied!" });
+        
+        // सभी डिवाइस क्लियर कर दिए
+        await User.findByIdAndUpdate(req.params.id, { activeDevices: [] });
+        
+        res.json({ message: "यूज़र के सभी डिवाइस सफलतापूर्क क्लियर कर दिए गए हैं!" });
+     } catch (error) {
+         res.status(500).json({ message: "डिवाइस क्लियर करने में एरर!" });
+     }
 });
 
 module.exports = router;
