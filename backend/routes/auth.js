@@ -9,9 +9,11 @@ router.post('/register', async (req, res) => {
     try {
         const { name, phone, password } = req.body;
 
+        // चेक करें कि क्या इस नंबर से पहले ही खाता है?
         let user = await User.findOne({ phone });
         if (user) return res.status(400).json({ message: "इस नंबर से खाता पहले से मौजूद है!" });
 
+        // पासवर्ड को गुप्त कोड (Hash) में बदलना
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
@@ -21,7 +23,9 @@ router.post('/register', async (req, res) => {
             phone,
             password: hashedPassword,
             plan: 'Basic',
-            maxDevicesAllowed: 1
+            role: 'Organizer',
+            maxDevicesAllowed: 1,
+            isActive: true
         });
         await user.save();
 
@@ -34,8 +38,9 @@ router.post('/register', async (req, res) => {
 // 2. आयोजक का लॉगिन (Sign In)
 router.post('/login', async (req, res) => {
     try {
-        const { phone, password, deviceId } = req.body; // 🌟 फ्रंटएंड से डिवाइस आईडी भी आएगी
+        const { phone, password, deviceId } = req.body;
 
+        // यूज़र को गोडाउन में खोजना
         const user = await User.findOne({ phone });
         if (!user) return res.status(400).json({ message: "यह नंबर रजिस्टर नहीं है!" });
 
@@ -44,29 +49,50 @@ router.post('/login', async (req, res) => {
             return res.status(403).json({ message: "आपका अकाउंट सस्पेंड कर दिया गया है। कृपया एडमिन से संपर्क करें!" });
         }
 
+        // पासवर्ड चेक करना
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ message: "पासवर्ड गलत है!" });
 
-        // 🛑 सिक्योरिटी चेक 2: डिवाइस ट्रैकिंग लॉजिक
+        // 🛑 सिक्योरिटी चेक 2: डिवाइस ट्रैकिंग लॉजिक (VIP Bypass for SuperAdmin)
         if (deviceId) {
-            // अगर यह नया डिवाइस है और लिमिट पूरी हो चुकी है
-            if (!user.activeDevices.includes(deviceId) && user.activeDevices.length >= user.maxDevicesAllowed) {
-                return res.status(403).json({ 
-                    message: `लॉगिन लिमिट पूरी हो गई है! आपका प्लान सिर्फ ${user.maxDevicesAllowed} डिवाइस(s) की अनुमति देता है। कृपया पहले दूसरे डिवाइस से लॉगआउट करें।` 
-                });
+            // अगर लॉगिन करने वाला SuperAdmin नहीं है, सिर्फ तभी लिमिट चेक करो
+            if (user.role !== 'SuperAdmin') {
+                const isAlreadyLoggedInOnThisDevice = user.activeDevices.includes(deviceId);
+                
+                if (!isAlreadyLoggedInOnThisDevice && user.activeDevices.length >= user.maxDevicesAllowed) {
+                    return res.status(403).json({ 
+                        message: `लॉगिन लिमिट पूरी हो गई है! आपका प्लान सिर्फ ${user.maxDevicesAllowed} डिवाइस की अनुमति देता है।` 
+                    });
+                }
             }
-            // अगर नया डिवाइस है और लिमिट बची है, तो गोडाउन में सेव कर लो
+
+            // अगर नया डिवाइस है (चाहे SuperAdmin हो या Organizer), उसे लिस्ट में जोड़ लो
             if (!user.activeDevices.includes(deviceId)) {
                 user.activeDevices.push(deviceId);
                 await user.save();
             }
         }
 
-        const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
+        // डिजिटल आईडी कार्ड (Token) बनाना
+        const token = jwt.sign(
+            { id: user._id, role: user.role }, 
+            process.env.JWT_SECRET, 
+            { expiresIn: '7d' } // अब 7 दिन तक लॉगिन रहेगा
+        );
 
-        res.json({ message: "लॉगिन सफल!", token, user: { name: user.name, phone: user.phone, role: user.role, plan: user.plan } });
+        res.json({ 
+            message: "लॉगिन सफल!", 
+            token, 
+            user: { 
+                name: user.name, 
+                phone: user.phone, 
+                role: user.role, 
+                plan: user.plan 
+            } 
+        });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error("Login Error:", err);
+        res.status(500).json({ error: "सर्वर में कुछ खराबी है!" });
     }
 });
 
@@ -77,7 +103,7 @@ router.post('/logout', async (req, res) => {
         if (phone && deviceId) {
             await User.updateOne(
                 { phone },
-                { $pull: { activeDevices: deviceId } } // गोडाउन से इस डिवाइस को हटा दो
+                { $pull: { activeDevices: deviceId } }
             );
         }
         res.json({ message: "लॉगआउट सफल!" });
