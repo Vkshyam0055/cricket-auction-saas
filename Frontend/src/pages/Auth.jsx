@@ -13,7 +13,7 @@ function Auth() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
 
-  // 🌟 SaaS Feature: ब्राउज़र के लिए एक यूनीक Device ID बनाना 🌟
+  // 🌟 ब्राउज़र के लिए एक यूनीक Device ID बनाना 
   useEffect(() => {
     if (!localStorage.getItem('deviceId')) {
       const uniqueId = 'device_' + Math.random().toString(36).substr(2, 10);
@@ -26,7 +26,6 @@ function Auth() {
     
     try {
       if (isLogin) {
-        // 🌟 लॉगिन के समय Device ID बैकएंड को भेजो
         const deviceId = localStorage.getItem('deviceId');
         const res = await axios.post('https://cricket-auction-backend-h8ud.onrender.com/api/auth/login', { 
             phone, 
@@ -34,9 +33,11 @@ function Auth() {
             deviceId 
         });
         
+        // 🌟 FEATURE LOCK LOGIC: यूज़र का प्लान और डेटा मेमोरी में सेव करें 🌟
         localStorage.setItem('token', res.data.token);
         localStorage.setItem('organizerName', res.data.user.name);
         localStorage.setItem('organizerPhone', phone);
+        localStorage.setItem('organizerPlan', res.data.user.plan || 'Basic'); // <-- नया कोड!
         
         await fetchTournament();
         
@@ -55,7 +56,6 @@ function Auth() {
         setPassword(''); 
       }
     } catch (error) {
-      // 🌟 अगर डिवाइस लिमिट पूरी हो गई या यूज़र ब्लॉक है, तो यह असली एरर दिखाएगा
       alert("एरर: " + (error.response?.data?.message || "सर्वर से कनेक्ट नहीं हो पाया!"));
     }
   };
@@ -142,6 +142,7 @@ function Auth() {
             <p className="text-gray-600 font-bold">
               {isLogin ? "खाता नहीं है?" : "पहले से खाता है?"}
               <button 
+                type="button"
                 onClick={() => setIsLogin(!isLogin)} 
                 className="ml-2 text-blue-600 hover:text-blue-800 font-black underline decoration-2 underline-offset-4 transition"
               >

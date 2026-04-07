@@ -8,6 +8,7 @@ function Dashboard() {
   const [totalTeams, setTotalTeams] = useState(0); 
   const [totalPlayers, setTotalPlayers] = useState(0); 
   const [organizerName, setOrganizerName] = useState('Organizer'); 
+  const [organizerPlan, setOrganizerPlan] = useState('Basic'); // 🌟 प्लान का स्टेट
   
   const { tournament, loading } = useContext(TournamentContext);
 
@@ -19,9 +20,9 @@ function Dashboard() {
 
   useEffect(() => {
     const storedName = localStorage.getItem('organizerName');
-    if (storedName) {
-      setOrganizerName(storedName);
-    }
+    const storedPlan = localStorage.getItem('organizerPlan'); // 🌟 प्लान निकालो
+    if (storedName) setOrganizerName(storedName);
+    if (storedPlan) setOrganizerPlan(storedPlan);
 
     const fetchDashboardData = async () => {
       try {
@@ -43,10 +44,8 @@ function Dashboard() {
     }
   }, [tournament]);
 
-  // 🌟 FIX: Logout फंक्शन को स्मार्ट बना दिया गया है 🌟
   const handleLogout = async () => {
     try {
-      // बैकएंड को बताओ कि यह डिवाइस अब लॉगआउट हो रहा है (ताकि लिमिट फ्री हो जाए)
       const phone = localStorage.getItem('organizerPhone'); 
       const deviceId = localStorage.getItem('deviceId');
       if (deviceId) {
@@ -56,16 +55,21 @@ function Dashboard() {
       console.error("लॉगआउट सर्वर एरर:", e); 
     }
 
-    // ब्राउज़र की मेमोरी साफ करो (deviceId को मत हटाना)
+    // ब्राउज़र की मेमोरी साफ करो
     localStorage.removeItem('token');
     localStorage.removeItem('organizerName');
     localStorage.removeItem('organizerPhone');
+    localStorage.removeItem('organizerPlan'); // 🌟 इसे भी हटाओ
     localStorage.removeItem('currentPlayer');
     localStorage.removeItem('currentBid');
     localStorage.removeItem('biddingTeam');
     localStorage.removeItem('playerStatus');
     
     navigate('/'); 
+  };
+
+  const handleUpgradeClick = () => {
+    alert('🚀 कृपया अपने प्लान को "Pro" या "Premium" में अपग्रेड करने के लिए एडमिन (Vivek) से संपर्क करें!');
   };
 
   if (loading || !tournament) {
@@ -81,15 +85,21 @@ function Dashboard() {
           <h1 className="text-xl md:text-2xl font-black tracking-wide">🏏 {tournament.name} <span className="font-normal text-blue-300">| Control Room</span></h1>
         </div>
         
-        <div className="flex items-center space-x-4 bg-blue-900 py-1.5 px-2 rounded-full border border-blue-700 shadow-inner">
-          <div className="flex items-center space-x-2 pl-2 pr-1 cursor-default">
-            <div className="bg-yellow-400 text-blue-900 font-black rounded-full w-8 h-8 flex items-center justify-center text-lg shadow-sm">
+        <div className="flex items-center space-x-4 bg-blue-900 py-1 px-2 rounded-full border border-blue-700 shadow-inner">
+          <div className="flex items-center space-x-2 pl-2 pr-2 cursor-default">
+            <div className="bg-yellow-400 text-blue-900 font-black rounded-full w-9 h-9 flex items-center justify-center text-lg shadow-sm">
               {organizerName.charAt(0).toUpperCase()}
             </div>
-            <span className="font-bold text-sm hidden md:block tracking-wide pr-2">{organizerName}</span>
+            {/* 🌟 PLAN BADGE 🌟 */}
+            <div className="hidden md:flex flex-col items-start justify-center">
+              <span className="font-bold text-sm tracking-wide leading-tight">{organizerName}</span>
+              <span className={`text-[10px] font-black uppercase tracking-widest ${organizerPlan === 'Premium' ? 'text-purple-300' : organizerPlan === 'Pro' ? 'text-green-300' : 'text-gray-400'}`}>
+                {organizerPlan} PLAN
+              </span>
+            </div>
           </div>
           
-          <button onClick={handleLogout} className="bg-red-500 px-4 py-2 rounded-full hover:bg-red-600 font-bold transition-all shadow-md flex items-center space-x-2 text-sm active:scale-95">
+          <button onClick={handleLogout} className="bg-red-500 px-4 py-2 rounded-full hover:bg-red-600 font-bold transition-all shadow-md flex items-center space-x-2 text-sm active:scale-95 ml-2">
             <span>Logout</span>
             <span className="text-lg">🚪</span>
           </button>
@@ -159,12 +169,24 @@ function Dashboard() {
             )}
           </div>
           
-          <div className="mt-8 p-4 bg-blue-50 rounded-xl border border-blue-200 text-center flex flex-col md:flex-row items-center justify-center gap-2">
-            <span className="text-2xl">🔗</span>
-            <p className="text-blue-900 font-bold">
-              Public Registration Link: <a href="https://live-cric-auction.netlify.app/register-player" target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 underline decoration-2 underline-offset-4 ml-1">Share this with players</a>
-            </p>
-          </div>
+          {/* 🌟 FEATURE LOCK: Public Registration Link 🌟 */}
+          {organizerPlan === 'Basic' ? (
+            <div className="mt-8 p-4 bg-gray-100 rounded-xl border border-gray-300 text-center flex flex-col md:flex-row items-center justify-center gap-2 grayscale transition-all">
+              <span className="text-2xl">🔒</span>
+              <p className="text-gray-500 font-bold">
+                Public Registration Link: <span className="text-red-500 ml-1">Available in Pro & Premium.</span>
+                <button onClick={handleUpgradeClick} className="text-blue-600 hover:text-blue-800 underline decoration-2 underline-offset-4 ml-2 font-black">Upgrade Now</button>
+              </p>
+            </div>
+          ) : (
+            <div className="mt-8 p-4 bg-blue-50 rounded-xl border border-blue-200 text-center flex flex-col md:flex-row items-center justify-center gap-2 transition-all">
+              <span className="text-2xl">🔗</span>
+              <p className="text-blue-900 font-bold">
+                Public Registration Link: <a href="https://live-cric-auction.netlify.app/register-player" target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 underline decoration-2 underline-offset-4 ml-1">Share this with players</a>
+              </p>
+            </div>
+          )}
+
         </div>
       </div>
     </div>
