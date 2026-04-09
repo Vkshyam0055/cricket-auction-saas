@@ -1,60 +1,93 @@
 const express = require('express');
-const router = express.Router();
 const Team = require('../models/Team');
+const User = require('../models/User');
 const fetchOrganizer = require('../middleware/fetchOrganizer');
+
+const router = express.Router();
 
 router.use(fetchOrganizer);
 
+const PLAN_TEAM_LIMITS = {
+  Free: 3,
+  Basic: 8,
+  Pro: -1
+};
+
+const normalizePlanName = (planName = 'Free') => {
+  if (planName === 'Premium') return 'Pro';
+  return Object.prototype.hasOwnProperty.call(PLAN_TEAM_LIMITS, planName) ? planName : 'Free';
+};
+
+const getTeamLimitByPlan = (planName = 'Free') => PLAN_TEAM_LIMITS[normalizePlanName(planName)];
+
 router.post('/', async (req, res) => {
-    try {
-        const { teamName, totalPurse, ownerName, mobile, logoUrl } = req.body;
+  try {
+    const { teamName, totalPurse, ownerName, mobile, logoUrl } = req.body;
 
-        // चेक करें कि क्या इसी मालिक की कोई और टीम इस नाम से है?
-        let existingTeam = await Team.findOne({ teamName, organizer: req.user.id });
-        if (existingTeam) {
-            return res.status(400).json({ message: "यह टीम पहले से मौजूद है!" });
-        }
-
-        const newTeam = new Team({
-            teamName,
-            totalPurse,
-            remainingPurse: totalPurse,
-            ownerName, mobile, logoUrl,
-            organizer: req.user.id // मालिक का ठप्पा
-        });
-
-        const savedTeam = await newTeam.save();
-        res.json(savedTeam);
-
-    } catch (error) {
-        console.error("गोडाउन एरर:", error.message);
-        res.status(500).json({ message: "इंजन में कोई तकनीकी खराबी आ गई है!" });
+    const duplicateTeam = await Team.findOne({ teamName, organizer: req.user.id });
+    if (duplicateTeam) {
+      return res.status(400).json({ message: 'यह टीम पहले से मौजूद है!' });
     }
+
+    const organizer = await User.findById(req.user.id).select('plan').lean();
+    const organizerPlan = normalizePlanName(organizer?.plan);
+    const teamLimit = getTeamLimitByPlan(organizerPlan);
+
+    if (teamLimit !== -1) {
+      const currentTeamCount = await Team.countDocuments({ organizer: req.user.id });
+      if (currentTeamCount >= teamLimit) {
+        return res.status(403).json({
+          message: `आपके ${organizerPlan} प्लान में अधिकतम ${teamLimit} टीम्स की अनुमति है।`
+        });
+      }
+    }
+
+    const newTeam = new Team({
+      teamName,
+      totalPurse,
+      remainingPurse: totalPurse,
+      ownerName,
+      mobile,
+      logoUrl,
+      organizer: req.user.id
+    });
+
+    const savedTeam = await newTeam.save();
+    return res.json(savedTeam);
+  } catch (error) {
+    console.error('Team create error:', error.message);
+    return res.status(500).json({ message: 'इंजन में कोई तकनीकी खराबी आ गई है!' });
+  }
 });
 
 router.get('/', async (req, res) => {
-    try {
-        // सिर्फ उसी मालिक की टीमें लाओ
-        const teams = await Team.find({ organizer: req.user.id }); 
-        res.json(teams); 
-    } catch (error) {
-        console.error("एरर:", error.message);
-        res.status(500).json({ message: "टीमें लाने में खराबी आ गई है!" });
-    }
+  try {
+    const teams = await Team.find({ organizer: req.user.id });
+    return res.json(teams);
+  } catch (error) {
+    console.error('Team fetch error:', error.message);
+    return res.status(500).json({ message: 'टीमें लाने में खराबी आ गई है!' });
+  }
 });
 
 router.put('/:id', async (req, res) => {
   try {
     const { teamName, totalPurse, remainingPurse, ownerName, mobile, logoUrl } = req.body;
+
     const updatedTeam = await Team.findOneAndUpdate(
-      { _id: req.params.id, organizer: req.user.id }, // सुरक्षा: सिर्फ अपना ही एडिट कर सके
+      { _id: req.params.id, organizer: req.user.id },
       { teamName, totalPurse, remainingPurse, ownerName, mobile, logoUrl },
       { new: true }
     );
-    res.status(200).json(updatedTeam);
+
+    if (!updatedTeam) {
+      return res.status(404).json({ message: 'टीम नहीं मिली।' });
+    }
+
+    return res.status(200).json(updatedTeam);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "एरर: टीम अपडेट नहीं हो पाई।" });
+    console.error('Team update error:', error.message);
+    return res.status(500).json({ message: 'एरर: टीम अपडेट नहीं हो पाई।' });
   }
 });
 
