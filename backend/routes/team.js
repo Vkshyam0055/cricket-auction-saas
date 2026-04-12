@@ -14,11 +14,25 @@ const PLAN_TEAM_LIMITS = {
 };
 
 const normalizePlanName = (planName = 'Free') => {
+  if (planName === 'Free Plan') return 'Free';
+  if (planName === 'Basic Plan') return 'Basic';
+  if (planName === 'Pro Plan') return 'Pro';
   if (planName === 'Premium') return 'Pro';
+  if (planName === 'Premium Plan') return 'Pro';
   return Object.prototype.hasOwnProperty.call(PLAN_TEAM_LIMITS, planName) ? planName : 'Free';
 };
 
 const getTeamLimitByPlan = (planName = 'Free') => PLAN_TEAM_LIMITS[normalizePlanName(planName)];
+
+const buildTeamPayload = ({ teamName, totalPurse, ownerName, mobile, logoUrl, organizerId }) => ({
+  teamName,
+  totalPurse,
+  remainingPurse: totalPurse,
+  ownerName,
+  mobile,
+  logoUrl,
+  organizer: organizerId
+});
 
 router.post('/', async (req, res) => {
   try {
@@ -27,6 +41,20 @@ router.post('/', async (req, res) => {
     const duplicateTeam = await Team.findOne({ teamName, organizer: req.user.id });
     if (duplicateTeam) {
       return res.status(400).json({ message: 'यह टीम पहले से मौजूद है!' });
+    }
+
+    const teamPayload = buildTeamPayload({
+      teamName,
+      totalPurse,
+      ownerName,
+      mobile,
+      logoUrl,
+      organizerId: req.user.id
+    });
+
+    if (req.user.role === 'SuperAdmin') {
+      const savedTeam = await new Team(teamPayload).save();
+      return res.json(savedTeam);
     }
 
     const organizer = await User.findById(req.user.id).select('plan').lean();
@@ -42,17 +70,7 @@ router.post('/', async (req, res) => {
       }
     }
 
-    const newTeam = new Team({
-      teamName,
-      totalPurse,
-      remainingPurse: totalPurse,
-      ownerName,
-      mobile,
-      logoUrl,
-      organizer: req.user.id
-    });
-
-    const savedTeam = await newTeam.save();
+    const savedTeam = await new Team(teamPayload).save();
     return res.json(savedTeam);
   } catch (error) {
     console.error('Team create error:', error.message);

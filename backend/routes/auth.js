@@ -63,9 +63,17 @@ router.post('/login', async (req, res) => {
 
         const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
+        const normalizedPlan = (() => {
+            if (user.role === 'SuperAdmin') return 'Pro';
+            if (user.plan === 'Premium' || user.plan === 'Premium Plan') return 'Pro';
+            if (user.plan === 'Basic Plan') return 'Basic';
+            if (user.plan === 'Free Plan') return 'Free';
+            return user.plan || 'Basic';
+        })();
+
         res.json({ 
             message: "लॉगिन सफल!", token, 
-            user: { name: user.name, phone: user.phone, role: user.role, plan: user.plan } 
+            user: { name: user.name, phone: user.phone, role: user.role, plan: normalizedPlan } 
         });
     } catch (err) {
         console.error("Login Error:", err);

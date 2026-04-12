@@ -9,7 +9,11 @@ const PLAN_TEAM_LIMITS = {
 };
 
 const normalizePlanName = (planName = 'Free') => {
+  if (planName === 'Free Plan') return 'Free';
+  if (planName === 'Basic Plan') return 'Basic';
+  if (planName === 'Pro Plan') return 'Pro';
   if (planName === 'Premium') return 'Pro';
+  if (planName === 'Premium Plan') return 'Pro';
   return Object.prototype.hasOwnProperty.call(PLAN_TEAM_LIMITS, planName) ? planName : 'Free';
 };
 
@@ -20,6 +24,7 @@ function AddTeam() {
 
   const [teams, setTeams] = useState([]);
   const [organizerPlan, setOrganizerPlan] = useState('Free');
+  const [organizerRole, setOrganizerRole] = useState('Organizer');
 
   const [isEditing, setIsEditing] = useState(false);
   const [editTeamId, setEditTeamId] = useState(null);
@@ -32,9 +37,10 @@ function AddTeam() {
 
   useEffect(() => {
     const storedPlan = localStorage.getItem('organizerPlan');
-    if (storedPlan) {
-      setOrganizerPlan(normalizePlanName(storedPlan));
-    }
+    const storedRole = localStorage.getItem('organizerRole');
+
+    if (storedPlan) setOrganizerPlan(normalizePlanName(storedPlan));
+    if (storedRole) setOrganizerRole(storedRole);
   }, []);
 
   const fetchTeams = async () => {
@@ -56,8 +62,9 @@ function AddTeam() {
     fetchTeams();
   }, []);
 
-  const teamLimit = PLAN_TEAM_LIMITS[organizerPlan] ?? PLAN_TEAM_LIMITS.Free;
-  const isLimitReached = useMemo(() => teamLimit !== -1 && teams.length >= teamLimit, [teamLimit, teams.length]);
+  const effectivePlan = organizerRole === 'SuperAdmin' ? 'Pro' : organizerPlan;
+  const teamLimit = PLAN_TEAM_LIMITS[effectivePlan] ?? PLAN_TEAM_LIMITS.Free;
+  const isLimitReached = useMemo(() => teamLimit !== -1 && teams.length >= teamLimit, [teams.length, teamLimit]);
 
   const resetForm = () => {
     setIsEditing(false);
@@ -84,7 +91,7 @@ function AddTeam() {
     event.preventDefault();
 
     if (!isEditing && isLimitReached) {
-      alert(`🔒 ${organizerPlan} प्लान में अधिकतम ${teamLimit} टीमें ही बनाई जा सकती हैं।`);
+      alert(`🔒 ${effectivePlan} प्लान में अधिकतम ${teamLimit} टीमें ही बनाई जा सकती हैं।`);
       return;
     }
 
@@ -133,8 +140,9 @@ function AddTeam() {
           </div>
 
           <p className="mb-4 text-sm font-bold text-gray-600">
-            Current Plan: <span className="text-blue-700">{organizerPlan}</span> | Team Limit: <span className="text-blue-700">{teamLimit === -1 ? 'Unlimited' : teamLimit}</span> |
-            Created: <span className="text-blue-700">{teams.length}</span>
+            Current Plan: <span className="text-blue-700">{effectivePlan}</span> | Team Limit:{' '}
+            <span className="text-blue-700">{teamLimit === -1 ? 'Unlimited' : teamLimit}</span> | Created:{' '}
+            <span className="text-blue-700">{teams.length}</span>
           </p>
 
           {!isEditing && isLimitReached && (
@@ -212,10 +220,13 @@ function AddTeam() {
                   Cancel
                 </button>
               )}
+
               <button
                 type="submit"
                 disabled={!isEditing && isLimitReached}
-                className={`flex-1 text-white font-black py-3 rounded-lg transition shadow-lg text-lg ${!isEditing && isLimitReached ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+                className={`flex-1 text-white font-black py-3 rounded-lg transition shadow-lg text-lg ${
+                  !isEditing && isLimitReached ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+                }`}
               >
                 {isEditing ? 'Update Team 🛠️' : 'Save New Team 🏏'}
               </button>
@@ -227,12 +238,18 @@ function AddTeam() {
           <h2 className="text-2xl font-black text-gray-800 mb-6">📋 Manage Existing Teams</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {teams.map((team) => (
-              <div key={team._id} className="p-4 border-2 border-gray-200 rounded-xl hover:border-blue-400 transition bg-gray-50 flex justify-between items-center">
+              <div
+                key={team._id}
+                className="p-4 border-2 border-gray-200 rounded-xl hover:border-blue-400 transition bg-gray-50 flex justify-between items-center"
+              >
                 <div>
                   <h3 className="font-black text-xl text-gray-800">{team.teamName}</h3>
                   <p className="font-bold text-green-600 text-sm">Purse: ₹{team.remainingPurse?.toLocaleString()}</p>
                 </div>
-                <button onClick={() => handleEditClick(team)} className="bg-blue-100 text-blue-700 p-2 rounded-lg font-bold hover:bg-blue-600 hover:text-white transition shadow-sm">
+                <button
+                  onClick={() => handleEditClick(team)}
+                  className="bg-blue-100 text-blue-700 p-2 rounded-lg font-bold hover:bg-blue-600 hover:text-white transition shadow-sm"
+                >
                   ✏️ Edit
                 </button>
               </div>

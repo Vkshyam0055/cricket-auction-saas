@@ -10,7 +10,11 @@ const PLAN_POLICIES = {
 };
 
 const normalizePlanName = (planName = 'Free') => {
+  if (planName === 'Free Plan') return 'Free';
+  if (planName === 'Basic Plan') return 'Basic';
+  if (planName === 'Pro Plan') return 'Pro';
   if (planName === 'Premium') return 'Pro';
+  if (planName === 'Premium Plan') return 'Pro';
   return Object.prototype.hasOwnProperty.call(PLAN_POLICIES, planName) ? planName : 'Free';
 };
 
@@ -24,8 +28,12 @@ function Dashboard() {
   const [totalPlayers, setTotalPlayers] = useState(0);
   const [organizerName, setOrganizerName] = useState('Organizer');
   const [organizerPlan, setOrganizerPlan] = useState('Free');
+  const [organizerRole, setOrganizerRole] = useState('Organizer');
 
-  const normalizedPlan = useMemo(() => normalizePlanName(organizerPlan), [organizerPlan]);
+  const normalizedPlan = useMemo(
+    () => (organizerRole === 'SuperAdmin' ? 'Pro' : normalizePlanName(organizerPlan)),
+    [organizerPlan, organizerRole]
+  );
   const activePolicy = PLAN_POLICIES[normalizedPlan];
 
   useEffect(() => {
@@ -37,9 +45,11 @@ function Dashboard() {
   useEffect(() => {
     const storedName = localStorage.getItem('organizerName');
     const storedPlan = localStorage.getItem('organizerPlan');
+    const storedRole = localStorage.getItem('organizerRole');
 
     if (storedName) setOrganizerName(storedName);
-    if (storedPlan) setOrganizerPlan(normalizePlanName(storedPlan));
+    if (storedPlan) setOrganizerPlan(storedPlan);
+    if (storedRole) setOrganizerRole(storedRole);
   }, []);
 
   useEffect(() => {
@@ -81,6 +91,7 @@ function Dashboard() {
       localStorage.removeItem('organizerName');
       localStorage.removeItem('organizerPhone');
       localStorage.removeItem('organizerPlan');
+      localStorage.removeItem('organizerRole');
       localStorage.removeItem('currentPlayer');
       localStorage.removeItem('currentBid');
       localStorage.removeItem('biddingTeam');
@@ -210,7 +221,7 @@ function Dashboard() {
               <span className="text-2xl mb-1">🛠️</span> Manage Players
             </button>
 
-            {organizerName === 'Vivek Super Admin' && (
+            {organizerRole === 'SuperAdmin' && (
               <button onClick={() => navigate('/super-admin')} className="bg-purple-900 text-white px-4 py-4 rounded-xl font-black hover:bg-purple-800 shadow-lg border border-purple-700 transition flex flex-col items-center text-center text-sm animate-pulse">
                 <span className="text-2xl mb-1">👑</span> Developer Panel
               </button>

@@ -38,6 +38,7 @@ function Auth() {
         localStorage.setItem('organizerName', res.data.user.name);
         localStorage.setItem('organizerPhone', phone);
         localStorage.setItem('organizerPlan', res.data.user.plan || 'Basic'); // <-- नया कोड!
+        localStorage.setItem('organizerRole', res.data.user.role || 'Organizer');
         
         await fetchTournament();
         
@@ -63,7 +64,6 @@ function Auth() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 via-indigo-900 to-gray-900 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row w-full max-w-4xl">
-        
         <div className="bg-blue-600 w-full md:w-1/2 p-10 text-white flex flex-col justify-center relative overflow-hidden">
           <div className="absolute top-0 right-0 -mr-16 -mt-16 w-48 h-48 bg-blue-500 rounded-full opacity-50 blur-2xl"></div>
           <div className="absolute bottom-0 left-0 -ml-16 -mb-16 w-48 h-48 bg-indigo-500 rounded-full opacity-50 blur-2xl"></div>
@@ -132,6 +132,7 @@ function Auth() {
                 value={password} onChange={(e) => setPassword(e.target.value)} 
               />
             </div>
+
 
             <button type="submit" className="w-full bg-blue-600 text-white font-black text-lg py-4 rounded-xl hover:bg-blue-700 active:scale-95 transition-all shadow-lg hover:shadow-xl mt-4">
               {isLogin ? 'Secure Login 🔒' : 'Create Account ✨'}
