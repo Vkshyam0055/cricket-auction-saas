@@ -15,11 +15,13 @@ const normalizePlanName = (planName = 'Free') => {
   return 'Free';
 };
 
-const API_BASE_URL = 'https://cricket-auction-backend-h8ud.onrender.com/api'; // 🌟 Local API Link
+// 🌟 Live Server API 🌟
+const API_BASE_URL = 'https://cricket-auction-backend-h8ud.onrender.com/api'; 
 
 function Dashboard() {
   const navigate = useNavigate();
-  const { tournament, loading, fetchTournament } = useContext(TournamentContext);
+  // 🌟 FIX: यहाँ setTournament जोड़ दिया गया है ताकि UI तुरंत अपडेट हो सके 🌟
+  const { tournament, loading, fetchTournament, setTournament } = useContext(TournamentContext);
 
   const [totalTeams, setTotalTeams] = useState(0);
   const [totalPlayers, setTotalPlayers] = useState(0);
@@ -75,17 +77,33 @@ function Dashboard() {
 
   const handleUpgradeClick = () => alert('🚀 फीचर अनलॉक करने के लिए अपने प्लान को अपग्रेड करें। सहायता के लिए एडमिन से संपर्क करें।');
 
+  // 🌟 FIX: INSTANT TOGGLE LOGIC 🌟
   const handleRegistrationToggle = async () => {
     if (!tournament?._id || isUpdatingRegistration) return;
     try {
       setIsUpdatingRegistration(true);
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
-      await axios.patch(`${API_BASE_URL}/tournament/registration-status`, 
-        { isRegistrationOpen: tournament.isRegistrationOpen === false }, { headers });
-      await fetchTournament();
-    } catch (error) { alert('Registration status update failed.'); } 
-    finally { setIsUpdatingRegistration(false); }
+      
+      // पता लगाओ कि अभी क्या स्टेटस है (अगर undefined है तो डिफ़ॉल्ट रूप से चालू (true) मानेंगे)
+      const isCurrentlyOpen = tournament.isRegistrationOpen !== false; 
+      const newStatus = !isCurrentlyOpen; // चालू है तो बंद करो, बंद है तो चालू करो
+
+      const res = await axios.patch(`${API_BASE_URL}/tournament/registration-status`, 
+        { isRegistrationOpen: newStatus }, { headers });
+        
+      if(res.data && res.data.tournament) {
+          // 🌟 जादू: बिना रिफ्रेश किए तुरंत UI को अपडेट करो 🌟
+          setTournament(res.data.tournament); 
+      } else {
+          await fetchTournament();
+      }
+    } catch (error) { 
+      console.error(error);
+      alert('Registration status update failed. Please check backend connection.'); 
+    } finally { 
+      setIsUpdatingRegistration(false); 
+    }
   };
 
   if (loading || !tournament) return <div className="min-h-screen bg-gray-100 flex items-center justify-center font-bold text-xl">Loading Dashboard...</div>;
