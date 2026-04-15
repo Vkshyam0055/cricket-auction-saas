@@ -10,15 +10,19 @@ const playerSchema = new mongoose.Schema({
     basePrice: { type: Number, default: 0 },
     photoUrl: { type: String, default: 'https://via.placeholder.com/150' },
     
-    // 🌟 SaaS Feature: यह खिलाड़ी किस ऑर्गेनाइजर के पास रजिस्टर हुआ है?
     organizer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    tournament: { type: mongoose.Schema.Types.ObjectId, ref: 'Tournament' }, 
 
     approvalStatus: { type: String, default: 'Pending' }, 
     isIcon: { type: Boolean, default: false }, 
 
     soldTo: { type: String, default: 'Unsold' },
     soldPrice: { type: Number, default: 0 },
-    auctionStatus: { type: String, default: 'Unsold' } // Pending, Sold, Unsold
+    auctionStatus: { type: String, default: 'Unsold' },
+
+    // 🌟 NEW: Dynamic Data Storage (यह ऑब्जेक्ट के रूप में सेव होगा) 🌟
+    customData: { type: Map, of: mongoose.Schema.Types.Mixed, default: {} }
+
 }, { timestamps: true });
 
 module.exports = mongoose.model('Player', playerSchema);
