@@ -15,9 +15,7 @@ function PublicPlayerRegistration() {
     name: '', fatherName: '', age: '', mobile: '', city: '', role: 'Batsman', basePrice: 0, photoUrl: ''
   });
   
-  // 🌟 NEW: Custom Data State 🌟
   const [customData, setCustomData] = useState({});
-  
   const [isSuccess, setIsSuccess] = useState(false);
   const [isUploading, setIsUploading] = useState(false); 
 
@@ -30,15 +28,11 @@ function PublicPlayerRegistration() {
         const res = await axios.get(`${API_BASE_URL}/players/public/${tournamentId}`);
         setTournamentDetails(res.data);
         
-        // Initialize customData state with default values based on custom fields
         const initialCustomData = {};
         if(res.data.customFields) {
-            res.data.customFields.forEach(field => {
-                initialCustomData[field.label] = field.type === 'checkbox' ? false : '';
-            });
+            res.data.customFields.forEach(field => { initialCustomData[field.label] = field.type === 'checkbox' ? false : ''; });
             setCustomData(initialCustomData);
         }
-
       } catch (err) { setError(err.response?.data?.message || 'Invalid URL or Registration Closed'); } 
       finally { setLoading(false); }
     };
@@ -57,7 +51,6 @@ function PublicPlayerRegistration() {
     return res.data.secure_url;
   };
 
-  // Main Photo Upload
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -70,7 +63,6 @@ function PublicPlayerRegistration() {
     finally { setIsUploading(false); }
   };
 
-  // 🌟 Dynamic Custom File Upload 🌟
   const handleCustomFileUpload = async (e, label) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -86,13 +78,8 @@ function PublicPlayerRegistration() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (isUploading) { alert("फोटो/फाइल अपलोड हो रही है, इंतज़ार करें..."); return; }
-    
     try {
-      // 🌟 Send both standard and custom data
-      await axios.post(`${API_BASE_URL}/players/public/${tournamentId}/register`, {
-          ...formData,
-          customData
-      });
+      await axios.post(`${API_BASE_URL}/players/public/${tournamentId}/register`, { ...formData, customData });
       setIsSuccess(true);
     } catch (err) { alert("Registration failed! Please try again."); }
   };
@@ -104,7 +91,7 @@ function PublicPlayerRegistration() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black p-4 flex flex-col items-center pb-20">
       <div className="mb-8 text-center mt-6">
-        {tournamentDetails.logoUrl && <img src={tournamentDetails.logoUrl} alt="Logo" className="w-24 h-24 mx-auto mb-4 rounded-full bg-white object-contain border-4 border-yellow-400" />}
+        {tournamentDetails.logoUrl && <img src={tournamentDetails.logoUrl} alt="Logo" className="w-24 h-24 mx-auto mb-4 rounded-full bg-white object-contain border-4 border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.5)]" />}
         <h1 className="text-4xl font-black text-white italic uppercase">{tournamentDetails.name}</h1>
         <p className="text-yellow-300 font-bold uppercase tracking-widest mt-2">Player Registration</p>
       </div>
@@ -112,6 +99,30 @@ function PublicPlayerRegistration() {
       <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border-t-8 border-yellow-500">
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           
+          {/* 🌟 PAYMENT COLLECTION UI (पब्लिक फॉर्म पर) 🌟 */}
+          {(tournamentDetails.upiQrUrl || tournamentDetails.upiId || tournamentDetails.paymentMessage) && (
+            <div className="bg-green-50 p-5 rounded-2xl border-2 border-green-200 text-center shadow-inner mb-6">
+               <h3 className="font-black text-green-800 uppercase tracking-widest mb-3">💸 Registration Fee</h3>
+               {tournamentDetails.paymentMessage && <p className="text-sm font-bold text-gray-700 mb-4">{tournamentDetails.paymentMessage}</p>}
+               
+               {tournamentDetails.upiQrUrl && (
+                  <div className="bg-white p-2 rounded-xl shadow-md inline-block mb-3 border-2 border-green-100">
+                     <img src={tournamentDetails.upiQrUrl} alt="Scan to Pay" className="w-36 h-36 object-contain" />
+                  </div>
+               )}
+               
+               {tournamentDetails.upiId && (
+                  <div className="bg-white p-3 rounded-xl border shadow-sm mx-auto mt-2 flex items-center justify-center space-x-2">
+                     <span className="text-xl">🏦</span>
+                     <div>
+                        <p className="text-[10px] text-gray-500 font-bold uppercase leading-none">UPI ID</p>
+                        <p className="font-black text-base text-gray-800 tracking-wide">{tournamentDetails.upiId}</p>
+                     </div>
+                  </div>
+               )}
+            </div>
+          )}
+
           <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex flex-col items-center">
              {formData.photoUrl ? <img src={formData.photoUrl} alt="Preview" className="w-24 h-24 rounded-full object-cover shadow-md mb-2" /> : <div className="w-24 h-24 rounded-full bg-gray-200 shadow-md mb-2 flex items-center justify-center text-3xl">📷</div>}
              <label className="cursor-pointer bg-white px-4 py-2 rounded-lg font-bold text-sm shadow-sm border border-blue-200">
@@ -120,52 +131,38 @@ function PublicPlayerRegistration() {
              </label>
           </div>
 
-          {/* Standard Fields */}
-          <div><label className="block text-xs font-black text-gray-500 uppercase mb-1">Full Name *</label><input name="name" required onChange={handleStandardChange} className="w-full p-3 bg-gray-100 rounded-xl font-bold" placeholder="e.g. Rahul" /></div>
+          <div><label className="block text-xs font-black text-gray-500 uppercase mb-1">Full Name *</label><input name="name" required onChange={handleStandardChange} className="w-full p-3 bg-gray-100 rounded-xl font-bold" /></div>
           <div className="grid grid-cols-2 gap-4">
             <div><label className="block text-xs font-black text-gray-500 uppercase mb-1">Age</label><input name="age" type="number" onChange={handleStandardChange} className="w-full p-3 bg-gray-100 rounded-xl font-bold" /></div>
             <div><label className="block text-xs font-black text-gray-500 uppercase mb-1">Mobile *</label><input name="mobile" required onChange={handleStandardChange} className="w-full p-3 bg-gray-100 rounded-xl font-bold" /></div>
           </div>
-          <div>
-             <label className="block text-xs font-black text-gray-500 uppercase mb-1">Role *</label>
-             <select name="role" onChange={handleStandardChange} className="w-full p-3 bg-gray-100 rounded-xl font-bold text-blue-700">
-               <option value="Batsman">Batsman</option><option value="Bowler">Bowler</option><option value="All-Rounder">All-Rounder</option><option value="Wicket Keeper">Wicket Keeper</option>
-             </select>
-          </div>
+          <div><label className="block text-xs font-black text-gray-500 uppercase mb-1">Role *</label><select name="role" onChange={handleStandardChange} className="w-full p-3 bg-gray-100 rounded-xl font-bold text-blue-700"><option value="Batsman">Batsman</option><option value="Bowler">Bowler</option><option value="All-Rounder">All-Rounder</option><option value="Wicket Keeper">Wicket Keeper</option></select></div>
           <div><label className="block text-xs font-black text-gray-500 uppercase mb-1">City/Village</label><input name="city" onChange={handleStandardChange} className="w-full p-3 bg-gray-100 rounded-xl font-bold" /></div>
 
-          {/* 🌟 DYNAMIC CUSTOM FIELDS RENDERER 🌟 */}
+          {/* DYNAMIC CUSTOM FIELDS RENDERER */}
           {tournamentDetails.customFields && tournamentDetails.customFields.length > 0 && (
              <div className="mt-6 pt-6 border-t-2 border-dashed border-gray-200 space-y-5">
                 <h3 className="font-black text-gray-400 uppercase tracking-widest text-center text-xs mb-4">Additional Information</h3>
-                
                 {tournamentDetails.customFields.map((field, idx) => (
                    <div key={idx}>
                       {field.type !== 'checkbox' && <label className="block text-xs font-black text-gray-500 uppercase mb-1">{field.label} {field.required && '*'}</label>}
-                      
                       {field.type === 'text' && <input type="text" required={field.required} onChange={(e) => handleCustomChange(e, field.label, field.type)} className="w-full p-3 bg-indigo-50 border border-indigo-100 rounded-xl font-bold text-indigo-900" />}
-                      
                       {field.type === 'number' && <input type="number" required={field.required} onChange={(e) => handleCustomChange(e, field.label, field.type)} className="w-full p-3 bg-indigo-50 border border-indigo-100 rounded-xl font-bold text-indigo-900" />}
-                      
                       {field.type === 'dropdown' && (
                          <select required={field.required} onChange={(e) => handleCustomChange(e, field.label, field.type)} className="w-full p-3 bg-indigo-50 border border-indigo-100 rounded-xl font-bold text-indigo-900">
                             <option value="">-- Select --</option>
                             {field.options?.map((opt, i) => <option key={i} value={opt}>{opt}</option>)}
                          </select>
                       )}
-                      
                       {field.type === 'file' && (
                          <div className="flex flex-col items-start space-y-2">
-                            {customData[field.label] ? (
-                               <a href={customData[field.label]} target="_blank" rel="noreferrer" className="text-green-600 font-bold text-sm bg-green-50 px-3 py-1 rounded border border-green-200">✅ File Uploaded (Click to view)</a>
-                            ) : null}
+                            {customData[field.label] ? <a href={customData[field.label]} target="_blank" rel="noreferrer" className="text-green-600 font-bold text-sm bg-green-50 px-3 py-1 rounded border border-green-200">✅ File Uploaded</a> : null}
                             <label className="cursor-pointer bg-white px-4 py-2 rounded-lg font-bold text-sm shadow-sm border border-indigo-200 text-indigo-700 w-full text-center">
                                {isUploading ? 'Uploading...' : `Upload ${field.label}`}
                                <input type="file" required={field.required && !customData[field.label]} onChange={(e) => handleCustomFileUpload(e, field.label)} className="hidden" disabled={isUploading} />
                             </label>
                          </div>
                       )}
-                      
                       {field.type === 'checkbox' && (
                          <label className="flex items-center space-x-3 bg-indigo-50 p-3 rounded-xl border border-indigo-100 cursor-pointer">
                             <input type="checkbox" required={field.required} onChange={(e) => handleCustomChange(e, field.label, field.type)} className="w-5 h-5 accent-indigo-600" />

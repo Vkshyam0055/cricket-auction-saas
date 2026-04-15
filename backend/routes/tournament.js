@@ -14,8 +14,8 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
     try {
-        // 🌟 customFields को भी req.body से निकाल लिया
-        const { name, logoUrl, venue, bidButton1, bidButton2, bidButton3, customFields } = req.body;
+        // 🌟 FIX: नए पेमेंट पैरामीटर्स को भी req.body से निकाला
+        const { name, logoUrl, venue, bidButton1, bidButton2, bidButton3, customFields, upiQrUrl, upiId, paymentMessage } = req.body;
         let tournament = await Tournament.findOne({ organizer: req.user.id });
         
         if (tournament) {
@@ -25,7 +25,12 @@ router.post('/', async (req, res) => {
             if (bidButton1) tournament.bidButton1 = Number(bidButton1);
             if (bidButton2) tournament.bidButton2 = Number(bidButton2);
             if (bidButton3) tournament.bidButton3 = Number(bidButton3);
-            if (customFields) tournament.customFields = customFields; // 🌟 Update Custom Fields
+            if (customFields) tournament.customFields = customFields; 
+            
+            // 🌟 Payment Update
+            tournament.upiQrUrl = upiQrUrl || '';
+            tournament.upiId = upiId || '';
+            tournament.paymentMessage = paymentMessage || '';
 
             await tournament.save();
             res.json({ message: "टूर्नामेंट अपडेट हो गया!", tournament });
@@ -35,7 +40,10 @@ router.post('/', async (req, res) => {
                 bidButton1: bidButton1 ? Number(bidButton1) : 500,
                 bidButton2: bidButton2 ? Number(bidButton2) : 1000,
                 bidButton3: bidButton3 ? Number(bidButton3) : 5000,
-                customFields: customFields || [], // 🌟 Save Custom Fields
+                customFields: customFields || [], 
+                upiQrUrl: upiQrUrl || '',
+                upiId: upiId || '',
+                paymentMessage: paymentMessage || '',
                 organizer: req.user.id
             });
             await newTournament.save();

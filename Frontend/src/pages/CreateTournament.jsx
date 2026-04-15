@@ -8,50 +8,56 @@ function CreateTournament() {
   const { tournament, fetchTournament } = useContext(TournamentContext);
 
   const [formData, setFormData] = useState({
-    name: '', logoUrl: '', venue: '', bidButton1: 500, bidButton2: 1000, bidButton3: 5000
+    name: '', logoUrl: '', venue: '', bidButton1: 500, bidButton2: 1000, bidButton3: 5000,
+    upiQrUrl: '', upiId: '', paymentMessage: '' // 🌟 NEW
   });
 
-  // 🌟 NEW: Custom Fields State 🌟
   const [customFields, setCustomFields] = useState([]);
+  const [isUploadingQr, setIsUploadingQr] = useState(false);
 
   useEffect(() => {
     if (tournament) {
       setFormData({
         name: tournament.name || '', logoUrl: tournament.logoUrl || '', venue: tournament.venue || '',
-        bidButton1: tournament.bidButton1 || 500, bidButton2: tournament.bidButton2 || 1000, bidButton3: tournament.bidButton3 || 5000
+        bidButton1: tournament.bidButton1 || 500, bidButton2: tournament.bidButton2 || 1000, bidButton3: tournament.bidButton3 || 5000,
+        upiQrUrl: tournament.upiQrUrl || '', upiId: tournament.upiId || '', paymentMessage: tournament.paymentMessage || '' // 🌟 NEW
       });
-      setCustomFields(tournament.customFields || []); // Load existing custom fields
+      setCustomFields(tournament.customFields || []); 
     }
   }, [tournament]);
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
-  // --- Dynamic Field Builder Logic ---
-  const addField = () => {
-    setCustomFields([...customFields, { label: '', type: 'text', required: false, options: [] }]);
+  // 🌟 QR Code Upload Logic 🌟
+  const handleQrUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setIsUploadingQr(true);
+    const data = new FormData();
+    data.append("file", file); data.append("upload_preset", "auction_preset"); data.append("cloud_name", "dpg5olqt7");
+    try {
+      const res = await axios.post(`https://api.cloudinary.com/v1_1/dpg5olqt7/image/upload`, data);
+      setFormData({ ...formData, upiQrUrl: res.data.secure_url });
+      alert("✅ QR Code सफलतापूर्वक अपलोड हो गया!");
+    } catch (err) { alert("❌ QR अपलोड फेल!"); }
+    finally { setIsUploadingQr(false); }
   };
 
-  const removeField = (index) => {
-    setCustomFields(customFields.filter((_, i) => i !== index));
-  };
-
+  const addField = () => setCustomFields([...customFields, { label: '', type: 'text', required: false, options: [] }]);
+  const removeField = (index) => setCustomFields(customFields.filter((_, i) => i !== index));
   const updateField = (index, key, value) => {
     const updated = [...customFields];
-    if (key === 'options') {
-      updated[index][key] = value.split(',').map(s => s.trim()); // Comma separated to array
-    } else {
-      updated[index][key] = value;
-    }
+    if (key === 'options') updated[index][key] = value.split(',').map(s => s.trim());
+    else updated[index][key] = value;
     setCustomFields(updated);
   };
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if(isUploadingQr) { alert("QR Code अपलोड हो रहा है, रुकिए..."); return; }
     try {
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
-
-      // 🌟 Send everything including customFields
       await axios.post('https://cricket-auction-backend-h8ud.onrender.com/api/tournament', { ...formData, customFields }, { headers });
       await fetchTournament(); 
       alert('🎉 टूर्नामेंट और रजिस्ट्रेशन फॉर्म सफलतापूर्वक सेट हो गया!');
@@ -66,18 +72,9 @@ function CreateTournament() {
         <p className="text-gray-500 font-bold mb-8 border-b pb-4">अपने टूर्नामेंट और रजिस्ट्रेशन फॉर्म को कस्टमाइज़ करें।</p>
         
         <form onSubmit={handleSave} className="space-y-6">
-          <div>
-            <label className="block text-sm font-black text-gray-500 uppercase mb-2">Tournament Name *</label>
-            <input name="name" value={formData.name} onChange={handleChange} required className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 focus:border-indigo-500 outline-none" placeholder="e.g. Rajasthan Premier League" />
-          </div>
-          <div>
-            <label className="block text-sm font-black text-gray-500 uppercase mb-2">Logo (URL)</label>
-            <input name="logoUrl" value={formData.logoUrl} onChange={handleChange} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 focus:border-indigo-500 outline-none" placeholder="Paste image link here" />
-          </div>
-          <div>
-            <label className="block text-sm font-black text-gray-500 uppercase mb-2">Venue</label>
-            <input name="venue" value={formData.venue} onChange={handleChange} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 focus:border-indigo-500 outline-none" placeholder="e.g. SMS Stadium" />
-          </div>
+          <div><label className="block text-sm font-black text-gray-500 uppercase mb-2">Tournament Name *</label><input name="name" value={formData.name} onChange={handleChange} required className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold focus:border-indigo-500 outline-none" /></div>
+          <div><label className="block text-sm font-black text-gray-500 uppercase mb-2">Logo (URL)</label><input name="logoUrl" value={formData.logoUrl} onChange={handleChange} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold focus:border-indigo-500 outline-none" /></div>
+          <div><label className="block text-sm font-black text-gray-500 uppercase mb-2">Venue</label><input name="venue" value={formData.venue} onChange={handleChange} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold focus:border-indigo-500 outline-none" /></div>
 
           <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
             <label className="block text-sm font-black text-indigo-800 uppercase mb-3">Bidding Buttons (₹)</label>
@@ -88,17 +85,40 @@ function CreateTournament() {
             </div>
           </div>
 
-          {/* 🌟 DYNAMIC FORM BUILDER UI 🌟 */}
+          {/* 🌟 PAYMENT COLLECTION SETTINGS 🌟 */}
+          <div className="bg-green-50 p-6 rounded-xl border border-green-200 shadow-sm">
+             <h3 className="font-black text-green-800 uppercase tracking-widest mb-4">💸 Registration Fee Settings (Optional)</h3>
+             <p className="text-xs font-bold text-gray-500 mb-4">अगर आप रजिस्ट्रेशन के लिए पैसे लेना चाहते हैं, तो अपना UPI और मैसेज डालें।</p>
+             
+             <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-black text-gray-500 uppercase mb-1">Payment Instruction / Message</label>
+                  <input name="paymentMessage" value={formData.paymentMessage} onChange={handleChange} placeholder="e.g. Entry Fee ₹500. Pay below to register." className="w-full p-3 bg-white border border-gray-200 rounded-xl font-bold focus:border-green-500 outline-none text-sm" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-black text-gray-500 uppercase mb-1">Your UPI ID</label>
+                    <input name="upiId" value={formData.upiId} onChange={handleChange} placeholder="e.g. 9876543210@ybl" className="w-full p-3 bg-white border border-gray-200 rounded-xl font-bold focus:border-green-500 outline-none text-sm" />
+                  </div>
+                  <div>
+                     <label className="block text-xs font-black text-gray-500 uppercase mb-1">Upload PhonePe/Paytm QR Code</label>
+                     <label className="cursor-pointer bg-white px-4 py-3 rounded-xl border border-gray-200 w-full flex items-center justify-center font-bold text-sm hover:bg-gray-50">
+                        {isUploadingQr ? 'Uploading...' : formData.upiQrUrl ? '✅ QR Uploaded (Click to Change)' : '📁 Select QR Image'}
+                        <input type="file" accept="image/*" onChange={handleQrUpload} className="hidden" disabled={isUploadingQr} />
+                     </label>
+                  </div>
+                </div>
+             </div>
+          </div>
+
+          {/* DYNAMIC FORM BUILDER */}
           <div className="bg-gray-50 p-6 rounded-xl border-2 border-dashed border-gray-300">
              <div className="flex justify-between items-center mb-4">
                 <h3 className="font-black text-gray-700 uppercase tracking-widest">📝 Form Builder</h3>
-                <button type="button" onClick={addField} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-700 shadow-md">
-                   + Add Custom Field
-                </button>
+                <button type="button" onClick={addField} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-700 shadow-md">+ Add Custom Field</button>
              </div>
-             
              {customFields.length === 0 ? (
-                <p className="text-gray-400 font-medium text-sm">डिफ़ॉल्ट फील्ड्स (Name, Mobile, Role) पहले से मौजूद हैं। खिलाड़ियों से अतिरिक्त जानकारी (जैसे: T-Shirt Size, Aadhar PDF) मांगने के लिए नई फील्ड जोड़ें।</p>
+                <p className="text-gray-400 font-medium text-sm">💡 <strong>Pro Tip:</strong> अगर आपने ऊपर पेमेंट QR लगाया है, तो खिलाड़ियों से पेमेंट का स्क्रीनशॉट मांगने के लिए यहाँ "Payment Screenshot" नाम का File Upload फील्ड बना दें!</p>
              ) : (
                 <div className="space-y-4">
                    {customFields.map((field, index) => (
@@ -114,13 +134,8 @@ function CreateTournament() {
                                <option value="checkbox">Checkbox (Yes/No)</option>
                             </select>
                          </div>
-                         {field.type === 'dropdown' && (
-                            <input type="text" placeholder="Options (comma separated: S, M, L, XL)" value={field.options?.join(', ')} onChange={(e) => updateField(index, 'options', e.target.value)} required className="w-full p-2 border rounded font-medium text-xs bg-gray-50 mb-2" />
-                         )}
-                         <label className="flex items-center space-x-2 text-sm font-bold text-gray-600">
-                            <input type="checkbox" checked={field.required} onChange={(e) => updateField(index, 'required', e.target.checked)} className="w-4 h-4 accent-blue-600" />
-                            <span>Is Required? (ज़रूरी है)</span>
-                         </label>
+                         {field.type === 'dropdown' && <input type="text" placeholder="Options (comma separated: S, M, L, XL)" value={field.options?.join(', ')} onChange={(e) => updateField(index, 'options', e.target.value)} required className="w-full p-2 border rounded font-medium text-xs bg-gray-50 mb-2" />}
+                         <label className="flex items-center space-x-2 text-sm font-bold text-gray-600"><input type="checkbox" checked={field.required} onChange={(e) => updateField(index, 'required', e.target.checked)} className="w-4 h-4 accent-blue-600" /><span>Is Required? (ज़रूरी है)</span></label>
                       </div>
                    ))}
                 </div>
@@ -129,7 +144,7 @@ function CreateTournament() {
 
           <div className="flex gap-4 pt-4">
             <button type="button" onClick={() => navigate('/dashboard')} className="flex-1 bg-gray-200 text-gray-700 font-black py-4 rounded-xl hover:bg-gray-300">Cancel</button>
-            <button type="submit" className="flex-1 bg-indigo-600 text-white font-black py-4 rounded-xl shadow-lg hover:bg-indigo-700">Save System 🚀</button>
+            <button type="submit" disabled={isUploadingQr} className="flex-1 bg-indigo-600 text-white font-black py-4 rounded-xl shadow-lg hover:bg-indigo-700 disabled:bg-gray-400">Save System 🚀</button>
           </div>
         </form>
       </div>

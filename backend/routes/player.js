@@ -12,8 +12,8 @@ router.get('/public/:tournamentId', async (req, res) => {
         const { tournamentId } = req.params;
         if (!mongoose.Types.ObjectId.isValid(tournamentId)) return res.status(400).json({ message: 'Invalid ID' });
 
-        // 🌟 customFields को भी भेजना ज़रूरी है ताकि फॉर्म बन सके
-        const tournament = await Tournament.findById(tournamentId).select('name logoUrl isRegistrationOpen organizer customFields');
+        // 🌟 FIX: upiQrUrl, upiId, paymentMessage को भी सेलेक्ट कर लिया
+        const tournament = await Tournament.findById(tournamentId).select('name logoUrl isRegistrationOpen organizer customFields upiQrUrl upiId paymentMessage');
         if (!tournament) return res.status(404).json({ message: 'टूर्नामेंट नहीं मिला' });
         
         if (tournament.isRegistrationOpen === false) {
@@ -27,26 +27,21 @@ router.post('/public/:tournamentId/register', async (req, res) => {
     try {
         const { tournamentId } = req.params;
         const tournament = await Tournament.findById(tournamentId).select('_id organizer isRegistrationOpen');
-        
         if (!tournament) return res.status(404).json({ message: 'टूर्नामेंट नहीं मिला' });
         if (tournament.isRegistrationOpen === false) return res.status(403).json({ message: 'रजिस्ट्रेशन बंद है।' });
 
-        // 🌟 customData को req.body से निकालें
         const { name, fatherName, age, mobile, city, role, basePrice, photoUrl, customData } = req.body;
 
         const newPlayer = new Player({
-            name, fatherName, age, mobile, city, role, basePrice, photoUrl,
-            customData: customData || {}, // 🌟 Save Dynamic Data
-            tournament: tournament._id,
-            organizer: tournament.organizer
+            name, fatherName, age, mobile, city, role, basePrice, photoUrl, customData: customData || {}, 
+            tournament: tournament._id, organizer: tournament.organizer
         });
-
         const savedPlayer = await newPlayer.save();
         res.status(201).json(savedPlayer);
     } catch (error) { res.status(500).json({ message: 'रजिस्ट्रेशन फेल हो गया' }); }
 });
 
-// === PRIVATE ROUTES (सिक्योरिटी गार्ड के नीचे वाले पुराने रास्ते यहाँ वैसे ही रहेंगे) ===
+// === PRIVATE ROUTES ===
 router.use(fetchOrganizer);
 
 router.post('/', async (req, res) => {
@@ -57,12 +52,9 @@ router.post('/', async (req, res) => {
             const organizerTournament = await Tournament.findOne({ organizer: req.user.id }).select('_id');
             tournamentId = organizerTournament?._id;
         }
-
         const newPlayer = new Player({ 
-            name, fatherName, age, mobile, city, role, basePrice, photoUrl,
-            customData: customData || {}, // 🌟 Admin can also save custom data
-            organizer: req.user.id,
-            tournament: tournamentId || undefined
+            name, fatherName, age, mobile, city, role, basePrice, photoUrl, customData: customData || {}, 
+            organizer: req.user.id, tournament: tournamentId || undefined
         });
         const savedPlayer = await newPlayer.save();
         res.json(savedPlayer);
