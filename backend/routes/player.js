@@ -12,8 +12,8 @@ router.get('/public/:tournamentId', async (req, res) => {
         const { tournamentId } = req.params;
         if (!mongoose.Types.ObjectId.isValid(tournamentId)) return res.status(400).json({ message: 'Invalid ID' });
 
-        // 🌟 FIX: upiQrUrl, upiId, paymentMessage को भी सेलेक्ट कर लिया
-        const tournament = await Tournament.findById(tournamentId).select('name logoUrl isRegistrationOpen organizer customFields upiQrUrl upiId paymentMessage');
+        // 🌟 FIX: tournamentPoster ko select list me joda
+        const tournament = await Tournament.findById(tournamentId).select('name logoUrl tournamentPoster isRegistrationOpen organizer customFields upiQrUrl upiId paymentMessage');
         if (!tournament) return res.status(404).json({ message: 'टूर्नामेंट नहीं मिला' });
         
         if (tournament.isRegistrationOpen === false) {

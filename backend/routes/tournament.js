@@ -14,20 +14,27 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
     try {
-        // 🌟 FIX: नए पेमेंट पैरामीटर्स को भी req.body से निकाला
-        const { name, logoUrl, venue, bidButton1, bidButton2, bidButton3, customFields, upiQrUrl, upiId, paymentMessage } = req.body;
+        const { 
+            name, logoUrl, tournamentPoster, venue, teamBudget, minPlayersPerTeam, 
+            bidButton1, bidButton2, bidButton3, customFields, upiQrUrl, upiId, paymentMessage 
+        } = req.body;
+
         let tournament = await Tournament.findOne({ organizer: req.user.id });
         
         if (tournament) {
             tournament.name = name;
             tournament.logoUrl = logoUrl;
+            tournament.tournamentPoster = tournamentPoster || '';
             tournament.venue = venue;
+            
+            if (teamBudget) tournament.teamBudget = Number(teamBudget);
+            if (minPlayersPerTeam) tournament.minPlayersPerTeam = Number(minPlayersPerTeam);
+            
             if (bidButton1) tournament.bidButton1 = Number(bidButton1);
             if (bidButton2) tournament.bidButton2 = Number(bidButton2);
             if (bidButton3) tournament.bidButton3 = Number(bidButton3);
             if (customFields) tournament.customFields = customFields; 
             
-            // 🌟 Payment Update
             tournament.upiQrUrl = upiQrUrl || '';
             tournament.upiId = upiId || '';
             tournament.paymentMessage = paymentMessage || '';
@@ -36,7 +43,9 @@ router.post('/', async (req, res) => {
             res.json({ message: "टूर्नामेंट अपडेट हो गया!", tournament });
         } else {
             const newTournament = new Tournament({ 
-                name, logoUrl, venue, 
+                name, logoUrl, tournamentPoster: tournamentPoster || '', venue, 
+                teamBudget: teamBudget ? Number(teamBudget) : 50000000,
+                minPlayersPerTeam: minPlayersPerTeam ? Number(minPlayersPerTeam) : 15,
                 bidButton1: bidButton1 ? Number(bidButton1) : 500,
                 bidButton2: bidButton2 ? Number(bidButton2) : 1000,
                 bidButton3: bidButton3 ? Number(bidButton3) : 5000,
