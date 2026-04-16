@@ -20,8 +20,8 @@ function ControlPanel() {
   const [customBid, setCustomBid] = useState(''); 
 
   const [actionHistory, setActionHistory] = useState([]);
-  const [showUnsoldModal, setShowUnsoldModal] = useState(false);
-  const [unsoldDatabase, setUnsoldDatabase] = useState([]);
+  const [showResultsModal, setShowResultsModal] = useState(false);
+  const [auctionResultDatabase, setAuctionResultDatabase] = useState([]);
 
   // 🌟 DYNAMIC BID BUTTONS VALUES 🌟
   const btn1 = tournament?.bidButton1 || 500;
@@ -206,7 +206,7 @@ function ControlPanel() {
     setActionHistory(prev => prev.slice(0, -1));
   };
 
-  const openUnsoldModal = async () => {
+  const openResultsModal = async () => {
     try {
       const token = localStorage.getItem('token');
       const res = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/players', { headers: { Authorization: `Bearer ${token}` } });
@@ -214,16 +214,16 @@ function ControlPanel() {
       const currentReadyIds = players.map(p => p._id);
       if(currentPlayer) currentReadyIds.push(currentPlayer._id);
 
-      const passedPlayers = res.data.filter(p => 
+      const resultPlayers = res.data.filter(p => 
         p.approvalStatus?.trim().toLowerCase() === 'approved' &&
-        (p.auctionStatus?.trim().toLowerCase() === 'unsold' || p.auctionStatus?.trim().toLowerCase() === 'passed') &&
+        (p.auctionStatus?.trim().toLowerCase() === 'sold' || p.auctionStatus?.trim().toLowerCase() === 'unsold' || p.auctionStatus?.trim().toLowerCase() === 'passed' || p.auctionStatus?.trim().toLowerCase() === 'icon') &&
         !currentReadyIds.includes(p._id)
       );
 
-      setUnsoldDatabase(passedPlayers);
-      setShowUnsoldModal(true);
+      setAuctionResultDatabase(resultPlayers);
+      setShowResultsModal(true);
     } catch (error) {
-      console.error("Unsold प्लेयर्स लाने में दिक्कत:", error);
+      console.error("Auction result प्लेयर्स लाने में दिक्कत:", error);
     }
   };
 
@@ -234,8 +234,8 @@ function ControlPanel() {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      setPlayers(prev => [...prev, playerToBring]); 
-      setUnsoldDatabase(prev => prev.filter(p => p._id !== playerToBring._id)); 
+      setPlayers(prev => [...prev, { ...playerToBring, auctionStatus: 'ReadyForAuction', soldTo: 'Unsold', soldPrice: 0 }]); 
+      setAuctionResultDatabase(prev => prev.filter(p => p._id !== playerToBring._id)); 
       alert(`🔥 ${playerToBring.name} को वापस ऑक्शन पूल में शामिल कर लिया गया है!`);
     } catch (error) {
       alert("एरर: डेटाबेस अपडेट नहीं हो पाया!");
@@ -243,22 +243,36 @@ function ControlPanel() {
   };
 
   const bringAllBackToAuction = async () => {
-    const confirmAction = window.confirm("क्या आप सभी Unsold प्लेयर्स को एक साथ वापस ऑक्शन में लाना चाहते हैं?");
+    const unsoldRoundPlayers = auctionResultDatabase.filter(
+      (p) => p.auctionStatus?.trim().toLowerCase() === 'unsold' || p.auctionStatus?.trim().toLowerCase() === 'passed'
+    );
+
+    if (unsoldRoundPlayers.length === 0) {
+      alert("Round-2 के लिए कोई Unsold player उपलब्ध नहीं है।");
+      return;
+    }
+
+    const confirmAction = window.confirm("क्या आप सभी Unsold players को Round-2 auction के लिए वापस लाना चाहते हैं?");
     if (confirmAction) {
       try {
         const token = localStorage.getItem('token');
         
-        for (const p of unsoldDatabase) {
+        for (const p of unsoldRoundPlayers) {
            await axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/players/undo/${p._id}`, {}, {
               headers: { Authorization: `Bearer ${token}` }
            });
            await delay(400); 
         }
 
-        setPlayers(prev => [...prev, ...unsoldDatabase]);
-        setUnsoldDatabase([]);
-        setShowUnsoldModal(false);
-        alert("✅ सभी अनसोल्ड प्लेयर्स सुरक्षित रूप से वापस आ गए हैं!");
+        setPlayers(prev => [
+          ...prev,
+          ...unsoldRoundPlayers.map(p => ({ ...p, auctionStatus: 'ReadyForAuction', soldTo: 'Unsold', soldPrice: 0 }))
+        ]);
+        setAuctionResultDatabase(prev => prev.filter(
+          (p) => !(p.auctionStatus?.trim().toLowerCase() === 'unsold' || p.auctionStatus?.trim().toLowerCase() === 'passed')
+        ));
+        setShowResultsModal(false);
+        alert("✅ सभी Unsold players Round-2 auction के लिए वापस आ गए हैं!");
       } catch (error) {
         console.error(error);
         alert("एरर: कुछ प्लेयर्स वापस नहीं आ पाए, इंटरनेट चेक करें।");
@@ -333,12 +347,8 @@ function ControlPanel() {
               ⚠️ Reset Auction
           </button>
 
-          <button onClick={openUnsoldModal} className="bg-orange-500 border border-orange-400 px-4 py-2 rounded hover:bg-orange-400 font-bold transition flex items-center shadow-lg">
-              ♻️ View Unsold
-          </button>
-
-          <button onClick={fetchData} className="bg-blue-600 border border-blue-400 px-4 py-2 rounded hover:bg-blue-500 font-bold transition flex items-center shadow-lg" title="नया प्लेयर आने पर रिफ्रेश करें">
-              🔄 Refresh List
+          <button onClick={openResultsModal} className="bg-orange-500 border border-orange-400 px-4 py-2 rounded hover:bg-orange-400 font-bold transition flex items-center shadow-lg">
+              ♻️ Auction Results
           </button>
 
           <button 
@@ -456,37 +466,39 @@ function ControlPanel() {
         </div>
       </div>
 
-      {/* Unsold Modal Code Remains Same */}
-      {showUnsoldModal && (
+      {showResultsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-sm">
           <div className="bg-white w-11/12 max-w-4xl rounded-2xl shadow-2xl flex flex-col max-h-[85vh]">
             
             <div className="bg-orange-600 text-white p-5 rounded-t-2xl flex justify-between items-center">
-              <h2 className="text-xl font-black uppercase tracking-wider">♻️ Unsold Players Godown</h2>
+              <h2 className="text-xl font-black uppercase tracking-wider">♻️ Sold / Unsold Players</h2>
               <div className="flex items-center space-x-6">
-                 {unsoldDatabase.length > 0 && (
+                 {auctionResultDatabase.some((p) => p.auctionStatus?.trim().toLowerCase() === 'unsold' || p.auctionStatus?.trim().toLowerCase() === 'passed') && (
                     <button onClick={bringAllBackToAuction} className="bg-white text-orange-600 font-black px-4 py-2 rounded-lg shadow-md hover:bg-orange-50 active:scale-95 transition">
-                        Bring ALL Back ♻️
+                        Bring ALL Unsold Back ♻️
                     </button>
                  )}
-                 <button onClick={() => setShowUnsoldModal(false)} className="text-white hover:text-gray-300 font-black text-4xl leading-none">&times;</button>
+                 <button onClick={() => setShowResultsModal(false)} className="text-white hover:text-gray-300 font-black text-4xl leading-none">&times;</button>
               </div>
             </div>
             
             <div className="p-6 overflow-y-auto bg-gray-50 flex-grow">
-              {unsoldDatabase.length === 0 ? (
+              {auctionResultDatabase.length === 0 ? (
                 <div className="text-center py-12 text-gray-500 font-bold text-xl">
-                  गोडाउन खाली है! अभी तक कोई भी प्लेयर Unsold नहीं हुआ है।
+                  अभी कोई Sold/Unsold प्लेयर नहीं है।
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {unsoldDatabase.map((p) => (
+                  {auctionResultDatabase.map((p) => (
                     <div key={p._id} className="bg-white p-4 rounded-xl shadow border border-gray-200 flex items-center justify-between">
                       <div className="flex items-center space-x-4">
                         <img src={p.photoUrl || 'https://via.placeholder.com/50'} alt="Player" className="w-16 h-16 rounded-full object-cover shadow border border-gray-300" />
                         <div>
                           <h3 className="font-bold text-lg">{p.name}</h3>
                           <p className="text-sm text-gray-500 font-semibold">{p.role} | ₹{p.basePrice}</p>
+                          <p className={`text-xs font-black mt-1 ${p.auctionStatus === 'Sold' || p.auctionStatus === 'Icon' ? 'text-green-700' : 'text-red-600'}`}>
+                            {p.auctionStatus} {p.soldTo && p.soldTo !== 'Unsold' ? `• ${p.soldTo} (₹${p.soldPrice || 0})` : ''}
+                          </p>
                         </div>
                       </div>
                       <button 

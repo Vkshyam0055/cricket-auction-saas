@@ -148,6 +148,29 @@ router.put('/make-icon/:id', async (req, res) => {
     } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
+router.put('/remove-icon/:id', async (req, res) => {
+    try {
+        const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
+        if (!player) return res.status(404).json({ message: "Player not found" });
+
+        if (player.isIcon && player.soldTo && player.soldTo !== 'Unsold') {
+            const team = await Team.findOne({ teamName: player.soldTo, organizer: req.user.id });
+            if (team) {
+                team.remainingPurse += Number(player.soldPrice || 0);
+                await team.save();
+            }
+        }
+
+        player.isIcon = false;
+        player.soldTo = 'Unsold';
+        player.soldPrice = 0;
+        player.auctionStatus = player.approvalStatus === 'Approved' ? 'ReadyForAuction' : 'Pending';
+        await player.save();
+
+        res.json({ message: "Icon removed successfully!", player });
+    } catch (error) { res.status(500).json({ message: "Error" }); }
+});
+
 router.put('/:id', async (req, res) => {
   try {
     const { auctionStatus, isIcon, soldTo, soldPrice } = req.body;

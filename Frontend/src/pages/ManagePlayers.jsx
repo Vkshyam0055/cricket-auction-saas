@@ -89,6 +89,22 @@ function ManagePlayers() {
     } catch { alert('Failed to assign Icon player.'); }
   };
 
+  const handleRemoveIcon = async (player) => {
+    const confirmRemove = window.confirm(`क्या आप ${player.name} को ICON से हटाना चाहते हैं?`);
+    if (!confirmRemove) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      await axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/players/remove-icon/${player._id}`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      alert(`✅ ${player.name} अब ICON नहीं है और वापस auction pool में आ गया है।`);
+      fetchPlayers();
+    } catch {
+      alert('ICON remove नहीं हो पाया।');
+    }
+  };
+
   const getSourceLabel = (source) => {
     if (source === 'Organizer') return 'Added by Organizer';
     return 'Public Registration';
@@ -179,6 +195,7 @@ function ManagePlayers() {
                   </td>
                   <td className="p-4 text-right space-x-2">
                     <button onClick={() => openIconModal(player)} disabled={player.isIcon || player.auctionStatus === 'Sold'} className="bg-yellow-400 text-yellow-900 px-2 py-2 rounded font-black hover:bg-yellow-500 shadow-sm disabled:opacity-30" title="Make ICON">⭐</button>
+                    <button onClick={() => handleRemoveIcon(player)} disabled={!player.isIcon} className="bg-orange-100 text-orange-700 border border-orange-300 px-2 py-2 rounded font-black hover:bg-orange-200 shadow-sm disabled:opacity-30" title="Remove ICON">⭐❌</button>
                     <button onClick={() => handleDelete(player._id, player.name)} className="bg-gray-200 text-gray-600 px-3 py-2 rounded font-bold hover:bg-red-500 hover:text-white transition shadow-sm" title="Delete">🗑️</button>
                   </td>
                 </tr>
