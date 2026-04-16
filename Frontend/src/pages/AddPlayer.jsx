@@ -5,7 +5,7 @@ import axios from 'axios';
 function AddPlayer() {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    name: '', fatherName: '', age: '', mobile: '', city: '', role: 'Batsman', basePrice: 500, photoUrl: ''
+    name: '', fatherName: '', age: '', mobile: '', city: '', role: 'Batsman', category: 'A', basePrice: 500, photoUrl: ''
   });
   const [isUploading, setIsUploading] = useState(false);
 
@@ -87,6 +87,12 @@ function AddPlayer() {
             <option value="Bowler">Bowler</option>
             <option value="All-Rounder">All-Rounder</option>
             <option value="Wicket Keeper">Wicket Keeper</option>
+          </select>
+          <select name="category" value={formData.category} onChange={handleChange} className="p-4 border-2 border-gray-200 rounded-xl bg-white font-black text-purple-700 focus:border-purple-500 outline-none">
+            <option value="A">Category A</option>
+            <option value="B">Category B</option>
+            <option value="C">Category C</option>
+            <option value="D">Category D</option>
           </select>
           <input name="basePrice" type="number" placeholder="Base Price (₹)" onChange={handleChange} className="p-4 border-2 border-gray-200 rounded-xl bg-white font-black text-green-700 focus:border-green-500 outline-none" />
           

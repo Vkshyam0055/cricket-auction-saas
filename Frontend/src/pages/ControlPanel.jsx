@@ -53,9 +53,7 @@ function ControlPanel() {
       
       const availablePlayers = playersRes.data.filter(player => 
         player.approvalStatus?.trim().toLowerCase() === 'approved' &&
-        player.auctionStatus?.trim().toLowerCase() !== 'sold' &&
-        player.auctionStatus?.trim().toLowerCase() !== 'unsold' &&
-        player.auctionStatus?.trim().toLowerCase() !== 'passed'
+        player.auctionStatus?.trim().toLowerCase() === 'readyforauction'
       );
       setPlayers(availablePlayers);
 
@@ -213,13 +211,13 @@ function ControlPanel() {
       const token = localStorage.getItem('token');
       const res = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/players', { headers: { Authorization: `Bearer ${token}` } });
       
-      const currentPendingIds = players.map(p => p._id);
-      if(currentPlayer) currentPendingIds.push(currentPlayer._id);
+      const currentReadyIds = players.map(p => p._id);
+      if(currentPlayer) currentReadyIds.push(currentPlayer._id);
 
       const passedPlayers = res.data.filter(p => 
         p.approvalStatus?.trim().toLowerCase() === 'approved' &&
         (p.auctionStatus?.trim().toLowerCase() === 'unsold' || p.auctionStatus?.trim().toLowerCase() === 'passed') &&
-        !currentPendingIds.includes(p._id)
+        !currentReadyIds.includes(p._id)
       );
 
       setUnsoldDatabase(passedPlayers);
@@ -317,7 +315,7 @@ function ControlPanel() {
       socket.emit('newLiveBid', { bidAmount: 0, teamName: '', player: null, status: 'bidding' });
 
       await fetchData(); 
-      alert("✅ 100% UNIVERSE RESET SUCCESSFUL! \n\nसभी प्लेयर अब Pending स्टेटस के साथ वापस ऑक्शन पूल में आ गए हैं।");
+      alert("✅ 100% UNIVERSE RESET SUCCESSFUL! \n\nसभी Approved प्लेयर अब ReadyForAuction स्टेटस में वापस आ गए हैं।");
 
     } catch (error) {
       console.error(error);

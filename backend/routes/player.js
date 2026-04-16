@@ -30,10 +30,11 @@ router.post('/public/:tournamentId/register', async (req, res) => {
         if (!tournament) return res.status(404).json({ message: 'टूर्नामेंट नहीं मिला' });
         if (tournament.isRegistrationOpen === false) return res.status(403).json({ message: 'रजिस्ट्रेशन बंद है।' });
 
-        const { name, fatherName, age, mobile, city, role, basePrice, photoUrl, customData } = req.body;
+        const { name, fatherName, age, mobile, city, role, category, basePrice, photoUrl, customData } = req.body;
 
         const newPlayer = new Player({
-            name, fatherName, age, mobile, city, role, basePrice, photoUrl, customData: customData || {}, 
+            name, fatherName, age, mobile, city, role, category, basePrice, photoUrl, customData: customData || {},
+            source: 'PublicRegistration',
             tournament: tournament._id, organizer: tournament.organizer
         });
         const savedPlayer = await newPlayer.save();
@@ -46,14 +47,17 @@ router.use(fetchOrganizer);
 
 router.post('/', async (req, res) => {
     try {
-        const { name, fatherName, age, mobile, city, role, basePrice, photoUrl, customData } = req.body;
+        const { name, fatherName, age, mobile, city, role, category, basePrice, photoUrl, customData } = req.body;
         let tournamentId = req.body.tournament;
         if (!tournamentId) {
             const organizerTournament = await Tournament.findOne({ organizer: req.user.id }).select('_id');
             tournamentId = organizerTournament?._id;
         }
         const newPlayer = new Player({ 
-            name, fatherName, age, mobile, city, role, basePrice, photoUrl, customData: customData || {}, 
+            name, fatherName, age, mobile, city, role, category, basePrice, photoUrl, customData: customData || {},
+            approvalStatus: 'Approved',
+            auctionStatus: 'ReadyForAuction',
+            source: 'Organizer',
             organizer: req.user.id, tournament: tournamentId || undefined
         });
         const savedPlayer = await newPlayer.save();
@@ -98,7 +102,7 @@ router.put('/undo/:id', async (req, res) => {
             const team = await Team.findOne({ teamName: player.soldTo, organizer: req.user.id });
             if (team) { team.remainingPurse += player.soldPrice; await team.save(); }
         }
-        player.auctionStatus = 'Pending'; player.soldTo = ''; player.soldPrice = 0; await player.save();
+        player.auctionStatus = 'ReadyForAuction'; player.soldTo = 'Unsold'; player.soldPrice = 0; await player.save();
         res.json({ message: "Undo Successful!", player });
     } catch (error) { res.status(500).json({ message: "एरर!" }); }
 });
@@ -113,7 +117,14 @@ router.delete('/:id', async (req, res) => {
 router.put('/approval/:id', async (req, res) => {
     try {
         const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
-        player.approvalStatus = req.body.status; await player.save();
+        if (!player) return res.status(404).json({ message: "Player not found" });
+        player.approvalStatus = req.body.status;
+        if (req.body.status === 'Approved') {
+            player.auctionStatus = 'ReadyForAuction';
+            if (!player.soldTo) player.soldTo = 'Unsold';
+            player.soldPrice = 0;
+        }
+        await player.save();
         res.json({ message: "Status Updated", player });
     } catch (error) { res.status(500).json({ message: "Error" }); }
 });
