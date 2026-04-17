@@ -10,7 +10,7 @@ const PLAN_POLICIES = {
 };
 
 const normalizePlanName = (planName = 'Free') => {
-  if (['Pro', 'Pro Plan', 'Premium', 'Premium Plan'].includes(planName)) return 'Pro';
+  if (['Pro', 'Pro Plan'].includes(planName)) return 'Pro';
   if (['Basic', 'Basic Plan'].includes(planName)) return 'Basic';
   return 'Free';
 };

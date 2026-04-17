@@ -3,6 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { resolveEffectivePlan } = require('../utils/planPolicy');
 
 // 1. आयोजक का रजिस्ट्रेशन
 router.post('/register', async (req, res) => {
@@ -63,13 +64,7 @@ router.post('/login', async (req, res) => {
 
         const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
-        const normalizedPlan = (() => {
-            if (user.role === 'SuperAdmin') return 'Pro';
-            if (user.plan === 'Premium' || user.plan === 'Premium Plan') return 'Pro';
-            if (user.plan === 'Basic Plan') return 'Basic';
-            if (user.plan === 'Free Plan') return 'Free';
-            return user.plan || 'Basic';
-        })();
+        const normalizedPlan = resolveEffectivePlan(user);
 
         res.json({ 
             message: "लॉगिन सफल!", token, 

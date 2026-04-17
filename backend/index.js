@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 
 const http = require('http');
 const { Server } = require('socket.io');
@@ -16,15 +17,29 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
+io.use((socket, next) => {
+    try {
+        const token = socket.handshake.auth?.token;
+        if (!token) return next(new Error('Unauthorized'));
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        socket.organizerId = decoded.id;
+        next();
+    } catch (error) {
+        next(new Error('Unauthorized'));
+    }
+});
+
 io.on('connection', (socket) => {
-    console.log('⚡ एक नया टीवी या कंट्रोल पैनल जुड़ गया है!');
+    const room = `organizer:${socket.organizerId}`;
+    socket.join(room);
+    console.log(`⚡ organizer ${socket.organizerId} connected to live socket`);
 
     socket.on('newLiveBid', (data) => {
-        io.emit('updateAudienceScreen', data); 
+        io.to(room).emit('updateAudienceScreen', data); 
     });
 
     socket.on('disconnect', () => {
-        console.log('❌ टीवी या कंट्रोल पैनल डिसकनेक्ट हो गया');
+        console.log(`❌ organizer ${socket.organizerId} disconnected from live socket`);
     });
 });
 

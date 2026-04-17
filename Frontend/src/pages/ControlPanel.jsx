@@ -1,14 +1,13 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 import { TournamentContext } from '../context/TournamentContext';
 
-const socket = io('https://cricket-auction-backend-h8ud.onrender.com');
-
 function ControlPanel() {
   const navigate = useNavigate();
   const { tournament } = useContext(TournamentContext);
+  const socketRef = useRef(null);
 
   const [players, setPlayers] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -69,9 +68,23 @@ function ControlPanel() {
   }, []);
 
   useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    const socket = io('https://cricket-auction-backend-h8ud.onrender.com', {
+      auth: { token }
+    });
+    socketRef.current = socket;
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
     const syncInterval = setInterval(() => {
-      if (currentPlayer) {
-        socket.emit('newLiveBid', { bidAmount: currentBid, teamName: biddingTeam, player: currentPlayer, status: playerStatus });
+      if (currentPlayer && socketRef.current) {
+        socketRef.current.emit('newLiveBid', { bidAmount: currentBid, teamName: biddingTeam, player: currentPlayer, status: playerStatus });
       }
     }, 2000);
     return () => clearInterval(syncInterval);
@@ -110,7 +123,7 @@ function ControlPanel() {
     setCustomBid('');
     setPlayerStatus('bidding');
     
-    socket.emit('newLiveBid', { bidAmount: selected.basePrice, teamName: '', player: selected, status: 'bidding' });
+    socketRef.current?.emit('newLiveBid', { bidAmount: selected.basePrice, teamName: '', player: selected, status: 'bidding' });
   };
 
   const handleResetBid = () => {
@@ -119,7 +132,7 @@ function ControlPanel() {
     
     setCurrentBid(currentPlayer.basePrice);
     setBiddingTeam('');
-    socket.emit('newLiveBid', { bidAmount: currentPlayer.basePrice, teamName: '', player: currentPlayer, status: playerStatus });
+    socketRef.current?.emit('newLiveBid', { bidAmount: currentPlayer.basePrice, teamName: '', player: currentPlayer, status: playerStatus });
   };
 
   const updateBid = (teamName, amount, isJump = false) => {
@@ -137,7 +150,7 @@ function ControlPanel() {
     
     setCurrentBid(newBidAmount);
     setBiddingTeam(teamName);
-    socket.emit('newLiveBid', { bidAmount: newBidAmount, teamName: teamName, player: currentPlayer, status: playerStatus });
+    socketRef.current?.emit('newLiveBid', { bidAmount: newBidAmount, teamName: teamName, player: currentPlayer, status: playerStatus });
   };
 
   const handleCustomBidSubmit = () => {
@@ -168,7 +181,7 @@ function ControlPanel() {
       }
 
       setPlayerStatus(status.toLowerCase());
-      socket.emit('newLiveBid', { bidAmount: currentBid, teamName: biddingTeam, player: currentPlayer, status: status.toLowerCase() }); 
+      socketRef.current?.emit('newLiveBid', { bidAmount: currentBid, teamName: biddingTeam, player: currentPlayer, status: status.toLowerCase() }); 
     } catch (error) { alert("एरर! तकनीकी खराबी आ गई है।"); }
   };
 
@@ -196,7 +209,7 @@ function ControlPanel() {
     setPlayers(snap.players);
     setTeams(snap.teams);
     
-    socket.emit('newLiveBid', { 
+    socketRef.current?.emit('newLiveBid', { 
         bidAmount: snap.currentBid || 0, 
         teamName: snap.biddingTeam || '',
         player: snap.currentPlayer,
@@ -326,7 +339,7 @@ function ControlPanel() {
       localStorage.removeItem('biddingTeam');
       localStorage.removeItem('playerStatus');
 
-      socket.emit('newLiveBid', { bidAmount: 0, teamName: '', player: null, status: 'bidding' });
+      socketRef.current?.emit('newLiveBid', { bidAmount: 0, teamName: '', player: null, status: 'bidding' });
 
       await fetchData(); 
       alert("✅ 100% UNIVERSE RESET SUCCESSFUL! \n\nसभी Approved प्लेयर अब ReadyForAuction स्टेटस में वापस आ गए हैं।");

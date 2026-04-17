@@ -5,7 +5,7 @@ const userSchema = new mongoose.Schema({
     phone: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     role: { type: String, default: 'Organizer' }, 
-    plan: { type: String, default: 'Basic' }, 
+    plan: { type: String, enum: ['Free', 'Basic', 'Pro'], default: 'Basic' }, 
     isActive: { type: Boolean, default: true },
     isLifetimeFree: { type: Boolean, default: false },
     maxDevicesAllowed: { type: Number, default: 1 },

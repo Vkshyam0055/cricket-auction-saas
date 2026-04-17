@@ -206,7 +206,7 @@ function SuperAdmin() {
             <h2 className="text-2xl font-black mb-6 flex justify-between items-center">⚙️ Client Settings <button onClick={() => setIsEditModalOpen(false)} className="text-gray-400">&times;</button></h2>
             <form onSubmit={handleUpdateUser} className="space-y-5">
               <select value={editForm.plan} onChange={(e) => setEditForm({...editForm, plan: e.target.value})} className="w-full p-4 border-2 rounded-2xl font-bold bg-gray-50 outline-none focus:border-blue-500 transition-all">
-                <option value="Basic">Basic Plan</option><option value="Pro">Pro Plan</option><option value="Premium">Premium Plan</option>
+                <option value="Free">Free Plan</option><option value="Basic">Basic Plan</option><option value="Pro">Pro Plan</option>
               </select>
               <input type="number" value={editForm.maxDevicesAllowed} onChange={(e) => setEditForm({...editForm, maxDevicesAllowed: e.target.value})} className="w-full p-4 border-2 rounded-2xl font-black text-blue-700 bg-gray-50 outline-none" placeholder="Max Devices" />
               <label className="flex items-center space-x-3 p-4 bg-red-50 rounded-2xl border-2 border-red-100 cursor-pointer">

@@ -7,9 +7,9 @@ function LandingPage() {
   
   // 🌟 स्मार्ट फॉलबैक: जब तक बैकएंड से डेटा नहीं आता, तब तक डिफ़ॉल्ट दिखेगा
   const [plans, setPlans] = useState([
-    { _id: '1', name: 'Basic', price: 499, subtitle: 'छोटी लीग और क्लब्स के लिए', features: ['Up to 50 Players', 'Unlimited Teams', 'Live Projector Screen'] },
-    { _id: '2', name: 'Pro', price: 999, subtitle: 'प्रोफेशनल टूर्नामेंट्स के लिए', isPopular: true, features: ['Up to 200 Players', 'Unlimited Teams', 'Live Projector Screen', 'Public Registration Link'] },
-    { _id: '3', name: 'Premium', price: 1999, subtitle: 'बड़ी लीग और अनलिमिटेड यूज़', features: ['Unlimited Players', 'Unlimited Teams', 'Custom Branding & Logo', 'Priority Support'] }
+    { _id: '1', name: 'Free', price: 0, subtitle: 'शुरुआती ट्रायल और छोटे ऑक्शन के लिए', features: ['Up to 3 Teams', 'Manual Player Entry', 'No Public Registration Link'] },
+    { _id: '2', name: 'Basic', price: 499, subtitle: 'छोटी लीग और क्लब्स के लिए', features: ['Up to 8 Teams', 'Live Projector Screen', 'View Teams Enabled'] },
+    { _id: '3', name: 'Pro', price: 999, subtitle: 'प्रोफेशनल टूर्नामेंट्स के लिए', isPopular: true, features: ['Unlimited Teams', 'Live Projector Screen', 'Public Registration Link'] }
   ]);
 
   // 🌟 डेटाबेस से लाइव प्लान्स मंगाना
@@ -110,17 +110,17 @@ function LandingPage() {
                   <button onClick={() => navigate('/auth')} className="w-full py-3 rounded-xl font-black text-blue-900 bg-yellow-400 hover:bg-yellow-300 shadow-lg transition">Get Started</button>
                 </div>
               ) : (
-                /* 🌟 Basic & Premium Plans 🌟 */
+                /* 🌟 Free & Basic Plans 🌟 */
                 <div key={plan._id} className="bg-white p-8 rounded-3xl shadow-lg border border-gray-200 flex flex-col">
                   <h4 className="text-2xl font-black text-gray-800 mb-2">{plan.name}</h4>
                   <p className="text-gray-500 font-medium mb-6">{plan.subtitle}</p>
-                  <div className={`text-4xl font-black mb-6 ${plan.name === 'Premium' ? 'text-purple-600' : 'text-blue-600'}`}>₹{plan.price} <span className="text-lg text-gray-400 font-medium">/tourney</span></div>
+                  <div className="text-4xl font-black mb-6 text-blue-600">₹{plan.price} <span className="text-lg text-gray-400 font-medium">/tourney</span></div>
                   <ul className="space-y-4 mb-8 flex-1">
                     {plan.features.map((feature, index) => (
                       <li key={index} className="flex items-center font-bold text-gray-700"><span className="mr-2 text-green-500">✔</span> {feature}</li>
                     ))}
                   </ul>
-                  <button onClick={() => navigate('/auth')} className={`w-full py-3 rounded-xl font-black transition ${plan.name === 'Premium' ? 'text-purple-600 bg-purple-50 border-2 border-purple-200 hover:bg-purple-100' : 'text-blue-600 bg-blue-50 border-2 border-blue-200 hover:bg-blue-100'}`}>Get Started</button>
+                  <button onClick={() => navigate('/auth')} className="w-full py-3 rounded-xl font-black transition text-blue-600 bg-blue-50 border-2 border-blue-200 hover:bg-blue-100">Get Started</button>
                 </div>
               )
             ))}

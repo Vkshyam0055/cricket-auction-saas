@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client'; 
 import { TournamentContext } from '../context/TournamentContext'; 
 
-const socket = io('https://cricket-auction-backend-h8ud.onrender.com'); 
-
 function LiveScreen() {
   const navigate = useNavigate();
   const { tournament } = useContext(TournamentContext);
@@ -15,6 +13,12 @@ function LiveScreen() {
   const [playerStatus, setPlayerStatus] = useState('bidding'); // नया स्टेटस
 
   useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    const socket = io('https://cricket-auction-backend-h8ud.onrender.com', {
+      auth: { token }
+    });
+
     socket.on('updateAudienceScreen', (data) => {
       setLiveBid(data.bidAmount);
       setLiveTeam(data.teamName);
@@ -30,6 +34,7 @@ function LiveScreen() {
 
     return () => {
       socket.off('updateAudienceScreen');
+      socket.disconnect();      
     };
   }, []);
 

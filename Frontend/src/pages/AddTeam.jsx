@@ -5,7 +5,7 @@ import { TournamentContext } from '../context/TournamentContext';
 
 const PLAN_TEAM_LIMITS = { Free: 3, Basic: 8, Pro: -1 };
 const normalizePlanName = (planName = 'Free') => {
-  if (['Pro', 'Pro Plan', 'Premium', 'Premium Plan'].includes(planName)) return 'Pro';
+  if (['Pro', 'Pro Plan'].includes(planName)) return 'Pro';
   if (['Basic', 'Basic Plan'].includes(planName)) return 'Basic';
   return 'Free';
 };
@@ -96,8 +96,27 @@ function AddTeam() {
     setBudget(team.totalPurse);
     setOwnerName(team.ownerName || '');
     setMobile(team.mobile || '');
-    setLogoUrl(team.logo || '');
+    setLogoUrl(team.logoUrl || team.logo || '');
     window.scrollTo(0, 0);
+  };
+
+  const handleDeleteTeam = async (team) => {
+    const confirmDelete = window.confirm(`क्या आप '${team.teamName}' टीम को डिलीट करना चाहते हैं?`);
+    if (!confirmDelete) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`${API_BASE_URL}/teams/${team._id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (isEditing && editTeamId === team._id) {
+        resetForm();
+      }
+      fetchTeams();
+      alert('Team deleted successfully! 🗑️');
+    } catch (error) {
+      alert(error.response?.data?.message || 'Team delete failed!');
+    }
   };
 
   const resetForm = () => {
@@ -180,7 +199,10 @@ function AddTeam() {
                   <h3 className="font-black text-xl text-gray-800">{team.teamName}</h3>
                   <p className="font-bold text-green-600 text-sm">Purse: ₹{team.remainingPurse?.toLocaleString()}</p>
                 </div>
-                <button onClick={() => handleEditClick(team)} className="bg-blue-100 text-blue-700 p-2 rounded-lg font-bold hover:bg-blue-200">Edit</button>
+                <div className="flex gap-2">
+                  <button onClick={() => handleEditClick(team)} className="bg-blue-100 text-blue-700 p-2 rounded-lg font-bold hover:bg-blue-200">Edit</button>
+                  <button onClick={() => handleDeleteTeam(team)} className="bg-red-100 text-red-700 p-2 rounded-lg font-bold hover:bg-red-200">Delete</button>
+                </div>
               </div>
             ))}
           </div>

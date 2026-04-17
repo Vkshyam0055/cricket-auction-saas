@@ -4,7 +4,9 @@ const router = express.Router();
 const Player = require('../models/Player'); 
 const Team = require('../models/Team'); 
 const Tournament = require('../models/Tournament');
+const User = require('../models/User');
 const fetchOrganizer = require('../middleware/fetchOrganizer');
+const { getPolicyByPlanName, resolveEffectivePlan } = require('../utils/planPolicy');
 
 // === PUBLIC ROUTES ===
 router.get('/public/:tournamentId', async (req, res) => {
@@ -15,6 +17,13 @@ router.get('/public/:tournamentId', async (req, res) => {
         // 🌟 FIX: tournamentPoster ko select list me joda
         const tournament = await Tournament.findById(tournamentId).select('name logoUrl tournamentPoster isRegistrationOpen organizer customFields upiQrUrl upiId paymentMessage');
         if (!tournament) return res.status(404).json({ message: 'टूर्नामेंट नहीं मिला' });
+
+        const organizer = await User.findById(tournament.organizer).select('plan role').lean();
+        const organizerPlan = resolveEffectivePlan(organizer);
+        const policy = getPolicyByPlanName(organizerPlan);
+        if (!policy.canPublicRegistration) {
+            return res.status(403).json({ message: 'यह फीचर आपके आयोजक प्लान में उपलब्ध नहीं है।' });
+        }
         
         if (tournament.isRegistrationOpen === false) {
             return res.status(403).json({ message: 'आयोजक ने रजिस्ट्रेशन बंद कर दिया है।' });
@@ -28,6 +37,14 @@ router.post('/public/:tournamentId/register', async (req, res) => {
         const { tournamentId } = req.params;
         const tournament = await Tournament.findById(tournamentId).select('_id organizer isRegistrationOpen');
         if (!tournament) return res.status(404).json({ message: 'टूर्नामेंट नहीं मिला' });
+
+        const organizer = await User.findById(tournament.organizer).select('plan role').lean();
+        const organizerPlan = resolveEffectivePlan(organizer);
+        const policy = getPolicyByPlanName(organizerPlan);
+        if (!policy.canPublicRegistration) {
+            return res.status(403).json({ message: 'यह फीचर आपके आयोजक प्लान में उपलब्ध नहीं है।' });
+        }
+
         if (tournament.isRegistrationOpen === false) return res.status(403).json({ message: 'रजिस्ट्रेशन बंद है।' });
 
         const { name, fatherName, age, mobile, city, role, category, basePrice, photoUrl, customData } = req.body;
@@ -77,10 +94,28 @@ router.put('/sell/:id', async (req, res) => {
         const { teamName, soldPrice } = req.body;
         const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
         if(!player) return res.status(404).json({ message: "Player not found" });
-        player.soldTo = teamName; player.soldPrice = Number(soldPrice); player.auctionStatus = 'Sold';
-        await player.save();
         const team = await Team.findOne({ teamName: teamName, organizer: req.user.id });
-        if (team) { team.remainingPurse -= Number(soldPrice); await team.save(); }
+        if (!team) return res.status(404).json({ message: "Team not found" });
+
+        if (player.approvalStatus !== 'Approved' || player.auctionStatus !== 'ReadyForAuction' || player.isIcon) {
+            return res.status(409).json({ message: "Player is not eligible to be sold right now" });
+        }
+
+        const numericSoldPrice = Number(soldPrice);
+        if (!Number.isFinite(numericSoldPrice) || numericSoldPrice <= 0) {
+            return res.status(400).json({ message: "Invalid sold price" });
+        }
+        if (numericSoldPrice > team.remainingPurse) {
+            return res.status(400).json({ message: "Insufficient team purse" });
+        }
+
+        player.soldTo = teamName;
+        player.soldPrice = numericSoldPrice;
+        player.auctionStatus = 'Sold';
+        await player.save();
+
+        team.remainingPurse -= numericSoldPrice;
+        await team.save();
         res.json({ message: "खिलाड़ी बिक गया!", player });
     } catch (error) { res.status(500).json({ message: "एरर!" }); }
 });
@@ -132,7 +167,10 @@ router.put('/approval/:id', async (req, res) => {
 router.put('/update-price/:id', async (req, res) => {
     try {
         const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
-        player.basePrice = Number(req.body.basePrice); await player.save();
+        if (!player) return res.status(404).json({ message: "Player not found" });
+        const basePrice = Number(req.body.basePrice);
+        if (!Number.isFinite(basePrice) || basePrice < 0) return res.status(400).json({ message: "Invalid base price" });
+        player.basePrice = basePrice; await player.save();
         res.json({ message: "Price Updated", player });
     } catch (error) { res.status(500).json({ message: "Error" }); }
 });
@@ -141,9 +179,24 @@ router.put('/make-icon/:id', async (req, res) => {
     try {
         const { teamName, iconPrice } = req.body;
         const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
-        player.soldTo = teamName; player.soldPrice = Number(iconPrice); player.auctionStatus = 'Icon'; player.isIcon = true; player.approvalStatus = 'Approved'; await player.save();
+        if (!player) return res.status(404).json({ message: "Player not found" });
+        if (player.auctionStatus === 'Sold' || player.isIcon) return res.status(409).json({ message: "Player already sold/icon" });
+
         const team = await Team.findOne({ teamName: teamName, organizer: req.user.id });
-        if (team) { team.remainingPurse -= Number(iconPrice); await team.save(); }
+        if (!team) return res.status(404).json({ message: "Team not found" });
+        const numericIconPrice = Number(iconPrice);
+        if (!Number.isFinite(numericIconPrice) || numericIconPrice < 0) return res.status(400).json({ message: "Invalid icon price" });
+        if (numericIconPrice > team.remainingPurse) return res.status(400).json({ message: "Insufficient team purse" });
+
+        player.soldTo = teamName;
+        player.soldPrice = numericIconPrice;
+        player.auctionStatus = 'Icon';
+        player.isIcon = true;
+        player.approvalStatus = 'Approved';
+        await player.save();
+
+        team.remainingPurse -= numericIconPrice;
+        await team.save();
         res.json({ message: "Icon Assigned!", player });
     } catch (error) { res.status(500).json({ message: "Error" }); }
 });
@@ -169,17 +222,6 @@ router.put('/remove-icon/:id', async (req, res) => {
 
         res.json({ message: "Icon removed successfully!", player });
     } catch (error) { res.status(500).json({ message: "Error" }); }
-});
-
-router.put('/:id', async (req, res) => {
-  try {
-    const { auctionStatus, isIcon, soldTo, soldPrice } = req.body;
-    const updatedPlayer = await Player.findOneAndUpdate(
-      { _id: req.params.id, organizer: req.user.id },
-      { auctionStatus, isIcon, soldTo, soldPrice }, { new: true }
-    );
-    res.status(200).json(updatedPlayer);
-  } catch (error) { res.status(500).json({ message: "एरर!" }); }
 });
 
 module.exports = router;

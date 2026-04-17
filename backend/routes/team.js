@@ -2,27 +2,11 @@ const express = require('express');
 const Team = require('../models/Team');
 const User = require('../models/User');
 const fetchOrganizer = require('../middleware/fetchOrganizer');
+const { getPolicyByPlanName, resolveEffectivePlan } = require('../utils/planPolicy');
 
 const router = express.Router();
 
 router.use(fetchOrganizer);
-
-const PLAN_TEAM_LIMITS = {
-  Free: 3,
-  Basic: 8,
-  Pro: -1
-};
-
-const normalizePlanName = (planName = 'Free') => {
-  if (planName === 'Free Plan') return 'Free';
-  if (planName === 'Basic Plan') return 'Basic';
-  if (planName === 'Pro Plan') return 'Pro';
-  if (planName === 'Premium') return 'Pro';
-  if (planName === 'Premium Plan') return 'Pro';
-  return Object.prototype.hasOwnProperty.call(PLAN_TEAM_LIMITS, planName) ? planName : 'Free';
-};
-
-const getTeamLimitByPlan = (planName = 'Free') => PLAN_TEAM_LIMITS[normalizePlanName(planName)];
 
 const buildTeamPayload = ({ teamName, totalPurse, ownerName, mobile, logoUrl, organizerId }) => ({
   teamName,
@@ -31,6 +15,7 @@ const buildTeamPayload = ({ teamName, totalPurse, ownerName, mobile, logoUrl, or
   ownerName,
   mobile,
   logoUrl,
+  logo: logoUrl,
   organizer: organizerId
 });
 
@@ -58,8 +43,8 @@ router.post('/', async (req, res) => {
     }
 
     const organizer = await User.findById(req.user.id).select('plan').lean();
-    const organizerPlan = normalizePlanName(organizer?.plan);
-    const teamLimit = getTeamLimitByPlan(organizerPlan);
+    const organizerPlan = resolveEffectivePlan(organizer);
+    const teamLimit = getPolicyByPlanName(organizerPlan).teamLimit;
 
     if (teamLimit !== -1) {
       const currentTeamCount = await Team.countDocuments({ organizer: req.user.id });
@@ -94,7 +79,7 @@ router.put('/:id', async (req, res) => {
 
     const updatedTeam = await Team.findOneAndUpdate(
       { _id: req.params.id, organizer: req.user.id },
-      { teamName, totalPurse, remainingPurse, ownerName, mobile, logoUrl },
+      { teamName, totalPurse, remainingPurse, ownerName, mobile, logoUrl, logo: logoUrl || '' },
       { new: true }
     );
 
@@ -106,6 +91,24 @@ router.put('/:id', async (req, res) => {
   } catch (error) {
     console.error('Team update error:', error.message);
     return res.status(500).json({ message: 'एरर: टीम अपडेट नहीं हो पाई।' });
+  }
+});
+
+router.delete('/:id', async (req, res) => {
+  try {
+    const deletedTeam = await Team.findOneAndDelete({
+      _id: req.params.id,
+      organizer: req.user.id
+    });
+
+    if (!deletedTeam) {
+      return res.status(404).json({ message: 'टीम नहीं मिली।' });
+    }
+
+    return res.json({ message: 'टीम डिलीट हो गई।', team: deletedTeam });
+  } catch (error) {
+    console.error('Team delete error:', error.message);
+    return res.status(500).json({ message: 'एरर: टीम डिलीट नहीं हो पाई।' });
   }
 });
 
