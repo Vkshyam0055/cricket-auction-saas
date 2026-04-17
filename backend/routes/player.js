@@ -175,6 +175,19 @@ router.put('/update-price/:id', async (req, res) => {
     } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
+router.put('/update-category/:id', async (req, res) => {
+    try {
+        const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
+        if (!player) return res.status(404).json({ message: "Player not found" });
+
+        const category = typeof req.body.category === 'string' ? req.body.category.trim() : '';
+        player.category = category;
+        await player.save();
+
+        res.json({ message: "Category Updated", player });
+    } catch (error) { res.status(500).json({ message: "Error" }); }
+});
+
 router.put('/make-icon/:id', async (req, res) => {
     try {
         const { teamName, iconPrice } = req.body;

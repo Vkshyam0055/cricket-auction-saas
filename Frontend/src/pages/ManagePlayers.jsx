@@ -52,6 +52,22 @@ function ManagePlayers() {
     } catch { alert('Error updating price'); }
   };
 
+  const handleCategoryUpdate = async (id, newCategory) => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.put(
+        `https://cricket-auction-backend-h8ud.onrender.com/api/players/update-category/${id}`,
+        { category: newCategory },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setPlayers(prev =>
+        prev.map(player => (player._id === id ? { ...player, category: newCategory } : player))
+      );
+    } catch {
+      alert('Error updating category');
+    }
+  };
+
   const handleDelete = async (id, name) => {
     if (window.confirm(`क्या आप सच में '${name}' को डिलीट करना चाहते हैं?`)) {
       try {
@@ -175,7 +191,16 @@ function ManagePlayers() {
                     <p className="font-bold text-blue-700">{player.role}</p>
                     <p className="text-sm text-gray-500 font-medium">📍 {player.city || 'N/A'}</p>
                   </td>
-                  <td className="p-4 font-bold text-purple-700">{player.category || '-'}</td>
+                  <td className="p-4">
+                    <input
+                      type="text"
+                      defaultValue={player.category || ''}
+                      placeholder="Category"
+                      onBlur={(e) => handleCategoryUpdate(player._id, e.target.value)}
+                      className="w-full p-2 border-2 rounded bg-white focus:border-indigo-500 outline-none font-bold text-purple-700"
+                      disabled={player.isIcon || player.auctionStatus === 'Sold'}
+                    />
+                  </td>
                   <td className="p-4 font-bold text-gray-700">{getSourceLabel(player.source)}</td>
                   <td className="p-4">
                     <input type="number" defaultValue={player.basePrice} onBlur={(e) => handlePriceUpdate(player._id, e.target.value)} className="w-full p-2 border-2 rounded bg-white focus:border-indigo-500 outline-none font-bold text-green-700" disabled={player.isIcon || player.auctionStatus === 'Sold'} />

@@ -16,7 +16,10 @@ function ControlPanel() {
   const [currentBid, setCurrentBid] = useState(() => Number(localStorage.getItem('currentBid')) || 0);
   const [biddingTeam, setBiddingTeam] = useState(() => localStorage.getItem('biddingTeam') || '');
   const [playerStatus, setPlayerStatus] = useState(() => localStorage.getItem('playerStatus') || 'bidding');
-  const [customBid, setCustomBid] = useState(''); 
+  const [customBid, setCustomBid] = useState('');
+  const [hasBiddingStarted, setHasBiddingStarted] = useState(() => localStorage.getItem('hasBiddingStarted') === 'true');
+  const [playerOrderMode, setPlayerOrderMode] = useState(() => localStorage.getItem('playerOrderMode') || 'all-random');
+  const [categoryOrder, setCategoryOrder] = useState(() => JSON.parse(localStorage.getItem('categoryOrder') || '[]'));   
 
   const [actionHistory, setActionHistory] = useState([]);
   const [showResultsModal, setShowResultsModal] = useState(false);
@@ -41,7 +44,15 @@ function ControlPanel() {
     localStorage.setItem('currentBid', currentBid);
     localStorage.setItem('biddingTeam', biddingTeam);
     localStorage.setItem('playerStatus', playerStatus);
-  }, [currentPlayer, currentBid, biddingTeam, playerStatus]);
+    localStorage.setItem('hasBiddingStarted', String(hasBiddingStarted));
+    localStorage.setItem('playerOrderMode', playerOrderMode);
+    localStorage.setItem('categoryOrder', JSON.stringify(categoryOrder));
+  }, [currentPlayer, currentBid, biddingTeam, playerStatus, hasBiddingStarted, playerOrderMode, categoryOrder]);
+
+  const normalizeCategory = (category) => {
+    const value = String(category || '').trim();
+    return value || 'Uncategorized';
+  };
 
   const fetchData = async () => {
     try {
@@ -55,6 +66,13 @@ function ControlPanel() {
         player.auctionStatus?.trim().toLowerCase() === 'readyforauction'
       );
       setPlayers(availablePlayers);
+      setCategoryOrder((prev) => {
+        const categories = Array.from(new Set(availablePlayers.map((player) => normalizeCategory(player.category))));
+        if (categories.length === 0) return [];
+        const preserved = prev.filter((category) => categories.includes(category));
+        const missing = categories.filter((category) => !preserved.includes(category));
+        return [...preserved, ...missing];
+      });      
 
       const teamsRes = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/teams', { headers });
       setTeams(teamsRes.data);
@@ -106,6 +124,11 @@ function ControlPanel() {
   };
 
   const pickRandomPlayer = () => {
+    if (currentPlayer && playerStatus === 'bidding' && hasBiddingStarted) {
+      alert("बिडिंग शुरू होने के बाद खिलाड़ी बदला नहीं जा सकता। पहले SOLD करें।");
+      return;
+    }
+
     const availablePlayers = players.filter(p => p._id !== currentPlayer?._id);
     if (availablePlayers.length === 0) {
       alert("ऑक्शन के लिए कोई नया खिलाड़ी नहीं बचा है!");
@@ -114,13 +137,28 @@ function ControlPanel() {
     
     saveStateToHistory('PICK_PLAYER'); 
 
-    const randomIndex = Math.floor(Math.random() * availablePlayers.length);
-    const selected = availablePlayers[randomIndex];
+    let selectionPool = availablePlayers;
+    if (playerOrderMode === 'category-random') {
+      const fallbackOrder = Array.from(new Set(availablePlayers.map((player) => normalizeCategory(player.category))));
+      const effectiveOrder = categoryOrder.length > 0 ? categoryOrder : fallbackOrder;
+      const activeCategory = effectiveOrder.find((category) =>
+        availablePlayers.some((player) => normalizeCategory(player.category) === category)
+      );
+      if (!activeCategory) {
+        alert("चुनी गई कैटेगरी में कोई खिलाड़ी उपलब्ध नहीं है।");
+        return;
+      }
+      selectionPool = availablePlayers.filter((player) => normalizeCategory(player.category) === activeCategory);
+    }
+
+    const randomIndex = Math.floor(Math.random() * selectionPool.length);
+    const selected = selectionPool[randomIndex];      
     
     setCurrentPlayer(selected);
     setCurrentBid(selected.basePrice);
     setBiddingTeam('');
     setCustomBid('');
+    setHasBiddingStarted(false);    
     setPlayerStatus('bidding');
     
     socketRef.current?.emit('newLiveBid', { bidAmount: selected.basePrice, teamName: '', player: selected, status: 'bidding' });
@@ -150,6 +188,7 @@ function ControlPanel() {
     
     setCurrentBid(newBidAmount);
     setBiddingTeam(teamName);
+    setHasBiddingStarted(true);    
     socketRef.current?.emit('newLiveBid', { bidAmount: newBidAmount, teamName: teamName, player: currentPlayer, status: playerStatus });
   };
 
@@ -163,6 +202,7 @@ function ControlPanel() {
 
   const finalizePlayer = async (status) => {
     if (status === 'Sold' && !biddingTeam) { alert("टीम सेलेक्ट करें!"); return; }
+    if (status === 'Unsold' && hasBiddingStarted) { alert("बिडिंग शुरू होने के बाद खिलाड़ी को Unsold नहीं कर सकते।"); return; }    
     
     saveStateToHistory(status.toUpperCase(), currentPlayer); 
 
@@ -181,6 +221,7 @@ function ControlPanel() {
       }
 
       setPlayerStatus(status.toLowerCase());
+      setHasBiddingStarted(false);      
       socketRef.current?.emit('newLiveBid', { bidAmount: currentBid, teamName: biddingTeam, player: currentPlayer, status: status.toLowerCase() }); 
     } catch (error) { alert("एरर! तकनीकी खराबी आ गई है।"); }
   };
@@ -206,6 +247,7 @@ function ControlPanel() {
     setCurrentBid(snap.currentBid);
     setBiddingTeam(snap.biddingTeam);
     setPlayerStatus(snap.playerStatus);
+    setHasBiddingStarted(Boolean(snap.biddingTeam));    
     setPlayers(snap.players);
     setTeams(snap.teams);
     
@@ -332,12 +374,14 @@ function ControlPanel() {
       setCurrentBid(0);
       setBiddingTeam('');
       setPlayerStatus('bidding');
+      setHasBiddingStarted(false);      
       setActionHistory([]);
       
       localStorage.removeItem('currentPlayer');
       localStorage.removeItem('currentBid');
       localStorage.removeItem('biddingTeam');
       localStorage.removeItem('playerStatus');
+      localStorage.removeItem('hasBiddingStarted');      
 
       socketRef.current?.emit('newLiveBid', { bidAmount: 0, teamName: '', player: null, status: 'bidding' });
 
@@ -349,6 +393,12 @@ function ControlPanel() {
       alert("एरर: रीसेट करने में दिक्कत आई।");
     }
   };
+
+  const categoriesFromPlayers = Array.from(new Set(players.map((player) => normalizeCategory(player.category))));
+  const effectiveCategoryOrder = categoryOrder.length > 0 ? categoryOrder : categoriesFromPlayers;
+  const activeCategory = effectiveCategoryOrder.find((category) =>
+    players.some((player) => normalizeCategory(player.category) === category)
+  );
 
   return (
     <div className="min-h-screen bg-gray-200">
@@ -379,7 +429,49 @@ function ControlPanel() {
       <div className="p-4 lg:p-6 max-w-[1500px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
         
         <div className="lg:col-span-4 bg-white rounded-2xl shadow-xl p-5 border-t-8 border-blue-600 h-fit flex flex-col relative">
-          <button onClick={pickRandomPlayer} className={`w-full text-white font-black text-lg py-3 rounded-xl shadow-[0_4px_0_0_rgba(67,56,202,1)] active:translate-y-1 transition-all mb-5 ${playerStatus !== 'bidding' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
+          <div className="mb-4 p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
+            <p className="text-xs font-black uppercase tracking-wider text-indigo-700 mb-2">Player Order</p>
+            <select
+              value={playerOrderMode}
+              onChange={(e) => setPlayerOrderMode(e.target.value)}
+              className="w-full p-2 rounded-lg border-2 border-indigo-200 font-bold text-indigo-800 outline-none focus:border-indigo-400"
+            >
+              <option value="all-random">All Players Random</option>
+              <option value="category-random">Category-wise Random</option>
+            </select>
+
+            {playerOrderMode === 'category-random' && (
+              <>
+                <p className="text-xs text-indigo-700 font-bold mt-3 mb-1">
+                  Order: {effectiveCategoryOrder.length > 0 ? effectiveCategoryOrder.join(' → ') : '-'}
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {categoriesFromPlayers.map((category) => (
+                    <button
+                      key={category}
+                      onClick={() =>
+                        setCategoryOrder((prev) => [
+                          category,
+                          ...prev.filter((item) => item !== category),
+                          ...categoriesFromPlayers.filter((item) => item !== category && !prev.includes(item))
+                        ])
+                      }
+                      className="px-2 py-1 text-xs rounded border bg-white font-bold text-indigo-700 hover:bg-indigo-100"
+                    >
+                      Start with {category}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] mt-2 font-semibold text-indigo-600">Active Category: {activeCategory || '-'}</p>
+              </>
+            )}
+          </div>
+
+          <button
+            onClick={pickRandomPlayer}
+            disabled={Boolean(currentPlayer && playerStatus === 'bidding' && hasBiddingStarted)}
+            className={`w-full text-white font-black text-lg py-3 rounded-xl shadow-[0_4px_0_0_rgba(67,56,202,1)] active:translate-y-1 transition-all mb-5 disabled:opacity-40 disabled:cursor-not-allowed ${playerStatus !== 'bidding' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+          >
             {playerStatus !== 'bidding' ? '📸 BRING NEXT PLAYER' : `🎲 NEXT RANDOM PLAYER (${players.length} Left)`}
           </button>
 
@@ -402,6 +494,10 @@ function ControlPanel() {
                   <span className="text-gray-500 font-bold text-sm uppercase">Role</span>
                   <span className="text-lg font-black text-blue-700">{currentPlayer.role}</span>
                 </div>
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="text-gray-500 font-bold text-sm uppercase">Category</span>
+                  <span className="text-lg font-black text-purple-700">{normalizeCategory(currentPlayer.category)}</span>
+                </div>                
                 <div className="flex justify-between items-center">
                   <span className="text-gray-500 font-bold text-sm uppercase">Base Price</span>
                   <span className="text-lg font-black text-green-700">₹ {currentPlayer.basePrice.toLocaleString()}</span>
@@ -411,7 +507,13 @@ function ControlPanel() {
               {playerStatus === 'bidding' ? (
                  <div className="mt-6 flex gap-3">
                    <button onClick={() => finalizePlayer('Sold')} className="w-full bg-green-600 text-white font-black text-xl py-3 rounded-xl hover:bg-green-700 shadow-[0_4px_0_0_rgba(21,128,61,1)] active:translate-y-1 transition-all">SOLD 🔨</button>
-                   <button onClick={() => finalizePlayer('Unsold')} className="w-full bg-red-600 text-white font-black text-lg py-3 rounded-xl hover:bg-red-700 shadow-[0_4px_0_0_rgba(185,28,28,1)] active:translate-y-1 transition-all">UNSOLD ❌</button>
+                   <button
+                     onClick={() => finalizePlayer('Unsold')}
+                     disabled={hasBiddingStarted}
+                     className="w-full bg-red-600 text-white font-black text-lg py-3 rounded-xl hover:bg-red-700 shadow-[0_4px_0_0_rgba(185,28,28,1)] active:translate-y-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                   >
+                    UNSOLD ❌
+                   </button>
                  </div>
               ) : (
                  <div className={`mt-6 p-4 rounded-xl text-center border-2 ${playerStatus === 'sold' ? 'bg-green-100 border-green-500 text-green-800' : 'bg-red-100 border-red-500 text-red-800'}`}>
