@@ -3,6 +3,7 @@ const Team = require('../models/Team');
 const User = require('../models/User');
 const fetchOrganizer = require('../middleware/fetchOrganizer');
 const { getPolicyByPlanName, resolveEffectivePlan } = require('../utils/planPolicy');
+const { getAuctionStateForOrganizer, decorateTeamsWithMaxBid } = require('../utils/maxBid');
 
 const router = express.Router();
 
@@ -65,8 +66,14 @@ router.post('/', async (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
-    const teams = await Team.find({ organizer: req.user.id });
-    return res.json(teams);
+    const teams = await Team.find({ organizer: req.user.id }).lean();
+    const auctionState = await getAuctionStateForOrganizer({ organizerId: req.user.id });
+    const teamsWithMaxBid = decorateTeamsWithMaxBid({
+      teams,
+      auctionState,
+      currentBasePrice: auctionState.tournamentMinBasePrice
+    });
+    return res.json(teamsWithMaxBid);
   } catch (error) {
     console.error('Team fetch error:', error.message);
     return res.status(500).json({ message: 'टीमें लाने में खराबी आ गई है!' });

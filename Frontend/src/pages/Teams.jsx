@@ -120,6 +120,7 @@ function Teams() {
                       <th className="p-5 font-black text-center">Total Purse</th>
                       <th className="p-5 font-black text-center">Spent</th>
                       <th className="p-5 font-black text-center">Remaining</th>
+                      <th className="p-5 font-black text-center">Dynamic Max Bid</th>                      
                       <th className="p-5 font-black text-center">Players</th>
                     </tr>
                   </thead>
@@ -135,13 +136,14 @@ function Teams() {
                           <td className="p-5 text-center font-bold text-gray-300">₹{tTotal.toLocaleString()}</td>
                           <td className="p-5 text-center font-black text-blue-400">₹{tSpent.toLocaleString()}</td>
                           <td className="p-5 text-center font-black text-green-400">₹{team.remainingPurse.toLocaleString()}</td>
+                          <td className="p-5 text-center font-black text-orange-300">₹{Number(team.maxBid || 0).toLocaleString()}</td>
                           <td className="p-5 text-center font-bold text-yellow-100">{tPlayers.length}</td>
                         </tr>
                       );
                     })}
                     {teams.length === 0 && (
                       <tr>
-                        <td colSpan="5" className="p-8 text-center text-gray-500 font-bold">No teams registered yet.</td>
+                        <td colSpan="6" className="p-8 text-center text-gray-500 font-bold">No teams registered yet.</td>
                       </tr>
                     )}
                   </tbody>
@@ -183,6 +185,14 @@ function Teams() {
                   <div className="flex justify-between items-center border-b border-gray-700 pb-2">
                     <span className="text-gray-400 font-bold uppercase text-xs tracking-wider">Remaining Balance</span>
                     <span className="text-2xl font-black text-green-400">₹{activeTeamData.remainingPurse.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-gray-700 pb-2">
+                    <span className="text-gray-400 font-bold uppercase text-xs tracking-wider">Dynamic Max Bid</span>
+                    <span className="text-2xl font-black text-orange-300">₹{Number(activeTeamData.maxBid || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-gray-700 pb-2">
+                    <span className="text-gray-400 font-bold uppercase text-xs tracking-wider">Required Players Left</span>
+                    <span className="text-xl font-black text-indigo-300">{Number(activeTeamData.remainingRequiredPlayers || 0)}</span>
                   </div>
                   <div className="flex justify-between items-center pt-2">
                     <span className="text-gray-400 font-bold uppercase text-xs tracking-wider">Total Players</span>

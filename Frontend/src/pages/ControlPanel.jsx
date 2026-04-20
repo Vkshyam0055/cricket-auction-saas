@@ -38,6 +38,7 @@ function ControlPanel() {
   };
 
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+  const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString()}`;  
 
   useEffect(() => {
     localStorage.setItem('currentPlayer', JSON.stringify(currentPlayer));
@@ -54,6 +55,17 @@ function ControlPanel() {
     return value || 'Uncategorized';
   };
 
+  const fetchTeamsWithMaxBid = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const headers = { Authorization: `Bearer ${token}` };
+      const teamsRes = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/teams', { headers });
+      setTeams(teamsRes.data);
+    } catch (error) {
+      console.error('टीम डेटा लाने में दिक्कत:', error);
+    }
+  };
+
   const fetchData = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -61,7 +73,7 @@ function ControlPanel() {
 
       const playersRes = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/players', { headers });
       
-      const availablePlayers = playersRes.data.filter(player => 
+      const availablePlayers = playersRes.data.filter(player =>
         player.approvalStatus?.trim().toLowerCase() === 'approved' &&
         player.auctionStatus?.trim().toLowerCase() === 'readyforauction'
       );
@@ -72,10 +84,9 @@ function ControlPanel() {
         const preserved = prev.filter((category) => categories.includes(category));
         const missing = categories.filter((category) => !preserved.includes(category));
         return [...preserved, ...missing];
-      });      
+      });
 
-      const teamsRes = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/teams', { headers });
-      setTeams(teamsRes.data);
+      await fetchTeamsWithMaxBid();
     } catch (error) {
       console.error("डेटा लाने में दिक्कत:", error);
     }
@@ -84,6 +95,17 @@ function ControlPanel() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    fetchTeamsWithMaxBid();
+  }, [currentPlayer?._id, currentPlayer?.basePrice]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetchTeamsWithMaxBid();
+    }, 15000);
+    return () => clearInterval(id);
+  }, [currentPlayer?._id, currentPlayer?.basePrice]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -173,10 +195,10 @@ function ControlPanel() {
     socketRef.current?.emit('newLiveBid', { bidAmount: currentPlayer.basePrice, teamName: '', player: currentPlayer, status: playerStatus });
   };
 
-  const updateBid = (teamName, amount, isJump = false) => {
-    if (playerStatus !== 'bidding') return; 
+  const updateBid = async (teamName, amount, isJump = false) => {
+    if (playerStatus !== 'bidding') return;
 
-    const team = teams.find(t => t.teamName === teamName);
+    const team = teams.find((t) => t.teamName === teamName);
     const newBidAmount = isJump ? amount : currentBid + amount;
 
     if (team && newBidAmount > team.remainingPurse) {
@@ -184,19 +206,24 @@ function ControlPanel() {
       return;
     }
 
-    saveStateToHistory('BID'); 
+    if (team && newBidAmount > Number(team.maxBid || 0)) {
+      alert(`🚫 ${teamName} का Dynamic Max Bid ${formatCurrency(team.maxBid)} है। इस लिमिट से ऊपर bid नहीं कर सकते।`);
+      return;
+    }
+
+    saveStateToHistory('BID');
     
     setCurrentBid(newBidAmount);
     setBiddingTeam(teamName);
-    setHasBiddingStarted(true);    
+    setHasBiddingStarted(true); 
     socketRef.current?.emit('newLiveBid', { bidAmount: newBidAmount, teamName: teamName, player: currentPlayer, status: playerStatus });
   };
 
-  const handleCustomBidSubmit = () => {
+  const handleCustomBidSubmit = async () => {
     const amount = Number(customBid);
     if (!biddingTeam) { alert("पहले ग्रिड से एक टीम सेलेक्ट करें!"); return; }
     if (amount <= currentBid) { alert("Jump Bid करंट बिड से ज़्यादा होनी चाहिए!"); return; }
-    updateBid(biddingTeam, amount, true);
+    await updateBid(biddingTeam, amount, true);
     setCustomBid('');
   };
 
@@ -216,14 +243,20 @@ function ControlPanel() {
       const updatedPlayers = players.filter(p => p._id !== currentPlayer._id);
       setPlayers(updatedPlayers);
       
-      if (status === 'Sold') {
-         setTeams(teams.map(t => t.teamName === biddingTeam ? { ...t, remainingPurse: t.remainingPurse - currentBid } : t));
-      }
+      await fetchTeamsWithMaxBid();
 
       setPlayerStatus(status.toLowerCase());
       setHasBiddingStarted(false);      
       socketRef.current?.emit('newLiveBid', { bidAmount: currentBid, teamName: biddingTeam, player: currentPlayer, status: status.toLowerCase() }); 
-    } catch (error) { alert("एरर! तकनीकी खराबी आ गई है।"); }
+    } catch (error) {
+      const backendMessage = error.response?.data?.message;
+      if (backendMessage) {
+        alert(`🚫 ${backendMessage}`);
+      } else {
+        alert("एरर! तकनीकी खराबी आ गई है।");
+      }
+      await fetchTeamsWithMaxBid();
+    }
   };
 
   const handleUndo = async () => {
@@ -250,7 +283,8 @@ function ControlPanel() {
     setHasBiddingStarted(Boolean(snap.biddingTeam));    
     setPlayers(snap.players);
     setTeams(snap.teams);
-    
+    await fetchTeamsWithMaxBid();
+
     socketRef.current?.emit('newLiveBid', { 
         bidAmount: snap.currentBid || 0, 
         teamName: snap.biddingTeam || '',
@@ -399,6 +433,7 @@ function ControlPanel() {
   const activeCategory = effectiveCategoryOrder.find((category) =>
     players.some((player) => normalizeCategory(player.category) === category)
   );
+  const activeBiddingTeamData = teams.find((team) => team.teamName === biddingTeam);
 
   return (
     <div className="min-h-screen bg-gray-200">
@@ -542,6 +577,11 @@ function ControlPanel() {
             <div className="text-right">
               <p className="text-gray-400 font-bold uppercase text-xs mb-1 tracking-wider">Highest Bidder</p>
               <p className="text-2xl font-black text-yellow-400">{biddingTeam ? biddingTeam : "Waiting..."}</p>
+              {activeBiddingTeamData && (
+                <p className="text-xs text-orange-300 font-bold mt-1">
+                  Max Bid: {formatCurrency(activeBiddingTeamData.maxBid)}
+                </p>
+              )}
             </div>
           </div>
 
@@ -566,11 +606,16 @@ function ControlPanel() {
                     </div>
                   </div>
                   
-                  {/* 🌟 FIX: यहाँ अब डायनामिक बटन्स लगा दिए गए हैं 🌟 */}
+                  <div className="mb-2 p-2 rounded bg-orange-50 border border-orange-200">
+                    <p className="text-[10px] uppercase font-black text-orange-700 tracking-wider">Dynamic Max Bid</p>
+                    <p className="text-sm font-black text-orange-900">{formatCurrency(team.maxBid)}</p>
+                    <p className="text-[10px] text-gray-500 font-semibold">Need {team.remainingRequiredPlayers} more players</p>
+                  </div>
+
                   <div className="grid grid-cols-3 gap-1">
-                    <button onClick={() => updateBid(team.teamName, btn1)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm">{formatBidButton(btn1)}</button>
-                    <button onClick={() => updateBid(team.teamName, btn2)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm">{formatBidButton(btn2)}</button>
-                    <button onClick={() => updateBid(team.teamName, btn3)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm">{formatBidButton(btn3)}</button>
+                    <button disabled={currentBid + btn1 > Number(team.maxBid || 0)} onClick={() => updateBid(team.teamName, btn1)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">{formatBidButton(btn1)}</button>
+                    <button disabled={currentBid + btn2 > Number(team.maxBid || 0)} onClick={() => updateBid(team.teamName, btn2)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">{formatBidButton(btn2)}</button>
+                    <button disabled={currentBid + btn3 > Number(team.maxBid || 0)} onClick={() => updateBid(team.teamName, btn3)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">{formatBidButton(btn3)}</button>
                   </div>
 
                 </div>

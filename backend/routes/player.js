@@ -7,6 +7,7 @@ const Tournament = require('../models/Tournament');
 const User = require('../models/User');
 const fetchOrganizer = require('../middleware/fetchOrganizer');
 const { getPolicyByPlanName, resolveEffectivePlan } = require('../utils/planPolicy');
+const { getAuctionStateForOrganizer, decorateTeamsWithMaxBid } = require('../utils/maxBid');
 
 // === PUBLIC ROUTES ===
 router.get('/public/:tournamentId', async (req, res) => {
@@ -62,6 +63,21 @@ router.post('/public/:tournamentId/register', async (req, res) => {
 // === PRIVATE ROUTES ===
 router.use(fetchOrganizer);
 
+const getTeamWithDynamicMaxBid = async ({ organizerId, teamName, currentBasePrice, session = null }) => {
+    const teamDoc = await Team.findOne({ teamName, organizer: organizerId }).session(session).lean();
+    if (!teamDoc) return null;
+
+    const auctionState = await getAuctionStateForOrganizer({ organizerId, session });
+    const [decoratedTeam] = decorateTeamsWithMaxBid({
+        teams: [teamDoc],
+        auctionState,
+        currentBasePrice
+    });
+
+    return decoratedTeam;
+};
+
+
 router.post('/', async (req, res) => {
     try {
         const { name, fatherName, age, mobile, city, role, category, basePrice, photoUrl, customData } = req.body;
@@ -89,35 +105,122 @@ router.get('/', async (req, res) => {
     } catch (error) { res.status(500).json({ message: "एरर!" }); }
 });
 
+
+router.post('/validate-bid', async (req, res) => {
+    try {
+        const { teamName, bidAmount, playerId } = req.body;
+        if (!teamName) return res.status(400).json({ message: 'Team is required' });
+
+        const numericBidAmount = Number(bidAmount);
+        if (!Number.isFinite(numericBidAmount) || numericBidAmount <= 0) {
+            return res.status(400).json({ message: 'Invalid bid amount' });
+        }
+
+        let currentBasePrice = 0;
+        if (playerId) {
+            const player = await Player.findOne({ _id: playerId, organizer: req.user.id }).select('basePrice').lean();
+            if (!player) return res.status(404).json({ message: 'Player not found' });
+            currentBasePrice = Number(player.basePrice || 0);
+        }
+
+        const team = await getTeamWithDynamicMaxBid({
+            organizerId: req.user.id,
+            teamName,
+            currentBasePrice
+        });
+
+        if (!team) return res.status(404).json({ message: 'Team not found' });
+
+        if (numericBidAmount > team.maxBid) {
+            return res.status(400).json({
+                message: `Bid blocked. Max allowed bid for ${teamName} is ₹${team.maxBid.toLocaleString()}`,
+                maxBid: team.maxBid,
+                remainingRequiredPlayers: team.remainingRequiredPlayers,
+                remainingPurse: team.remainingPurse
+            });
+        }
+
+        return res.json({
+            ok: true,
+            maxBid: team.maxBid,
+            remainingRequiredPlayers: team.remainingRequiredPlayers,
+            remainingPurse: team.remainingPurse
+        });
+    } catch (error) {
+        return res.status(500).json({ message: 'Error validating bid' });
+    }
+});
+
 router.put('/sell/:id', async (req, res) => {
+    const session = await mongoose.startSession();
+
     try {
         const { teamName, soldPrice } = req.body;
-        const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
-        if(!player) return res.status(404).json({ message: "Player not found" });
-        const team = await Team.findOne({ teamName: teamName, organizer: req.user.id });
-        if (!team) return res.status(404).json({ message: "Team not found" });
-
-        if (player.approvalStatus !== 'Approved' || player.auctionStatus !== 'ReadyForAuction' || player.isIcon) {
-            return res.status(409).json({ message: "Player is not eligible to be sold right now" });
-        }
-
         const numericSoldPrice = Number(soldPrice);
+
         if (!Number.isFinite(numericSoldPrice) || numericSoldPrice <= 0) {
-            return res.status(400).json({ message: "Invalid sold price" });
-        }
-        if (numericSoldPrice > team.remainingPurse) {
-            return res.status(400).json({ message: "Insufficient team purse" });
+            return res.status(400).json({ message: 'Invalid sold price' });
         }
 
-        player.soldTo = teamName;
-        player.soldPrice = numericSoldPrice;
-        player.auctionStatus = 'Sold';
-        await player.save();
+        let responsePayload = null;
 
-        team.remainingPurse -= numericSoldPrice;
-        await team.save();
-        res.json({ message: "खिलाड़ी बिक गया!", player });
-    } catch (error) { res.status(500).json({ message: "एरर!" }); }
+        await session.withTransaction(async () => {
+            const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id }).session(session);
+            if (!player) throw new Error('PLAYER_NOT_FOUND');
+
+            if (player.approvalStatus !== 'Approved' || player.auctionStatus !== 'ReadyForAuction' || player.isIcon) {
+                throw new Error('PLAYER_NOT_ELIGIBLE');
+            }
+
+            const teamWithMaxBid = await getTeamWithDynamicMaxBid({
+                organizerId: req.user.id,
+                teamName,
+                currentBasePrice: player.basePrice,
+                session
+            });
+            if (!teamWithMaxBid) throw new Error('TEAM_NOT_FOUND');
+
+            if (numericSoldPrice > teamWithMaxBid.maxBid) {
+                const err = new Error('MAX_BID_BLOCK');
+                err.meta = {
+                    message: `Bid blocked. Max allowed bid for ${teamName} is ₹${teamWithMaxBid.maxBid.toLocaleString()}`,
+                    maxBid: teamWithMaxBid.maxBid,
+                    remainingRequiredPlayers: teamWithMaxBid.remainingRequiredPlayers
+                };
+                throw err;
+            }
+
+            const teamUpdate = await Team.findOneAndUpdate(
+                {
+                    teamName,
+                    organizer: req.user.id,
+                    remainingPurse: { $gte: numericSoldPrice }
+                },
+                { $inc: { remainingPurse: -numericSoldPrice } },
+                { new: true, session }
+            );
+
+            if (!teamUpdate) throw new Error('PURSE_CONFLICT');
+
+            player.soldTo = teamName;
+            player.soldPrice = numericSoldPrice;
+            player.auctionStatus = 'Sold';
+            await player.save({ session });
+
+            responsePayload = { message: 'खिलाड़ी बिक गया!', player };
+        });
+
+        return res.json(responsePayload);
+    } catch (error) {
+        if (error.message === 'PLAYER_NOT_FOUND') return res.status(404).json({ message: 'Player not found' });
+        if (error.message === 'TEAM_NOT_FOUND') return res.status(404).json({ message: 'Team not found' });
+        if (error.message === 'PLAYER_NOT_ELIGIBLE') return res.status(409).json({ message: 'Player is not eligible to be sold right now' });
+        if (error.message === 'PURSE_CONFLICT') return res.status(409).json({ message: 'Bid conflict detected. Team purse changed, please retry.' });
+        if (error.message === 'MAX_BID_BLOCK') return res.status(400).json(error.meta);
+        return res.status(500).json({ message: 'एरर!' });
+    } finally {
+        session.endSession();
+    }
 });
 
 router.put('/unsold/:id', async (req, res) => {
@@ -189,29 +292,74 @@ router.put('/update-category/:id', async (req, res) => {
 });
 
 router.put('/make-icon/:id', async (req, res) => {
+    const session = await mongoose.startSession();
+
     try {
         const { teamName, iconPrice } = req.body;
-        const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
-        if (!player) return res.status(404).json({ message: "Player not found" });
-        if (player.auctionStatus === 'Sold' || player.isIcon) return res.status(409).json({ message: "Player already sold/icon" });
-
-        const team = await Team.findOne({ teamName: teamName, organizer: req.user.id });
-        if (!team) return res.status(404).json({ message: "Team not found" });
         const numericIconPrice = Number(iconPrice);
-        if (!Number.isFinite(numericIconPrice) || numericIconPrice < 0) return res.status(400).json({ message: "Invalid icon price" });
-        if (numericIconPrice > team.remainingPurse) return res.status(400).json({ message: "Insufficient team purse" });
 
-        player.soldTo = teamName;
-        player.soldPrice = numericIconPrice;
-        player.auctionStatus = 'Icon';
-        player.isIcon = true;
-        player.approvalStatus = 'Approved';
-        await player.save();
+        if (!Number.isFinite(numericIconPrice) || numericIconPrice < 0) {
+            return res.status(400).json({ message: 'Invalid icon price' });
+        }
 
-        team.remainingPurse -= numericIconPrice;
-        await team.save();
-        res.json({ message: "Icon Assigned!", player });
-    } catch (error) { res.status(500).json({ message: "Error" }); }
+        let responsePayload = null;
+
+        await session.withTransaction(async () => {
+            const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id }).session(session);
+            if (!player) throw new Error('PLAYER_NOT_FOUND');
+            if (player.auctionStatus === 'Sold' || player.isIcon) throw new Error('PLAYER_NOT_ELIGIBLE');
+
+            const teamWithMaxBid = await getTeamWithDynamicMaxBid({
+                organizerId: req.user.id,
+                teamName,
+                currentBasePrice: player.basePrice,
+                session
+            });
+            if (!teamWithMaxBid) throw new Error('TEAM_NOT_FOUND');
+
+            if (numericIconPrice > teamWithMaxBid.maxBid) {
+                const err = new Error('MAX_BID_BLOCK');
+                err.meta = {
+                    message: `Icon price blocked. Max allowed bid for ${teamName} is ₹${teamWithMaxBid.maxBid.toLocaleString()}`,
+                    maxBid: teamWithMaxBid.maxBid,
+                    remainingRequiredPlayers: teamWithMaxBid.remainingRequiredPlayers
+                };
+                throw err;
+            }
+
+            const teamUpdate = await Team.findOneAndUpdate(
+                {
+                    teamName,
+                    organizer: req.user.id,
+                    remainingPurse: { $gte: numericIconPrice }
+                },
+                { $inc: { remainingPurse: -numericIconPrice } },
+                { new: true, session }
+            );
+
+            if (!teamUpdate) throw new Error('PURSE_CONFLICT');
+
+            player.soldTo = teamName;
+            player.soldPrice = numericIconPrice;
+            player.auctionStatus = 'Icon';
+            player.isIcon = true;
+            player.approvalStatus = 'Approved';
+            await player.save({ session });
+
+            responsePayload = { message: 'Icon Assigned!', player };
+        });
+
+        return res.json(responsePayload);
+    } catch (error) {
+        if (error.message === 'PLAYER_NOT_FOUND') return res.status(404).json({ message: 'Player not found' });
+        if (error.message === 'TEAM_NOT_FOUND') return res.status(404).json({ message: 'Team not found' });
+        if (error.message === 'PLAYER_NOT_ELIGIBLE') return res.status(409).json({ message: 'Player already sold/icon' });
+        if (error.message === 'PURSE_CONFLICT') return res.status(409).json({ message: 'Icon assignment conflict detected. Team purse changed, please retry.' });
+        if (error.message === 'MAX_BID_BLOCK') return res.status(400).json(error.meta);
+        return res.status(500).json({ message: 'Error' });
+    } finally {
+        session.endSession();
+    }
 });
 
 router.put('/remove-icon/:id', async (req, res) => {

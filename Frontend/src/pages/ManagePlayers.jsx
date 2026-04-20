@@ -93,6 +93,10 @@ function ManagePlayers() {
   const handleMakeIconSubmit = async (e) => {
     e.preventDefault();
     if (!iconTeam) { alert('Please select a team!'); return; }
+    if (selectedIconTeamData && Number(iconPrice) > Number(selectedIconTeamData.maxBid || 0)) {
+      alert(`🚫 Icon price blocked. ${iconTeam} max bid is ₹${Number(selectedIconTeamData.maxBid || 0).toLocaleString()}`);
+      return;
+    }    
     try {
       const token = localStorage.getItem('token');
       await axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/players/make-icon/${selectedPlayer._id}`,
@@ -148,6 +152,8 @@ function ManagePlayers() {
       </div>
     );
   };
+
+  const selectedIconTeamData = teams.find((team) => team.teamName === iconTeam);
 
   return (
     <div className="min-h-screen bg-gray-100 p-8">
@@ -237,8 +243,13 @@ function ManagePlayers() {
             <form onSubmit={handleMakeIconSubmit} className="space-y-4">
               <select required value={iconTeam} onChange={(e) => setIconTeam(e.target.value)} className="w-full p-3 border-2 rounded-xl font-bold">
                 <option value="">-- Choose Team --</option>
-                {teams.map(t => <option key={t._id} value={t.teamName}>{t.teamName}</option>)}
+                {teams.map(t => <option key={t._id} value={t.teamName}>{t.teamName} (Max ₹{Number(t.maxBid || 0).toLocaleString()})</option>)}
               </select>
+              {selectedIconTeamData && (
+                <p className="text-xs font-bold text-orange-700 bg-orange-50 border border-orange-200 rounded-lg p-2">
+                  Dynamic Max Bid: ₹{Number(selectedIconTeamData.maxBid || 0).toLocaleString()} • Required Players Left: {Number(selectedIconTeamData.remainingRequiredPlayers || 0)}
+                </p>
+              )}              
               <input required type="number" value={iconPrice} onChange={(e) => setIconPrice(e.target.value)} className="w-full p-3 border-2 rounded-xl font-black text-green-600" />
               <div className="flex gap-4 pt-4">
                 <button type="button" onClick={() => setIsIconModalOpen(false)} className="flex-1 bg-gray-200 py-3 rounded-xl font-bold">Cancel</button>
