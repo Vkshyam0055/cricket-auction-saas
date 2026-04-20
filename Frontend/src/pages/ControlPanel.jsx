@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { io } from 'socket.io-client';
@@ -20,6 +20,7 @@ function ControlPanel() {
   const [hasBiddingStarted, setHasBiddingStarted] = useState(() => localStorage.getItem('hasBiddingStarted') === 'true');
   const [playerOrderMode, setPlayerOrderMode] = useState(() => localStorage.getItem('playerOrderMode') || 'all-random');
   const [categoryOrder, setCategoryOrder] = useState(() => JSON.parse(localStorage.getItem('categoryOrder') || '[]'));   
+  const [lastBidActions, setLastBidActions] = useState(() => JSON.parse(localStorage.getItem('lastBidActions') || '[]'));  
 
   const [actionHistory, setActionHistory] = useState([]);
   const [showResultsModal, setShowResultsModal] = useState(false);
@@ -48,7 +49,34 @@ function ControlPanel() {
     localStorage.setItem('hasBiddingStarted', String(hasBiddingStarted));
     localStorage.setItem('playerOrderMode', playerOrderMode);
     localStorage.setItem('categoryOrder', JSON.stringify(categoryOrder));
-  }, [currentPlayer, currentBid, biddingTeam, playerStatus, hasBiddingStarted, playerOrderMode, categoryOrder]);
+    localStorage.setItem('lastBidActions', JSON.stringify(lastBidActions));
+  }, [currentPlayer, currentBid, biddingTeam, playerStatus, hasBiddingStarted, playerOrderMode, categoryOrder, lastBidActions]);
+
+  const registerBidActivity = useCallback((teamName) => {
+    if (!teamName) return;
+    setLastBidActions((prev) => [...prev, teamName].slice(-4));
+  }, []);
+
+  const syncActiveBiddingState = useCallback((type, payload = {}) => {
+    if (!socketRef.current?.connected) return false;
+    socketRef.current.emit('activeBiddingUpdate', { type, ...payload });
+    return true;
+  }, []);
+
+  const activeBiddingTeams = useMemo(() => {
+    const ordered = [];
+    const seen = new Set();
+    for (let i = lastBidActions.length - 1; i >= 0; i -= 1) {
+      const teamName = lastBidActions[i];
+      if (!teamName || seen.has(teamName)) continue;
+      seen.add(teamName);
+      ordered.push(teamName);
+      if (ordered.length === 4) break;
+    }
+    return ordered
+      .map((teamName) => teams.find((team) => team.teamName === teamName))
+      .filter(Boolean);
+  }, [lastBidActions, teams]);
 
   const normalizeCategory = (category) => {
     const value = String(category || '').trim();
@@ -115,7 +143,21 @@ function ControlPanel() {
     });
     socketRef.current = socket;
 
+    socket.on('activeBiddingSync', (data) => {
+      if (Array.isArray(data?.lastBidActions)) {
+        setLastBidActions(data.lastBidActions.slice(-4));
+      }
+    });
+
+    socket.on('activeBiddingUpdate', (data) => {
+      if (Array.isArray(data?.lastBidActions)) {
+        setLastBidActions(data.lastBidActions.slice(-4));
+      }
+    });
+
     return () => {
+      socket.off('activeBiddingSync');
+      socket.off('activeBiddingUpdate');      
       socket.disconnect();
       socketRef.current = null;
     };
@@ -140,7 +182,8 @@ function ControlPanel() {
         biddingTeam,
         playerStatus,
         players: [...players], 
-        teams: JSON.parse(JSON.stringify(teams)) 
+        teams: JSON.parse(JSON.stringify(teams)),
+        lastBidActions: [...lastBidActions]
       }
     }]);
   };
@@ -215,7 +258,10 @@ function ControlPanel() {
     
     setCurrentBid(newBidAmount);
     setBiddingTeam(teamName);
-    setHasBiddingStarted(true); 
+    setHasBiddingStarted(true);
+    if (!syncActiveBiddingState('append', { teamName })) {
+      registerBidActivity(teamName);
+    }
     socketRef.current?.emit('newLiveBid', { bidAmount: newBidAmount, teamName: teamName, player: currentPlayer, status: playerStatus });
   };
 
@@ -283,6 +329,8 @@ function ControlPanel() {
     setHasBiddingStarted(Boolean(snap.biddingTeam));    
     setPlayers(snap.players);
     setTeams(snap.teams);
+    setLastBidActions(snap.lastBidActions || []);
+    syncActiveBiddingState('replace', { lastBidActions: snap.lastBidActions || [] });    
     await fetchTeamsWithMaxBid();
 
     socketRef.current?.emit('newLiveBid', { 
@@ -410,12 +458,15 @@ function ControlPanel() {
       setPlayerStatus('bidding');
       setHasBiddingStarted(false);      
       setActionHistory([]);
+      setLastBidActions([]);
+      syncActiveBiddingState('reset');      
       
       localStorage.removeItem('currentPlayer');
       localStorage.removeItem('currentBid');
       localStorage.removeItem('biddingTeam');
       localStorage.removeItem('playerStatus');
-      localStorage.removeItem('hasBiddingStarted');      
+      localStorage.removeItem('hasBiddingStarted');  
+      localStorage.removeItem('lastBidActions');          
 
       socketRef.current?.emit('newLiveBid', { bidAmount: 0, teamName: '', player: null, status: 'bidding' });
 
@@ -592,7 +643,44 @@ function ControlPanel() {
                 <button onClick={handleCustomBidSubmit} className="bg-blue-600 text-white font-bold px-3 py-1.5 rounded shadow hover:bg-blue-700 text-sm">Jump 🚀</button>
              </div>
           </div>
-          
+
+          <div className="mb-5">
+            <h3 className="text-xs font-black uppercase tracking-widest text-purple-700 mb-2">Active Bidding Teams Zone (Max 4)</h3>
+            {activeBiddingTeams.length === 0 ? (
+              <div className="border border-dashed border-purple-300 bg-purple-50 rounded-lg p-4 text-sm font-bold text-purple-700">
+                No active bidding teams yet. As soon as any team bids, it will appear here automatically.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-2">
+                {activeBiddingTeams.map((team, index) => {
+                  const isHighestBidder = biddingTeam === team.teamName;
+                  return (
+                    <div key={`active-${team._id}`} className={`p-3 rounded-lg border-2 transition-all ${isHighestBidder ? 'border-yellow-400 bg-yellow-50 shadow transform scale-[1.02]' : 'border-purple-300 bg-purple-50 hover:border-purple-400'}`}>
+                      <div className="flex justify-between items-center mb-2">
+                        <h3 className="font-bold text-base text-gray-800 truncate pr-1" title={team.teamName}>{team.teamName}</h3>
+                        <span className="text-[10px] px-2 py-1 rounded-full bg-purple-700 text-white font-black">#{index + 1}</span>
+                      </div>
+                      <div className="mb-2 p-2 rounded bg-white border border-purple-200">
+                        <p className="text-[10px] uppercase font-black text-purple-700 tracking-wider">Live Priority Team</p>
+                        <p className="text-sm font-black text-purple-900">Purse: ₹{team.remainingPurse.toLocaleString()}</p>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1">
+                        <button disabled={currentBid + btn1 > Number(team.maxBid || 0)} onClick={() => updateBid(team.teamName, btn1)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">{formatBidButton(btn1)}</button>
+                        <button disabled={currentBid + btn2 > Number(team.maxBid || 0)} onClick={() => updateBid(team.teamName, btn2)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">{formatBidButton(btn2)}</button>
+                        <button disabled={currentBid + btn3 > Number(team.maxBid || 0)} onClick={() => updateBid(team.teamName, btn3)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">{formatBidButton(btn3)}</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-black uppercase tracking-widest text-gray-600">All Teams</h3>
+            <p className="text-[11px] font-bold text-gray-500">All teams stay visible and can still bid anytime.</p>
+          </div>
+
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 max-h-[500px] overflow-y-auto pr-2 pb-2">
             {teams.map((team) => {
               const isHighestBidder = biddingTeam === team.teamName;
@@ -613,9 +701,9 @@ function ControlPanel() {
                   </div>
 
                   <div className="grid grid-cols-3 gap-1">
-                    <button disabled={currentBid + btn1 > Number(team.maxBid || 0)} onClick={() => updateBid(team.teamName, btn1)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">{formatBidButton(btn1)}</button>
-                    <button disabled={currentBid + btn2 > Number(team.maxBid || 0)} onClick={() => updateBid(team.teamName, btn2)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">{formatBidButton(btn2)}</button>
-                    <button disabled={currentBid + btn3 > Number(team.maxBid || 0)} onClick={() => updateBid(team.teamName, btn3)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">{formatBidButton(btn3)}</button>
+                    <button onClick={() => updateBid(team.teamName, btn1)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm">{formatBidButton(btn1)}</button>
+                    <button onClick={() => updateBid(team.teamName, btn2)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm">{formatBidButton(btn2)}</button>
+                    <button onClick={() => updateBid(team.teamName, btn3)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm">{formatBidButton(btn3)}</button>
                   </div>
 
                 </div>

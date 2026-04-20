@@ -13,6 +13,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
     cors: { origin: '*' }
 });
+const organizerActiveBids = new Map();
 
 app.use(cors());
 app.use(express.json());
@@ -31,11 +32,35 @@ io.use((socket, next) => {
 
 io.on('connection', (socket) => {
     const room = `organizer:${socket.organizerId}`;
+    const organizerKey = String(socket.organizerId);
     socket.join(room);
     console.log(`⚡ organizer ${socket.organizerId} connected to live socket`);
+    socket.emit('activeBiddingSync', {
+        lastBidActions: organizerActiveBids.get(organizerKey) || []
+    });
 
     socket.on('newLiveBid', (data) => {
         io.to(room).emit('updateAudienceScreen', data); 
+    });
+
+    socket.on('activeBiddingUpdate', (payload = {}) => {
+        const current = organizerActiveBids.get(organizerKey) || [];
+        let next = current;
+
+        if (payload.type === 'replace') {
+            next = Array.isArray(payload.lastBidActions)
+                ? payload.lastBidActions.filter(Boolean).slice(-4)
+                : [];
+        } else if (payload.type === 'reset') {
+            next = [];
+        } else if (payload.type === 'append' && payload.teamName) {
+            next = [...current, payload.teamName].slice(-4);
+        } else {
+            return;
+        }
+
+        organizerActiveBids.set(organizerKey, next);
+        io.to(room).emit('activeBiddingUpdate', { lastBidActions: next });
     });
 
     socket.on('disconnect', () => {
