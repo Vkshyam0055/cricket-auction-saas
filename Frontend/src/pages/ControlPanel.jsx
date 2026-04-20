@@ -21,6 +21,13 @@ function ControlPanel() {
   const [playerOrderMode, setPlayerOrderMode] = useState(() => localStorage.getItem('playerOrderMode') || 'all-random');
   const [categoryOrder, setCategoryOrder] = useState(() => JSON.parse(localStorage.getItem('categoryOrder') || '[]'));   
   const [lastBidActions, setLastBidActions] = useState(() => JSON.parse(localStorage.getItem('lastBidActions') || '[]'));  
+  const [displayMode, setDisplayMode] = useState('night');
+  const [photoSize, setPhotoSize] = useState('medium');
+  const [screenView, setScreenView] = useState('live');
+  const [breakView, setBreakView] = useState('teams-dashboard');
+  const [allPlayers, setAllPlayers] = useState([]);
+  const configVersionRef = useRef(0);
+  const configDebounceRef = useRef(null);
 
   const [actionHistory, setActionHistory] = useState([]);
   const [showResultsModal, setShowResultsModal] = useState(false);
@@ -63,6 +70,16 @@ function ControlPanel() {
     return true;
   }, []);
 
+  const syncLiveScreenConfig = useCallback((nextConfig) => {
+    if (!socketRef.current?.connected) return;
+    socketRef.current.emit('liveScreenConfigUpdate', nextConfig);
+  }, []);
+
+  const syncBreakSnapshot = useCallback((snapshot) => {
+    if (!socketRef.current?.connected) return;
+    socketRef.current.emit('breakDataSnapshotUpdate', snapshot);
+  }, []);
+
   const activeBiddingTeams = useMemo(() => {
     const ordered = [];
     const seen = new Set();
@@ -100,6 +117,7 @@ function ControlPanel() {
       const headers = { Authorization: `Bearer ${token}` };
 
       const playersRes = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/players', { headers });
+      setAllPlayers(Array.isArray(playersRes.data) ? playersRes.data : []);
       
       const availablePlayers = playersRes.data.filter(player =>
         player.approvalStatus?.trim().toLowerCase() === 'approved' &&
@@ -155,13 +173,92 @@ function ControlPanel() {
       }
     });
 
+    socket.on('liveScreenConfigSync', (data) => {
+      if (!data) return;
+      setDisplayMode(data.displayMode || 'night');
+      setPhotoSize(data.photoSize || 'medium');
+      setScreenView(data.screenView === 'break' ? 'break' : 'live');
+      setBreakView(data.breakView || 'teams-dashboard');
+      configVersionRef.current = Number(data.version || 0);
+    });
+
     return () => {
       socket.off('activeBiddingSync');
-      socket.off('activeBiddingUpdate');      
+      socket.off('activeBiddingUpdate');
+      socket.off('liveScreenConfigSync');
       socket.disconnect();
       socketRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!socketRef.current?.connected) return;
+    if (configDebounceRef.current) {
+      clearTimeout(configDebounceRef.current);
+    }
+    configDebounceRef.current = setTimeout(() => {
+      configVersionRef.current += 1;
+      syncLiveScreenConfig({
+        displayMode,
+        photoSize,
+        screenView,
+        breakView,
+        version: configVersionRef.current,
+        updatedAtMs: Date.now()
+      });
+    }, 180);
+    return () => {
+      if (configDebounceRef.current) {
+        clearTimeout(configDebounceRef.current);
+      }
+    };
+  }, [displayMode, photoSize, screenView, breakView, syncLiveScreenConfig]);
+
+  const breakDataSnapshot = useMemo(() => {
+    const soldPlayers = allPlayers
+      .filter((player) => String(player.auctionStatus || '').toLowerCase() === 'sold')
+      .map((player) => ({
+        _id: player._id,
+        name: player.name,
+        soldTo: player.soldTo,
+        soldPrice: player.soldPrice
+      }));
+    const squadsByTeam = soldPlayers.reduce((acc, player) => {
+      const teamName = player.soldTo || 'Unknown Team';
+      if (!acc[teamName]) acc[teamName] = [];
+      acc[teamName].push(player);
+      return acc;
+    }, {});
+    const unsoldCount = allPlayers.filter((player) => String(player.auctionStatus || '').toLowerCase() === 'unsold').length;
+    const readyCount = allPlayers.filter((player) => String(player.auctionStatus || '').toLowerCase() === 'readyforauction').length;
+    const topBiddings = [...soldPlayers]
+      .sort((a, b) => Number(b.soldPrice || 0) - Number(a.soldPrice || 0))
+      .slice(0, 10);
+
+    return {
+      teams: teams.map((team) => ({
+        _id: team._id,
+        teamName: team.teamName,
+        remainingPurse: team.remainingPurse,
+        maxBid: team.maxBid,
+        remainingRequiredPlayers: team.remainingRequiredPlayers
+      })),
+      soldPlayers,
+      squadsByTeam,
+      summary: {
+        totalTeams: teams.length,
+        soldPlayers: soldPlayers.length,
+        unsoldPlayers: unsoldCount,
+        readyForAuction: readyCount,
+        totalSoldValue: soldPlayers.reduce((sum, player) => sum + Number(player.soldPrice || 0), 0)
+      },
+      topBiddings
+    };
+  }, [teams, allPlayers]);
+
+  useEffect(() => {
+    syncBreakSnapshot(breakDataSnapshot);
+  }, [breakDataSnapshot, syncBreakSnapshot]);
 
   useEffect(() => {
     const syncInterval = setInterval(() => {
@@ -290,6 +387,7 @@ function ControlPanel() {
       setPlayers(updatedPlayers);
       
       await fetchTeamsWithMaxBid();
+      await fetchData();      
 
       setPlayerStatus(status.toLowerCase());
       setHasBiddingStarted(false);      
@@ -332,6 +430,7 @@ function ControlPanel() {
     setLastBidActions(snap.lastBidActions || []);
     syncActiveBiddingState('replace', { lastBidActions: snap.lastBidActions || [] });    
     await fetchTeamsWithMaxBid();
+    await fetchData();
 
     socketRef.current?.emit('newLiveBid', { 
         bidAmount: snap.currentBid || 0, 
@@ -373,6 +472,7 @@ function ControlPanel() {
 
       setPlayers(prev => [...prev, { ...playerToBring, auctionStatus: 'ReadyForAuction', soldTo: 'Unsold', soldPrice: 0 }]); 
       setAuctionResultDatabase(prev => prev.filter(p => p._id !== playerToBring._id)); 
+      await fetchData();      
       alert(`🔥 ${playerToBring.name} को वापस ऑक्शन पूल में शामिल कर लिया गया है!`);
     } catch (error) {
       alert("एरर: डेटाबेस अपडेट नहीं हो पाया!");
@@ -409,6 +509,7 @@ function ControlPanel() {
           (p) => !(p.auctionStatus?.trim().toLowerCase() === 'unsold' || p.auctionStatus?.trim().toLowerCase() === 'passed')
         ));
         setShowResultsModal(false);
+        await fetchData();        
         alert("✅ सभी Unsold players Round-2 auction के लिए वापस आ गए हैं!");
       } catch (error) {
         console.error(error);
@@ -551,6 +652,71 @@ function ControlPanel() {
                 <p className="text-[11px] mt-2 font-semibold text-indigo-600">Active Category: {activeCategory || '-'}</p>
               </>
             )}
+          </div>
+
+          <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+            <p className="text-xs font-black uppercase tracking-wider text-slate-700 mb-2">Live Screen Display</p>
+            <div className="space-y-2">
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 uppercase">Display Mode</label>
+                <select
+                  value={displayMode}
+                  onChange={(e) => setDisplayMode(e.target.value)}
+                  className="w-full p-2 rounded-lg border-2 border-slate-200 font-bold text-slate-800 outline-none focus:border-slate-400 mt-1"
+                >
+                  <option value="day">Day Mode</option>
+                  <option value="night">Night Mode</option>
+                  <option value="projector">Projector / Presentation</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 uppercase">Player Photo Size</label>
+                <select
+                  value={photoSize}
+                  onChange={(e) => setPhotoSize(e.target.value)}
+                  className="w-full p-2 rounded-lg border-2 border-slate-200 font-bold text-slate-800 outline-none focus:border-slate-400 mt-1"
+                >
+                  <option value="small">Small</option>
+                  <option value="medium">Medium</option>
+                  <option value="large">Large</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 uppercase">Screen Content</label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  <button
+                    onClick={() => setScreenView('live')}
+                    className={`px-3 py-2 rounded-lg border font-black text-xs ${screenView === 'live' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-slate-700 border-slate-200'}`}
+                  >
+                    Live Auction
+                  </button>
+                  <button
+                    onClick={() => setScreenView('break')}
+                    className={`px-3 py-2 rounded-lg border font-black text-xs ${screenView === 'break' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-slate-700 border-slate-200'}`}
+                  >
+                    Break Content
+                  </button>
+                </div>
+              </div>
+
+              {screenView === 'break' && (
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 uppercase">Break View Type</label>
+                  <select
+                    value={breakView}
+                    onChange={(e) => setBreakView(e.target.value)}
+                    className="w-full p-2 rounded-lg border-2 border-slate-200 font-bold text-slate-800 outline-none focus:border-slate-400 mt-1"
+                  >
+                    <option value="teams-dashboard">Teams Dashboard</option>
+                    <option value="squad-list">Squad List</option>
+                    <option value="tournament-summary">Tournament Summary</option>
+                    <option value="top-biddings">Top Biddings</option>
+                  </select>
+                </div>
+              )}
+            </div>
           </div>
 
           <button

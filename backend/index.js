@@ -3,6 +3,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
+const Tournament = require('./models/Tournament');
 
 const http = require('http');
 const { Server } = require('socket.io');
@@ -14,6 +15,8 @@ const io = new Server(server, {
     cors: { origin: '*' }
 });
 const organizerActiveBids = new Map();
+const organizerScreenConfigs = new Map();
+const organizerBreakSnapshots = new Map();
 
 app.use(cors());
 app.use(express.json());
@@ -23,6 +26,7 @@ io.use((socket, next) => {
         const token = socket.handshake.auth?.token;
         if (!token) return next(new Error('Unauthorized'));
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        if (!decoded?.id) return next(new Error('Unauthorized'));
         socket.organizerId = decoded.id;
         next();
     } catch (error) {
@@ -38,6 +42,29 @@ io.on('connection', (socket) => {
     socket.emit('activeBiddingSync', {
         lastBidActions: organizerActiveBids.get(organizerKey) || []
     });
+    const defaultScreenConfig = {
+        displayMode: 'night',
+        photoSize: 'medium',
+        screenView: 'live',
+        breakView: 'teams-dashboard',
+        version: 0,
+        updatedAtMs: 0
+    };
+    socket.emit('liveScreenConfigSync', organizerScreenConfigs.get(organizerKey) || defaultScreenConfig);
+    socket.emit('breakDataSnapshotSync', organizerBreakSnapshots.get(organizerKey) || null);
+
+    Tournament.findOne({ organizer: socket.organizerId })
+        .select('liveScreenConfig')
+        .lean()
+        .then((tournament) => {
+            if (!tournament?.liveScreenConfig) return;
+            const persistedConfig = { ...defaultScreenConfig, ...tournament.liveScreenConfig };
+            organizerScreenConfigs.set(organizerKey, persistedConfig);
+            io.to(room).emit('liveScreenConfigSync', persistedConfig);
+        })
+        .catch((error) => {
+            console.error('Failed to load liveScreenConfig:', error.message);
+        });
 
     socket.on('newLiveBid', (data) => {
         io.to(room).emit('updateAudienceScreen', data); 
@@ -61,6 +88,41 @@ io.on('connection', (socket) => {
 
         organizerActiveBids.set(organizerKey, next);
         io.to(room).emit('activeBiddingUpdate', { lastBidActions: next });
+    });
+
+    socket.on('liveScreenConfigUpdate', async (payload = {}) => {
+        const currentConfig = organizerScreenConfigs.get(organizerKey) || defaultScreenConfig;
+        const incomingVersion = Number(payload.version || 0);
+        if (incomingVersion < Number(currentConfig.version || 0)) {
+            return;
+        }
+        const nextConfig = {
+            displayMode: payload.displayMode || 'night',
+            photoSize: payload.photoSize || 'medium',
+            screenView: payload.screenView === 'break' ? 'break' : 'live',
+            breakView: payload.breakView || 'teams-dashboard',
+            version: incomingVersion,
+            updatedAtMs: Number(payload.updatedAtMs || Date.now())
+        };
+
+        organizerScreenConfigs.set(organizerKey, nextConfig);
+        io.to(room).emit('liveScreenConfigUpdate', nextConfig);
+
+        try {
+            await Tournament.findOneAndUpdate(
+                { organizer: socket.organizerId },
+                { $set: { liveScreenConfig: nextConfig } },
+                { new: true }
+            );
+        } catch (error) {
+            console.error('Failed to persist liveScreenConfig:', error.message);
+        }
+    });
+
+    socket.on('breakDataSnapshotUpdate', (payload = null) => {
+        if (!payload || typeof payload !== 'object') return;
+        organizerBreakSnapshots.set(organizerKey, payload);
+        io.to(room).emit('breakDataSnapshotUpdate', payload);
     });
 
     socket.on('disconnect', () => {

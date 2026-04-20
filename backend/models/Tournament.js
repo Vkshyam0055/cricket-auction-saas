@@ -28,6 +28,14 @@ const tournamentSchema = new mongoose.Schema({
     upiQrUrl: { type: String, default: '' },
     upiId: { type: String, default: '' },
     paymentMessage: { type: String, default: '' },
+    liveScreenConfig: {
+        displayMode: { type: String, enum: ['day', 'night', 'projector'], default: 'night' },
+        photoSize: { type: String, enum: ['small', 'medium', 'large'], default: 'medium' },
+        screenView: { type: String, enum: ['live', 'break'], default: 'live' },
+        breakView: { type: String, enum: ['teams-dashboard', 'squad-list', 'tournament-summary', 'top-biddings'], default: 'teams-dashboard' },
+        version: { type: Number, default: 0 },
+        updatedAtMs: { type: Number, default: 0 }
+    },    
 
     organizer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
 }, { timestamps: true });
