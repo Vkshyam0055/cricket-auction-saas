@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const teamSchema = new mongoose.Schema({
     teamName: { type: String, required: true },
+    shortName: { type: String, required: true, default: '' },
     ownerName: { type: String, default: '' },
     mobile: { type: String, default: '' },
     // 🌟 SaaS Feature: यह टीम किस टूर्नामेंट और किस ऑर्गेनाइजर की है?

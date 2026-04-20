@@ -9,8 +9,9 @@ const router = express.Router();
 
 router.use(fetchOrganizer);
 
-const buildTeamPayload = ({ teamName, totalPurse, ownerName, mobile, logoUrl, organizerId }) => ({
+const buildTeamPayload = ({ teamName, shortName, totalPurse, ownerName, mobile, logoUrl, organizerId }) => ({
   teamName,
+  shortName,
   totalPurse,
   remainingPurse: totalPurse,
   ownerName,
@@ -22,15 +23,24 @@ const buildTeamPayload = ({ teamName, totalPurse, ownerName, mobile, logoUrl, or
 
 router.post('/', async (req, res) => {
   try {
-    const { teamName, totalPurse, ownerName, mobile, logoUrl } = req.body;
+    const { teamName, shortName, totalPurse, ownerName, mobile, logoUrl } = req.body;
+    const normalizedShortName = String(shortName || '').trim().toUpperCase();
+    if (!normalizedShortName) {
+      return res.status(400).json({ message: 'Short name is required.' });
+    }
 
     const duplicateTeam = await Team.findOne({ teamName, organizer: req.user.id });
     if (duplicateTeam) {
       return res.status(400).json({ message: 'यह टीम पहले से मौजूद है!' });
     }
+    const duplicateShortName = await Team.findOne({ shortName: normalizedShortName, organizer: req.user.id });
+    if (duplicateShortName) {
+      return res.status(400).json({ message: 'यह short name पहले से मौजूद है!' });
+    }
 
     const teamPayload = buildTeamPayload({
       teamName,
+      shortName: normalizedShortName,
       totalPurse,
       ownerName,
       mobile,
@@ -82,11 +92,23 @@ router.get('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const { teamName, totalPurse, remainingPurse, ownerName, mobile, logoUrl } = req.body;
+    const { teamName, shortName, totalPurse, remainingPurse, ownerName, mobile, logoUrl } = req.body;
+    const normalizedShortName = String(shortName || '').trim().toUpperCase();
+    if (!normalizedShortName) {
+      return res.status(400).json({ message: 'Short name is required.' });
+    }
+    const duplicateShortName = await Team.findOne({
+      _id: { $ne: req.params.id },
+      shortName: normalizedShortName,
+      organizer: req.user.id
+    });
+    if (duplicateShortName) {
+      return res.status(400).json({ message: 'यह short name पहले से मौजूद है!' });
+    }
 
     const updatedTeam = await Team.findOneAndUpdate(
       { _id: req.params.id, organizer: req.user.id },
-      { teamName, totalPurse, remainingPurse, ownerName, mobile, logoUrl, logo: logoUrl || '' },
+      { teamName, shortName: normalizedShortName, totalPurse, remainingPurse, ownerName, mobile, logoUrl, logo: logoUrl || '' },
       { new: true }
     );
 

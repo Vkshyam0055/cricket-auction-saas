@@ -25,6 +25,7 @@ function AddTeam() {
   const [editTeamId, setEditTeamId] = useState(null);
 
   const [teamName, setTeamName] = useState('');
+  const [shortName, setShortName] = useState('');  
   const [budget, setBudget] = useState(50000000); // Default
   const [ownerName, setOwnerName] = useState('');
   const [mobile, setMobile] = useState('');
@@ -74,7 +75,7 @@ function AddTeam() {
     try {
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
-      const payload = { teamName, totalPurse: Number(budget), ownerName, mobile, logoUrl };
+      const payload = { teamName, shortName: shortName.trim().toUpperCase(), totalPurse: Number(budget), ownerName, mobile, logoUrl };
 
       if (isEditing) {
         await axios.put(`${API_BASE_URL}/teams/${editTeamId}`, payload, { headers });
@@ -93,6 +94,7 @@ function AddTeam() {
     setIsEditing(true);
     setEditTeamId(team._id);
     setTeamName(team.teamName);
+    setShortName(team.shortName || '');    
     setBudget(team.totalPurse);
     setOwnerName(team.ownerName || '');
     setMobile(team.mobile || '');
@@ -120,7 +122,7 @@ function AddTeam() {
   };
 
   const resetForm = () => {
-    setIsEditing(false); setEditTeamId(null); setTeamName(''); setOwnerName(''); setMobile(''); setLogoUrl('');
+    setIsEditing(false); setEditTeamId(null); setTeamName(''); setShortName(''); setOwnerName(''); setMobile(''); setLogoUrl('');
     // 🌟 Reset ke waqt bhi default budget tournament se set ho
     if(tournament && tournament.teamBudget) setBudget(tournament.teamBudget);
     else setBudget(50000000);
@@ -158,9 +160,13 @@ function AddTeam() {
                  <label className="block text-sm font-bold text-gray-700 mb-1">Team Name *</label>
                  <input type="text" value={teamName} onChange={(e) => setTeamName(e.target.value)} required disabled={!isEditing && isLimitReached} className="w-full p-4 border-2 border-gray-200 rounded-xl bg-gray-50 font-bold focus:border-blue-500 outline-none" />
               </div>
+              <div>
+                 <label className="block text-sm font-bold text-gray-700 mb-1">Short Name *</label>
+                 <input type="text" value={shortName} onChange={(e) => setShortName(e.target.value.toUpperCase())} required maxLength={5} placeholder="RCB" disabled={!isEditing && isLimitReached} className="w-full p-4 border-2 border-gray-200 rounded-xl bg-gray-50 font-bold uppercase focus:border-blue-500 outline-none" />
+              </div>
               
               {/* 🌟 FIX: Budget apne aap set hoga aur User use manually change bhi nahi karega ya auto-fill rakhega */}
-              <div>
+              <div className="md:col-span-2">
                  <label className="block text-sm font-bold text-gray-700 mb-1">Points Balance (Purse)</label>
                  <input type="number" value={budget} disabled className="w-full p-4 border-2 border-gray-200 rounded-xl bg-gray-200 font-black text-blue-800 cursor-not-allowed" />
                  <p className="text-xs text-blue-600 mt-1 font-bold">यह बजट टूर्नामेंट सेटिंग्स से अपने आप आ रहा है।</p>
@@ -197,6 +203,7 @@ function AddTeam() {
               <div key={team._id} className="p-4 border-2 border-gray-200 rounded-xl hover:border-blue-400 transition bg-gray-50 flex justify-between items-center">
                 <div>
                   <h3 className="font-black text-xl text-gray-800">{team.teamName}</h3>
+                  <p className="font-bold text-indigo-600 text-xs">Short: {team.shortName || '-'}</p>
                   <p className="font-bold text-green-600 text-sm">Purse: ₹{team.remainingPurse?.toLocaleString()}</p>
                 </div>
                 <div className="flex gap-2">

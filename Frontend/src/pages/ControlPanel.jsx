@@ -31,7 +31,9 @@ function ControlPanel() {
 
   const [actionHistory, setActionHistory] = useState([]);
   const [showResultsModal, setShowResultsModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [auctionResultDatabase, setAuctionResultDatabase] = useState([]);
+  const [directSellTeam, setDirectSellTeam] = useState('');
 
   // 🌟 DYNAMIC BID BUTTONS VALUES 🌟
   const btn1 = tournament?.bidButton1 || 500;
@@ -47,6 +49,10 @@ function ControlPanel() {
 
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
   const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString()}`;  
+  const getTeamLabel = useCallback((teamName) => {
+    const match = teams.find((team) => team.teamName === teamName);
+    return match?.shortName || teamName || '';
+  }, [teams]);
 
   useEffect(() => {
     localStorage.setItem('currentPlayer', JSON.stringify(currentPlayer));
@@ -319,6 +325,7 @@ function ControlPanel() {
     setCurrentPlayer(selected);
     setCurrentBid(selected.basePrice);
     setBiddingTeam('');
+    setDirectSellTeam('');    
     setCustomBid('');
     setHasBiddingStarted(false);    
     setPlayerStatus('bidding');
@@ -370,8 +377,36 @@ function ControlPanel() {
     setCustomBid('');
   };
 
-  const finalizePlayer = async (status) => {
-    if (status === 'Sold' && !biddingTeam) { alert("टीम सेलेक्ट करें!"); return; }
+  const handleDirectBaseSell = async () => {
+    if (!currentPlayer || playerStatus !== 'bidding') return;
+    if (!directSellTeam) {
+      alert('पहले टीम चुनें।');
+      return;
+    }
+
+    const basePrice = Number(currentPlayer.basePrice || 0);
+    const selectedTeam = teams.find((team) => team.teamName === directSellTeam);
+    if (!selectedTeam) {
+      alert('टीम नहीं मिली।');
+      return;
+    }
+    if (basePrice > Number(selectedTeam.maxBid || 0)) {
+      alert(`🚫 ${getTeamLabel(directSellTeam)} का Dynamic Max Bid ${formatCurrency(selectedTeam.maxBid)} है।`);
+      return;
+    }
+
+    setBiddingTeam(directSellTeam);
+    setCurrentBid(basePrice);
+    await finalizePlayer('Sold', {
+      soldTeamName: directSellTeam,
+      soldPrice: basePrice
+    });
+  };
+
+  const finalizePlayer = async (status, options = {}) => {
+    const soldTeamName = options.soldTeamName || biddingTeam;
+    const soldPrice = Number(options.soldPrice || currentBid);
+    if (status === 'Sold' && !soldTeamName) { alert("टीम सेलेक्ट करें!"); return; }
     if (status === 'Unsold' && hasBiddingStarted) { alert("बिडिंग शुरू होने के बाद खिलाड़ी को Unsold नहीं कर सकते।"); return; }    
     
     saveStateToHistory(status.toUpperCase(), currentPlayer); 
@@ -379,7 +414,7 @@ function ControlPanel() {
     try {
       const token = localStorage.getItem('token');
       const endpoint = status === 'Sold' ? `/api/players/sell/${currentPlayer._id}` : `/api/players/unsold/${currentPlayer._id}`;
-      const payload = status === 'Sold' ? { teamName: biddingTeam, soldPrice: currentBid } : {};
+      const payload = status === 'Sold' ? { teamName: soldTeamName, soldPrice } : {};
       
       await axios.put(`https://cricket-auction-backend-h8ud.onrender.com${endpoint}`, payload, { headers: { Authorization: `Bearer ${token}` } });
 
@@ -391,7 +426,8 @@ function ControlPanel() {
 
       setPlayerStatus(status.toLowerCase());
       setHasBiddingStarted(false);      
-      socketRef.current?.emit('newLiveBid', { bidAmount: currentBid, teamName: biddingTeam, player: currentPlayer, status: status.toLowerCase() }); 
+      setDirectSellTeam('');
+      socketRef.current?.emit('newLiveBid', { bidAmount: soldPrice, teamName: soldTeamName, player: currentPlayer, status: status.toLowerCase() });
     } catch (error) {
       const backendMessage = error.response?.data?.message;
       if (backendMessage) {
@@ -588,141 +624,45 @@ function ControlPanel() {
   const activeBiddingTeamData = teams.find((team) => team.teamName === biddingTeam);
 
   return (
-    <div className="min-h-screen bg-gray-200">
-      <header className="bg-blue-900 p-4 px-6 flex justify-between items-center shadow-lg text-white">
+    <div className="h-screen bg-gray-200 overflow-hidden">
+      <header className="bg-blue-900 p-3 px-5 flex justify-between items-center shadow-lg text-white">
         <h1 className="text-2xl font-black">⚙️ {tournament?.name} - Master Control</h1>
-        <div className="flex space-x-3">
-          
-          <button onClick={resetWholeAuction} className="bg-red-700 border border-red-500 px-4 py-2 rounded hover:bg-red-800 font-bold transition flex items-center shadow-lg" title="Reset for Real Auction">
-              ⚠️ Reset Auction
-          </button>
-
-          <button onClick={openResultsModal} className="bg-orange-500 border border-orange-400 px-4 py-2 rounded hover:bg-orange-400 font-bold transition flex items-center shadow-lg">
-              ♻️ Auction Results
-          </button>
-
+        <div className="flex space-x-2 items-center">
           <button 
             onClick={handleUndo} 
             disabled={actionHistory.length === 0}
-            className={`font-black px-6 py-2 rounded shadow-lg transition-all ${actionHistory.length > 0 ? 'bg-yellow-500 hover:bg-yellow-400 text-yellow-900' : 'bg-gray-600 text-gray-400 opacity-50'}`}
+            className={`font-black px-4 py-2 rounded shadow-lg transition-all text-sm ${actionHistory.length > 0 ? 'bg-yellow-500 hover:bg-yellow-400 text-yellow-900' : 'bg-gray-600 text-gray-400 opacity-50'}`}
           >
             ⏪ UNDO {actionHistory.length > 0 && `(${actionHistory.length})`}
           </button>
+          <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-600">
+            <button
+              onClick={() => setScreenView('live')}
+              className={`px-3 py-1 rounded text-xs font-black ${screenView === 'live' ? 'bg-green-600 text-white' : 'text-slate-200'}`}
+            >
+              Live Auction
+            </button>
+            <button
+              onClick={() => setScreenView('break')}
+              className={`px-3 py-1 rounded text-xs font-black ${screenView === 'break' ? 'bg-orange-500 text-white' : 'text-slate-200'}`}
+            >
+              Break Content
+            </button>
+          </div>
+          <button onClick={() => setShowSettingsModal(true)} className="bg-slate-100 text-slate-800 border border-slate-300 px-3 py-2 rounded font-bold hover:bg-white transition text-sm">⚙️ Settings</button>
           
-          <button onClick={() => navigate('/dashboard')} className="bg-gray-700 px-4 py-2 rounded hover:bg-gray-800 font-bold transition">Exit</button>
+          <button onClick={() => navigate('/dashboard')} className="bg-gray-700 px-3 py-2 rounded hover:bg-gray-800 font-bold transition text-sm">Exit</button>
         </div>
       </header>
 
-      <div className="p-4 lg:p-6 max-w-[1500px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
+      <div className="p-3 lg:p-4 max-w-[1500px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-3 h-[calc(100vh-76px)]">
         
-        <div className="lg:col-span-4 bg-white rounded-2xl shadow-xl p-5 border-t-8 border-blue-600 h-fit flex flex-col relative">
-          <div className="mb-4 p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
-            <p className="text-xs font-black uppercase tracking-wider text-indigo-700 mb-2">Player Order</p>
-            <select
-              value={playerOrderMode}
-              onChange={(e) => setPlayerOrderMode(e.target.value)}
-              className="w-full p-2 rounded-lg border-2 border-indigo-200 font-bold text-indigo-800 outline-none focus:border-indigo-400"
-            >
-              <option value="all-random">All Players Random</option>
-              <option value="category-random">Category-wise Random</option>
-            </select>
-
-            {playerOrderMode === 'category-random' && (
-              <>
-                <p className="text-xs text-indigo-700 font-bold mt-3 mb-1">
-                  Order: {effectiveCategoryOrder.length > 0 ? effectiveCategoryOrder.join(' → ') : '-'}
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {categoriesFromPlayers.map((category) => (
-                    <button
-                      key={category}
-                      onClick={() =>
-                        setCategoryOrder((prev) => [
-                          category,
-                          ...prev.filter((item) => item !== category),
-                          ...categoriesFromPlayers.filter((item) => item !== category && !prev.includes(item))
-                        ])
-                      }
-                      className="px-2 py-1 text-xs rounded border bg-white font-bold text-indigo-700 hover:bg-indigo-100"
-                    >
-                      Start with {category}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-[11px] mt-2 font-semibold text-indigo-600">Active Category: {activeCategory || '-'}</p>
-              </>
-            )}
-          </div>
-
-          <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-            <p className="text-xs font-black uppercase tracking-wider text-slate-700 mb-2">Live Screen Display</p>
-            <div className="space-y-2">
-              <div>
-                <label className="text-[11px] font-bold text-slate-600 uppercase">Display Mode</label>
-                <select
-                  value={displayMode}
-                  onChange={(e) => setDisplayMode(e.target.value)}
-                  className="w-full p-2 rounded-lg border-2 border-slate-200 font-bold text-slate-800 outline-none focus:border-slate-400 mt-1"
-                >
-                  <option value="day">Day Mode</option>
-                  <option value="night">Night Mode</option>
-                  <option value="projector">Projector / Presentation</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-600 uppercase">Player Photo Size</label>
-                <select
-                  value={photoSize}
-                  onChange={(e) => setPhotoSize(e.target.value)}
-                  className="w-full p-2 rounded-lg border-2 border-slate-200 font-bold text-slate-800 outline-none focus:border-slate-400 mt-1"
-                >
-                  <option value="small">Small</option>
-                  <option value="medium">Medium</option>
-                  <option value="large">Large</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-600 uppercase">Screen Content</label>
-                <div className="grid grid-cols-2 gap-2 mt-1">
-                  <button
-                    onClick={() => setScreenView('live')}
-                    className={`px-3 py-2 rounded-lg border font-black text-xs ${screenView === 'live' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-slate-700 border-slate-200'}`}
-                  >
-                    Live Auction
-                  </button>
-                  <button
-                    onClick={() => setScreenView('break')}
-                    className={`px-3 py-2 rounded-lg border font-black text-xs ${screenView === 'break' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-slate-700 border-slate-200'}`}
-                  >
-                    Break Content
-                  </button>
-                </div>
-              </div>
-
-              {screenView === 'break' && (
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 uppercase">Break View Type</label>
-                  <select
-                    value={breakView}
-                    onChange={(e) => setBreakView(e.target.value)}
-                    className="w-full p-2 rounded-lg border-2 border-slate-200 font-bold text-slate-800 outline-none focus:border-slate-400 mt-1"
-                  >
-                    <option value="teams-dashboard">Teams Dashboard</option>
-                    <option value="squad-list">Squad List</option>
-                    <option value="tournament-summary">Tournament Summary</option>
-                    <option value="top-biddings">Top Biddings</option>
-                  </select>
-                </div>
-              )}
-            </div>
-          </div>
+        <div className="lg:col-span-4 bg-white rounded-2xl shadow-xl p-4 border-t-8 border-blue-600 h-full flex flex-col relative">
 
           <button
             onClick={pickRandomPlayer}
             disabled={Boolean(currentPlayer && playerStatus === 'bidding' && hasBiddingStarted)}
-            className={`w-full text-white font-black text-lg py-3 rounded-xl shadow-[0_4px_0_0_rgba(67,56,202,1)] active:translate-y-1 transition-all mb-5 disabled:opacity-40 disabled:cursor-not-allowed ${playerStatus !== 'bidding' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+            className={`w-full text-white font-black text-base py-2.5 rounded-xl shadow-[0_4px_0_0_rgba(67,56,202,1)] active:translate-y-1 transition-all mb-3 disabled:opacity-40 disabled:cursor-not-allowed ${playerStatus !== 'bidding' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
           >
             {playerStatus !== 'bidding' ? '📸 BRING NEXT PLAYER' : `🎲 NEXT RANDOM PLAYER (${players.length} Left)`}
           </button>
@@ -778,22 +718,22 @@ function ControlPanel() {
           )}
         </div>
 
-        <div className={`lg:col-span-8 bg-white rounded-2xl shadow-xl p-5 border-t-8 border-green-500 transition-all ${!currentPlayer || playerStatus !== 'bidding' ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
+        <div className={`lg:col-span-8 bg-white rounded-2xl shadow-xl p-4 border-t-8 border-green-500 transition-all h-full ${!currentPlayer || playerStatus !== 'bidding' ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
           
-          <div className="bg-gray-900 text-white rounded-2xl p-5 text-center mb-5 shadow-inner flex justify-between items-center relative overflow-hidden">
+        <div className={`lg:col-span-8 bg-white rounded-2xl shadow-xl p-4 border-t-8 border-green-500 transition-all h-full ${!currentPlayer || playerStatus !== 'bidding' ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 via-yellow-500 to-green-500 animate-pulse"></div>
             
             <div className="text-left flex items-center space-x-4">
               <div>
                 <p className="text-gray-400 font-bold uppercase text-xs mb-1 tracking-wider">Current Bid</p>
-                <p className="text-5xl font-black text-green-400">₹ {currentBid.toLocaleString()}</p>
+                <p className="text-4xl font-black text-green-400">₹ {currentBid.toLocaleString()}</p>
               </div>
               <button onClick={handleResetBid} className="bg-gray-700 p-2 rounded-full hover:bg-gray-600 transition shadow" title="Reset to Base Price">🔄</button>
             </div>
             
             <div className="text-right">
               <p className="text-gray-400 font-bold uppercase text-xs mb-1 tracking-wider">Highest Bidder</p>
-              <p className="text-2xl font-black text-yellow-400">{biddingTeam ? biddingTeam : "Waiting..."}</p>
+              <p className="text-2xl font-black text-yellow-400">{biddingTeam ? getTeamLabel(biddingTeam) : "Waiting..."}</p>
               {activeBiddingTeamData && (
                 <p className="text-xs text-orange-300 font-bold mt-1">
                   Max Bid: {formatCurrency(activeBiddingTeamData.maxBid)}
@@ -802,11 +742,22 @@ function ControlPanel() {
             </div>
           </div>
 
-          <div className="flex justify-between items-end mb-4 border-b pb-3">
+          <div className="flex justify-between items-end mb-3 border-b pb-2">
              <h2 className="text-gray-500 font-bold text-sm uppercase tracking-widest">Fast Bidding Grid</h2>
              <div className="flex space-x-2">
                 <input type="number" value={customBid} onChange={(e) => setCustomBid(e.target.value)} placeholder="Custom Bid ₹" className="p-1.5 border-2 border-gray-300 rounded font-bold w-28 text-sm focus:border-blue-500 outline-none" />
                 <button onClick={handleCustomBidSubmit} className="bg-blue-600 text-white font-bold px-3 py-1.5 rounded shadow hover:bg-blue-700 text-sm">Jump 🚀</button>
+                <select
+                  value={directSellTeam}
+                  onChange={(e) => setDirectSellTeam(e.target.value)}
+                  className="p-1.5 border-2 border-gray-300 rounded font-bold w-32 text-sm focus:border-emerald-500 outline-none"
+                >
+                  <option value="">Base Sell Team</option>
+                  {teams.map((team) => (
+                    <option key={`base-sell-${team._id}`} value={team.teamName}>{team.shortName || team.teamName}</option>
+                  ))}
+                </select>
+                <button onClick={handleDirectBaseSell} className="bg-emerald-600 text-white font-bold px-3 py-1.5 rounded shadow hover:bg-emerald-700 text-sm">Base Sell ✅</button>
              </div>
           </div>
 
@@ -823,7 +774,7 @@ function ControlPanel() {
                   return (
                     <div key={`active-${team._id}`} className={`p-3 rounded-lg border-2 transition-all ${isHighestBidder ? 'border-yellow-400 bg-yellow-50 shadow transform scale-[1.02]' : 'border-purple-300 bg-purple-50 hover:border-purple-400'}`}>
                       <div className="flex justify-between items-center mb-2">
-                        <h3 className="font-bold text-base text-gray-800 truncate pr-1" title={team.teamName}>{team.teamName}</h3>
+                        <h3 className="font-bold text-base text-gray-800 truncate pr-1" title={team.teamName}>{team.shortName || team.teamName}</h3>
                         <span className="text-[10px] px-2 py-1 rounded-full bg-purple-700 text-white font-black">#{index + 1}</span>
                       </div>
                       <div className="mb-2 p-2 rounded bg-white border border-purple-200">
@@ -847,13 +798,13 @@ function ControlPanel() {
             <p className="text-[11px] font-bold text-gray-500">All teams stay visible and can still bid anytime.</p>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 max-h-[500px] overflow-y-auto pr-2 pb-2">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2 pb-1">
             {teams.map((team) => {
               const isHighestBidder = biddingTeam === team.teamName;
               return (
                 <div key={team._id} className={`p-3 rounded-lg border-2 transition-all ${isHighestBidder ? 'border-yellow-400 bg-yellow-50 shadow transform scale-[1.02]' : 'border-gray-200 bg-gray-50 hover:border-blue-300'}`}>
                   <div className="flex justify-between items-center mb-2">
-                    <h3 className="font-bold text-base text-gray-800 truncate pr-1" title={team.teamName}>{team.teamName}</h3>
+                    <h3 className="font-bold text-base text-gray-800 truncate pr-1" title={team.teamName}>{team.shortName || team.teamName}</h3>
                     <div className="text-right shrink-0">
                       <span className="text-[10px] font-bold text-gray-500 uppercase block leading-none mb-0.5">Purse Left</span>
                       <span className={`font-black text-sm ${team.remainingPurse < 50000 ? 'text-red-500' : 'text-green-600'}`}>₹{team.remainingPurse.toLocaleString()}</span>
@@ -911,7 +862,7 @@ function ControlPanel() {
                           <h3 className="font-bold text-lg">{p.name}</h3>
                           <p className="text-sm text-gray-500 font-semibold">{p.role} | ₹{p.basePrice}</p>
                           <p className={`text-xs font-black mt-1 ${p.auctionStatus === 'Sold' || p.auctionStatus === 'Icon' ? 'text-green-700' : 'text-red-600'}`}>
-                            {p.auctionStatus} {p.soldTo && p.soldTo !== 'Unsold' ? `• ${p.soldTo} (₹${p.soldPrice || 0})` : ''}
+                            {p.auctionStatus} {p.soldTo && p.soldTo !== 'Unsold' ? `• ${getTeamLabel(p.soldTo)} (₹${p.soldPrice || 0})` : ''}
                           </p>
                         </div>
                       </div>
@@ -925,6 +876,90 @@ function ControlPanel() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSettingsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/45">
+          <div className="w-full max-w-xl h-full bg-white shadow-2xl p-5 overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-black text-slate-800">⚙️ Control Settings</h2>
+              <button onClick={() => setShowSettingsModal(false)} className="text-3xl leading-none text-slate-500 hover:text-slate-700">&times;</button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
+                <p className="text-xs font-black uppercase tracking-wider text-indigo-700 mb-2">Player Order</p>
+                <select
+                  value={playerOrderMode}
+                  onChange={(e) => setPlayerOrderMode(e.target.value)}
+                  className="w-full p-2 rounded-lg border-2 border-indigo-200 font-bold text-indigo-800 outline-none focus:border-indigo-400"
+                >
+                  <option value="all-random">All Players Random</option>
+                  <option value="category-random">Category-wise Random</option>
+                </select>
+                {playerOrderMode === 'category-random' && (
+                  <>
+                    <p className="text-xs text-indigo-700 font-bold mt-3 mb-1">Order: {effectiveCategoryOrder.length > 0 ? effectiveCategoryOrder.join(' → ') : '-'}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {categoriesFromPlayers.map((category) => (
+                        <button
+                          key={category}
+                          onClick={() =>
+                            setCategoryOrder((prev) => [
+                              category,
+                              ...prev.filter((item) => item !== category),
+                              ...categoriesFromPlayers.filter((item) => item !== category && !prev.includes(item))
+                            ])
+                          }
+                          className="px-2 py-1 text-xs rounded border bg-white font-bold text-indigo-700 hover:bg-indigo-100"
+                        >
+                          Start with {category}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[11px] mt-2 font-semibold text-indigo-600">Active Category: {activeCategory || '-'}</p>
+                  </>
+                )}
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                <p className="text-xs font-black uppercase tracking-wider text-slate-700">Live Screen Display</p>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 uppercase">Display Mode</label>
+                  <select value={displayMode} onChange={(e) => setDisplayMode(e.target.value)} className="w-full p-2 rounded-lg border-2 border-slate-200 font-bold text-slate-800 outline-none focus:border-slate-400 mt-1">
+                    <option value="day">Day Mode</option>
+                    <option value="night">Night Mode</option>
+                    <option value="projector">Projector / Presentation</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 uppercase">Player Photo Size</label>
+                  <select value={photoSize} onChange={(e) => setPhotoSize(e.target.value)} className="w-full p-2 rounded-lg border-2 border-slate-200 font-bold text-slate-800 outline-none focus:border-slate-400 mt-1">
+                    <option value="small">Small</option>
+                    <option value="medium">Medium</option>
+                    <option value="large">Large</option>
+                  </select>
+                </div>
+                {screenView === 'break' && (
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 uppercase">Break View Type</label>
+                    <select value={breakView} onChange={(e) => setBreakView(e.target.value)} className="w-full p-2 rounded-lg border-2 border-slate-200 font-bold text-slate-800 outline-none focus:border-slate-400 mt-1">
+                      <option value="teams-dashboard">Teams Dashboard</option>
+                      <option value="squad-list">Squad List</option>
+                      <option value="tournament-summary">Tournament Summary</option>
+                      <option value="top-biddings">Top Biddings</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={openResultsModal} className="bg-orange-500 border border-orange-400 px-4 py-2 rounded hover:bg-orange-400 font-bold transition">♻️ Auction Results</button>
+                <button onClick={resetWholeAuction} className="bg-red-700 text-white border border-red-500 px-4 py-2 rounded hover:bg-red-800 font-bold transition">⚠️ Reset Auction</button>
+              </div>
             </div>
           </div>
         </div>

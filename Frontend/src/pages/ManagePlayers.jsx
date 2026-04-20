@@ -13,6 +13,7 @@ function ManagePlayers() {
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [iconTeam, setIconTeam] = useState('');
   const [iconPrice, setIconPrice] = useState(0);
+  const getTeamShortName = (teamName) => teams.find((team) => team.teamName === teamName)?.shortName || teamName;
 
   const fetchPlayers = async () => {
     try {
@@ -103,7 +104,7 @@ function ManagePlayers() {
         { teamName: iconTeam, iconPrice },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      alert(`⭐ ${selectedPlayer.name} is now an ICON player for ${iconTeam}!`);
+      alert(`⭐ ${selectedPlayer.name} is now an ICON player for ${getTeamShortName(iconTeam)}!`);
       setIsIconModalOpen(false);
       fetchPlayers();
     } catch { alert('Failed to assign Icon player.'); }
@@ -220,7 +221,7 @@ function ManagePlayers() {
                     ) : (
                       <div className="flex flex-col items-center">
                         <span className={`px-3 py-1 rounded font-bold text-xs ${player.approvalStatus === 'Approved' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>{player.approvalStatus}</span>
-                        <span className="font-bold text-gray-600 text-sm mt-1">{player.auctionStatus} {player.soldTo && player.soldTo !== 'Unsold' && `(${player.soldTo})`}</span>
+                        <span className="font-bold text-gray-600 text-sm mt-1">{player.auctionStatus} {player.soldTo && player.soldTo !== 'Unsold' && `(${getTeamShortName(player.soldTo)})`}</span>
                       </div>
                     )}
                   </td>
@@ -243,7 +244,7 @@ function ManagePlayers() {
             <form onSubmit={handleMakeIconSubmit} className="space-y-4">
               <select required value={iconTeam} onChange={(e) => setIconTeam(e.target.value)} className="w-full p-3 border-2 rounded-xl font-bold">
                 <option value="">-- Choose Team --</option>
-                {teams.map(t => <option key={t._id} value={t.teamName}>{t.teamName} (Max ₹{Number(t.maxBid || 0).toLocaleString()})</option>)}
+                {teams.map(t => <option key={t._id} value={t.teamName}>{t.shortName || t.teamName} (Max ₹{Number(t.maxBid || 0).toLocaleString()})</option>)}
               </select>
               {selectedIconTeamData && (
                 <p className="text-xs font-bold text-orange-700 bg-orange-50 border border-orange-200 rounded-lg p-2">
@@ -284,7 +285,7 @@ function ManagePlayers() {
               <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">Base Price</p><p className="font-bold">₹ {selectedPlayer.basePrice || 0}</p></div>
               <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">Approval</p><p className="font-bold">{selectedPlayer.approvalStatus || '-'}</p></div>
               <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">Auction Status</p><p className="font-bold">{selectedPlayer.auctionStatus || '-'}</p></div>
-              <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">Sold To</p><p className="font-bold">{selectedPlayer.soldTo || '-'}</p></div>
+              <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">Sold To</p><p className="font-bold">{selectedPlayer.soldTo ? getTeamShortName(selectedPlayer.soldTo) : '-'}</p></div>
               <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">Sold Price</p><p className="font-bold">₹ {selectedPlayer.soldPrice || 0}</p></div>
               <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">ICON Player</p><p className="font-bold">{selectedPlayer.isIcon ? 'Yes' : 'No'}</p></div>
             </div>
