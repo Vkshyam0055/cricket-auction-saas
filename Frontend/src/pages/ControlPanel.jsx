@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useContext, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import { io } from 'socket.io-client';
 import { TournamentContext } from '../context/TournamentContext';
+import { apiRequest, getSocketBaseUrl } from '../utils/apiClient';
 
 function ControlPanel() {
   const navigate = useNavigate();
@@ -105,13 +105,29 @@ function ControlPanel() {
     const value = String(category || '').trim();
     return value || 'Uncategorized';
   };
+  const normalizeTeam = useCallback((team) => ({
+    ...team,
+    teamName: String(team?.teamName || '').trim(),
+    shortName: String(team?.shortName || '').trim(),
+    remainingPurse: Number(team?.remainingPurse || 0),
+    maxBid: Number(team?.maxBid || 0),
+    remainingRequiredPlayers: Number(team?.remainingRequiredPlayers || 0)
+  }), []);
 
   const fetchTeamsWithMaxBid = async () => {
     try {
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
-      const teamsRes = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/teams', { headers });
-      setTeams(teamsRes.data);
+      const teamsRes = await apiRequest({
+        method: 'get',
+        path: '/api/teams',
+        headers,
+        params: {
+          basePrice: Number(currentPlayer?.basePrice || 0)
+        }
+      });
+      const payload = Array.isArray(teamsRes.data) ? teamsRes.data : [];
+      setTeams(payload.map(normalizeTeam));
     } catch (error) {
       console.error('टीम डेटा लाने में दिक्कत:', error);
     }
@@ -122,10 +138,11 @@ function ControlPanel() {
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
 
-      const playersRes = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/players', { headers });
-      setAllPlayers(Array.isArray(playersRes.data) ? playersRes.data : []);
+      const playersRes = await apiRequest({ method: 'get', path: '/api/players', headers });
+      const allPlayersPayload = Array.isArray(playersRes.data) ? playersRes.data : [];
+      setAllPlayers(allPlayersPayload);
       
-      const availablePlayers = playersRes.data.filter(player =>
+      const availablePlayers = allPlayersPayload.filter(player =>
         player.approvalStatus?.trim().toLowerCase() === 'approved' &&
         player.auctionStatus?.trim().toLowerCase() === 'readyforauction'
       );
@@ -162,7 +179,7 @@ function ControlPanel() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) return;
-    const socket = io('https://cricket-auction-backend-h8ud.onrender.com', {
+    const socket = io(getSocketBaseUrl(), {
       auth: { token }
     });
     socketRef.current = socket;
@@ -329,7 +346,9 @@ function ControlPanel() {
     setCustomBid('');
     setHasBiddingStarted(false);    
     setPlayerStatus('bidding');
-    
+    setLastBidActions([]);
+    syncActiveBiddingState('reset');
+
     socketRef.current?.emit('newLiveBid', { bidAmount: selected.basePrice, teamName: '', player: selected, status: 'bidding' });
   };
 
@@ -416,7 +435,12 @@ function ControlPanel() {
       const endpoint = status === 'Sold' ? `/api/players/sell/${currentPlayer._id}` : `/api/players/unsold/${currentPlayer._id}`;
       const payload = status === 'Sold' ? { teamName: soldTeamName, soldPrice } : {};
       
-      await axios.put(`https://cricket-auction-backend-h8ud.onrender.com${endpoint}`, payload, { headers: { Authorization: `Bearer ${token}` } });
+      await apiRequest({
+        method: 'put',
+        path: endpoint,
+        data: payload,
+        headers: { Authorization: `Bearer ${token}` }
+      });
 
       const updatedPlayers = players.filter(p => p._id !== currentPlayer._id);
       setPlayers(updatedPlayers);
@@ -427,6 +451,8 @@ function ControlPanel() {
       setPlayerStatus(status.toLowerCase());
       setHasBiddingStarted(false);      
       setDirectSellTeam('');
+      setLastBidActions([]);
+      syncActiveBiddingState('reset');      
       socketRef.current?.emit('newLiveBid', { bidAmount: soldPrice, teamName: soldTeamName, player: currentPlayer, status: status.toLowerCase() });
     } catch (error) {
       const backendMessage = error.response?.data?.message;
@@ -446,7 +472,10 @@ function ControlPanel() {
     if (lastAction.actionType === 'SOLD' || lastAction.actionType === 'UNSOLD') {
       try {
         const token = localStorage.getItem('token');
-        await axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/players/undo/${lastAction.affectedPlayer._id}`, {}, {
+        await apiRequest({
+          method: 'put',
+          path: `/api/players/undo/${lastAction.affectedPlayer._id}`,
+          data: {},
           headers: { Authorization: `Bearer ${token}` }
         });
       } catch (error) {
@@ -481,7 +510,7 @@ function ControlPanel() {
   const openResultsModal = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/players', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await apiRequest({ method: 'get', path: '/api/players', headers: { Authorization: `Bearer ${token}` } });
       
       const currentReadyIds = players.map(p => p._id);
       if(currentPlayer) currentReadyIds.push(currentPlayer._id);
@@ -502,7 +531,10 @@ function ControlPanel() {
   const bringBackToAuction = async (playerToBring) => {
     try {
       const token = localStorage.getItem('token');
-      await axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/players/undo/${playerToBring._id}`, {}, {
+      await apiRequest({
+        method: 'put',
+        path: `/api/players/undo/${playerToBring._id}`,
+        data: {},
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -531,7 +563,10 @@ function ControlPanel() {
         const token = localStorage.getItem('token');
         
         for (const p of unsoldRoundPlayers) {
-           await axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/players/undo/${p._id}`, {}, {
+           await apiRequest({
+              method: 'put',
+              path: `/api/players/undo/${p._id}`,
+              data: {},
               headers: { Authorization: `Bearer ${token}` }
            });
            await delay(400); 
@@ -566,7 +601,7 @@ function ControlPanel() {
 
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/players', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await apiRequest({ method: 'get', path: '/api/players', headers: { Authorization: `Bearer ${token}` } });
       
       const playersToReset = res.data.filter(p => 
         p.auctionStatus?.trim().toLowerCase() === 'sold' || 
@@ -579,7 +614,10 @@ function ControlPanel() {
           
           for (const p of playersToReset) {
               try {
-                  await axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/players/undo/${p._id}`, {}, {
+                  await apiRequest({
+                      method: 'put',
+                      path: `/api/players/undo/${p._id}`,
+                      data: {},
                       headers: { Authorization: `Bearer ${token}` }
                   });
                   await delay(500); 
@@ -720,7 +758,7 @@ function ControlPanel() {
 
         <div className={`lg:col-span-8 bg-white rounded-2xl shadow-xl p-4 border-t-8 border-green-500 transition-all h-full ${!currentPlayer || playerStatus !== 'bidding' ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
           
-        <div className={`lg:col-span-8 bg-white rounded-2xl shadow-xl p-4 border-t-8 border-green-500 transition-all h-full ${!currentPlayer || playerStatus !== 'bidding' ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
+          <div className="flex items-start justify-between mb-4">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 via-yellow-500 to-green-500 animate-pulse"></div>
             
             <div className="text-left flex items-center space-x-4">
@@ -807,7 +845,7 @@ function ControlPanel() {
                     <h3 className="font-bold text-base text-gray-800 truncate pr-1" title={team.teamName}>{team.shortName || team.teamName}</h3>
                     <div className="text-right shrink-0">
                       <span className="text-[10px] font-bold text-gray-500 uppercase block leading-none mb-0.5">Purse Left</span>
-                      <span className={`font-black text-sm ${team.remainingPurse < 50000 ? 'text-red-500' : 'text-green-600'}`}>₹{team.remainingPurse.toLocaleString()}</span>
+                      <span className={`font-black text-sm ${Number(team.remainingPurse || 0) < 50000 ? 'text-red-500' : 'text-green-600'}`}>₹{Number(team.remainingPurse || 0).toLocaleString()}</span>
                     </div>
                   </div>
                   

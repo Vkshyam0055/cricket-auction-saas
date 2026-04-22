@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { apiRequest } from '../utils/apiClient';
 
 function Teams() {
   const navigate = useNavigate();
@@ -11,6 +11,7 @@ function Teams() {
   // Tabs: 'summary' or 'squads'
   const [activeTab, setActiveTab] = useState('summary');
   const [selectedTeam, setSelectedTeam] = useState('');
+  const normalizeStatus = (status) => String(status || '').trim().toLowerCase();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -19,16 +20,19 @@ function Teams() {
         const headers = { Authorization: `Bearer ${token}` };
 
         const [teamsRes, playersRes] = await Promise.all([
-          axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/teams', { headers }),
-          axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/players', { headers })
+          apiRequest({ method: 'get', path: '/api/teams', headers }),
+          apiRequest({ method: 'get', path: '/api/players', headers })
         ]);
 
-        setTeams(teamsRes.data);
-        setPlayers(playersRes.data);
+        const teamsPayload = Array.isArray(teamsRes.data) ? teamsRes.data : [];
+        const playersPayload = Array.isArray(playersRes.data) ? playersRes.data : [];
+
+        setTeams(teamsPayload);
+        setPlayers(playersPayload);
         
         // By default, select the first team if available
-        if (teamsRes.data.length > 0) {
-          setSelectedTeam(teamsRes.data[0].teamName);
+        if (teamsPayload.length > 0) {
+          setSelectedTeam(teamsPayload[0].teamName);
         }
       } catch (error) {
         console.error("डेटा लाने में दिक्कत:", error);
@@ -42,13 +46,13 @@ function Teams() {
 
   // 📊 Calculations for Auction Summary
   const totalRegistered = players.length;
-  const totalSold = players.filter(p => p.auctionStatus === 'Sold' || p.auctionStatus === 'Icon').length;
-  const totalUnsold = players.filter(p => p.auctionStatus === 'Unsold').length;
+  const totalSold = players.filter((p) => ['sold', 'icon'].includes(normalizeStatus(p.auctionStatus))).length;
+  const totalUnsold = players.filter((p) => normalizeStatus(p.auctionStatus) === 'unsold').length;
 
   // 🛡️ Calculations for Team Dashboard
   // 🌟 FIX: Icon Players हमेशा लिस्ट में सबसे ऊपर (Top) आएंगे!
   const squadPlayers = players
-    .filter(p => p.soldTo === selectedTeam)
+    .filter((p) => String(p.soldTo || '').trim() === String(selectedTeam || '').trim())
     .sort((a, b) => Number(b.isIcon || 0) - Number(a.isIcon || 0)); 
 
   const activeTeamData = teams.find(t => t.teamName === selectedTeam);

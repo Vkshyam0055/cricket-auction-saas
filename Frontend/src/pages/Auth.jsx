@@ -3,6 +3,37 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { TournamentContext } from '../context/TournamentContext'; 
 
+const API_BASE_CANDIDATES = Array.from(new Set([
+  import.meta.env.VITE_API_URL,
+  'https://cricket-auction-backend-h8ud.onrender.com',
+  'http://localhost:5000'
+].filter(Boolean).map((url) => String(url).replace(/\/$/, ''))));
+
+const postWithFallback = async (path, body) => {
+  let lastError = null;
+  for (const baseUrl of API_BASE_CANDIDATES) {
+    const normalizedBase = String(baseUrl).replace(/\/$/, '');
+    const normalizedPath = String(path || '').trim();
+    const requestPath = normalizedBase.endsWith('/api') && normalizedPath.startsWith('/api/')
+      ? normalizedPath.replace(/^\/api/, '')
+      : normalizedPath;
+    const requestUrl = `${normalizedBase}${requestPath}`;
+    try {
+      console.log('[Auth] trying URL:', requestUrl);
+      const response = await axios.post(requestUrl, body);
+      localStorage.setItem('apiBaseUrl', normalizedBase);
+      return response;
+    } catch (error) {
+      lastError = error;
+      const status = error?.response?.status;
+      if (status && status < 500) {
+        throw error;
+      }
+    }
+  }
+  throw lastError || new Error('No API base URL reachable');
+};
+
 function Auth() {
   const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
@@ -27,7 +58,7 @@ function Auth() {
     try {
       if (isLogin) {
         const deviceId = localStorage.getItem('deviceId');
-        const res = await axios.post('https://cricket-auction-backend-h8ud.onrender.com/api/auth/login', { 
+        const res = await postWithFallback('/api/auth/login', { 
             phone, 
             password,
             deviceId 
@@ -46,7 +77,7 @@ function Auth() {
         navigate('/dashboard'); 
         
       } else {
-        await axios.post('https://cricket-auction-backend-h8ud.onrender.com/api/auth/register', { 
+        await postWithFallback('/api/auth/register', { 
             name, 
             phone, 
             password 

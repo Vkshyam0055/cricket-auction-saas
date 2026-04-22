@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { apiRequest } from '../utils/apiClient';
 
 function ManagePlayers() {
   const navigate = useNavigate();
@@ -18,7 +18,11 @@ function ManagePlayers() {
   const fetchPlayers = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/players', { headers: { Authorization: `Bearer ${token}` } });
+      const response = await apiRequest({
+        method: 'get',
+        path: '/api/players',
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setPlayers(response.data);
     } catch (error) { console.error(error); }
   };
@@ -26,7 +30,11 @@ function ManagePlayers() {
   const fetchTeams = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/teams', { headers: { Authorization: `Bearer ${token}` } });
+      const response = await apiRequest({
+        method: 'get',
+        path: '/api/teams',
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setTeams(response.data);
     } catch (error) { console.error(error); }
   };
@@ -41,7 +49,12 @@ function ManagePlayers() {
   const handleApproval = async (id, status) => {
     try {
       const token = localStorage.getItem('token');
-      await axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/players/approval/${id}`, { status }, { headers: { Authorization: `Bearer ${token}` } });
+      await apiRequest({
+        method: 'put',
+        path: `/api/players/approval/${id}`,
+        data: { status },
+        headers: { Authorization: `Bearer ${token}` }
+      });
       fetchPlayers();
     } catch { alert('Error changing status'); }
   };
@@ -49,18 +62,24 @@ function ManagePlayers() {
   const handlePriceUpdate = async (id, newPrice) => {
     try {
       const token = localStorage.getItem('token');
-      await axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/players/update-price/${id}`, { basePrice: newPrice }, { headers: { Authorization: `Bearer ${token}` } });
+      await apiRequest({
+        method: 'put',
+        path: `/api/players/update-price/${id}`,
+        data: { basePrice: newPrice },
+        headers: { Authorization: `Bearer ${token}` }
+      });
     } catch { alert('Error updating price'); }
   };
 
   const handleCategoryUpdate = async (id, newCategory) => {
     try {
       const token = localStorage.getItem('token');
-      await axios.put(
-        `https://cricket-auction-backend-h8ud.onrender.com/api/players/update-category/${id}`,
-        { category: newCategory },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await apiRequest({
+        method: 'put',
+        path: `/api/players/update-category/${id}`,
+        data: { category: newCategory },
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setPlayers(prev =>
         prev.map(player => (player._id === id ? { ...player, category: newCategory } : player))
       );
@@ -73,7 +92,11 @@ function ManagePlayers() {
     if (window.confirm(`क्या आप सच में '${name}' को डिलीट करना चाहते हैं?`)) {
       try {
         const token = localStorage.getItem('token');
-        await axios.delete(`https://cricket-auction-backend-h8ud.onrender.com/api/players/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+        await apiRequest({
+          method: 'delete',
+          path: `/api/players/${id}`,
+          headers: { Authorization: `Bearer ${token}` }
+        });
         fetchPlayers();
       } catch { alert('Delete failed'); }
     }
@@ -100,10 +123,12 @@ function ManagePlayers() {
     }    
     try {
       const token = localStorage.getItem('token');
-      await axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/players/make-icon/${selectedPlayer._id}`,
-        { teamName: iconTeam, iconPrice },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await apiRequest({
+        method: 'put',
+        path: `/api/players/make-icon/${selectedPlayer._id}`,
+        data: { teamName: iconTeam, iconPrice },
+        headers: { Authorization: `Bearer ${token}` }
+      });
       alert(`⭐ ${selectedPlayer.name} is now an ICON player for ${getTeamShortName(iconTeam)}!`);
       setIsIconModalOpen(false);
       fetchPlayers();
@@ -116,7 +141,10 @@ function ManagePlayers() {
 
     try {
       const token = localStorage.getItem('token');
-      await axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/players/remove-icon/${player._id}`, {}, {
+      await apiRequest({
+        method: 'put',
+        path: `/api/players/remove-icon/${player._id}`,
+        data: {},
         headers: { Authorization: `Bearer ${token}` }
       });
       alert(`✅ ${player.name} अब ICON नहीं है और वापस auction pool में आ गया है।`);

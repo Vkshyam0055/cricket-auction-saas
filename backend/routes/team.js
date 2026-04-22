@@ -76,12 +76,16 @@ router.post('/', async (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
+    const queryBasePrice = Number(req.query.basePrice);
+    const currentBasePrice = Number.isFinite(queryBasePrice) && queryBasePrice >= 0
+      ? queryBasePrice
+      : undefined;
     const teams = await Team.find({ organizer: req.user.id }).lean();
     const auctionState = await getAuctionStateForOrganizer({ organizerId: req.user.id });
     const teamsWithMaxBid = decorateTeamsWithMaxBid({
       teams,
       auctionState,
-      currentBasePrice: auctionState.tournamentMinBasePrice
+      currentBasePrice
     });
     return res.json(teamsWithMaxBid);
   } catch (error) {

@@ -2,6 +2,37 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
+const API_BASE_CANDIDATES = Array.from(new Set([
+  import.meta.env.VITE_API_URL,
+  'https://cricket-auction-backend-h8ud.onrender.com',
+  'http://localhost:5000'
+].filter(Boolean).map((url) => String(url).replace(/\/$/, ''))));
+
+const postWithFallback = async (path, body) => {
+  let lastError = null;
+  for (const baseUrl of API_BASE_CANDIDATES) {
+    const normalizedBase = String(baseUrl).replace(/\/$/, '');
+    const normalizedPath = String(path || '').trim();
+    const requestPath = normalizedBase.endsWith('/api') && normalizedPath.startsWith('/api/')
+      ? normalizedPath.replace(/^\/api/, '')
+      : normalizedPath;
+    const requestUrl = `${normalizedBase}${requestPath}`;
+    try {
+      console.log('[Login] trying URL:', requestUrl);
+      const response = await axios.post(requestUrl, body);
+      localStorage.setItem('apiBaseUrl', normalizedBase);
+      return response;
+    } catch (error) {
+      lastError = error;
+      const status = error?.response?.status;
+      if (status && status < 500) {
+        throw error;
+      }
+    }
+  }
+  throw lastError || new Error('No API base URL reachable');
+};
+
 function Login() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -12,7 +43,7 @@ function Login() {
     
     try {
       // 1. डाकिया (Axios) बैकएंड के पास नंबर और पासवर्ड लेकर जा रहा है
-      const response = await axios.post('https://cricket-auction-backend-h8ud.onrender.com/api/auth/login', {
+      const response = await postWithFallback('/api/auth/login', {
         phone: phone,
         password: password
       });

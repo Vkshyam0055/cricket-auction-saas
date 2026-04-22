@@ -30,19 +30,41 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
     try {
         const { phone, password, deviceId } = req.body;
+        console.log('[AUTH] POST /api/auth/login', {
+            phone,
+            hasPassword: Boolean(password),
+            hasDeviceId: Boolean(deviceId)
+        });
         const user = await User.findOne({ phone });
         if (!user) return res.status(400).json({ message: "यह नंबर रजिस्टर नहीं है!" });
+        console.log('[AUTH] login user found', { userId: String(user._id), role: user.role });
 
         if (!user.isActive) {
             return res.status(403).json({ message: "आपका अकाउंट सस्पेंड कर दिया गया है।" });
         }
 
-        const isMatch = await bcrypt.compare(password, user.password);
+        const storedPassword = String(user.password || '');
+        let isMatch = false;
+        const isBcryptHash = storedPassword.startsWith('$2a$') || storedPassword.startsWith('$2b$') || storedPassword.startsWith('$2y$');
+
+        if (isBcryptHash) {
+            isMatch = await bcrypt.compare(password, storedPassword);
+        } else {
+            // Legacy support: plain text password stored in old DB entries.
+            isMatch = password === storedPassword;
+            if (isMatch) {
+                const salt = await bcrypt.genSalt(10);
+                const hashedPassword = await bcrypt.hash(password, salt);
+                await User.updateOne({ _id: user._id }, { $set: { password: hashedPassword } });
+                user.password = hashedPassword;
+            }
+        }
         if (!isMatch) return res.status(400).json({ message: "पासवर्ड गलत है!" });
 
         // 🌟 SAFETY GUARD: अगर डेटाबेस में activeDevices एरे नहीं है, तो इसे अभी बना दो
         if (!Array.isArray(user.activeDevices)) {
             user.activeDevices = [];
+            await User.updateOne({ _id: user._id }, { $set: { activeDevices: [] } });
         }
 
         if (deviceId) {
@@ -58,7 +80,10 @@ router.post('/login', async (req, res) => {
             // डिवाइस जोड़ें (अगर नया है)
             if (!user.activeDevices.includes(deviceId)) {
                 user.activeDevices.push(deviceId);
-                await user.save();
+                await User.updateOne(
+                    { _id: user._id },
+                    { $addToSet: { activeDevices: deviceId } }
+                );
             }
         }
 

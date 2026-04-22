@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { apiRequest } from '../utils/apiClient';
 
 function SuperAdmin() {
   const [adminData, setAdminData] = useState([]);
@@ -26,8 +26,8 @@ function SuperAdmin() {
       const headers = { Authorization: `Bearer ${token}` };
       
       const [userRes, planRes] = await Promise.all([
-        axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/admin/all-data', { headers }),
-        axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/plans')
+        apiRequest({ method: 'get', path: '/api/admin/all-data', headers }),
+        apiRequest({ method: 'get', path: '/api/plans' })
       ]);
 
       setAdminData(userRes.data);
@@ -60,9 +60,12 @@ function SuperAdmin() {
     e.preventDefault();
     try {
       const token = localStorage.getItem('token');
-      await axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/admin/update-user/${selectedUser._id}`, 
-        editForm, { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await apiRequest({
+        method: 'put',
+        path: `/api/admin/update-user/${selectedUser._id}`,
+        data: editForm,
+        headers: { Authorization: `Bearer ${token}` }
+      });
       alert("✅ यूज़र अपडेट हो गया!");
       setIsEditModalOpen(false);
       fetchData();
@@ -89,9 +92,12 @@ function SuperAdmin() {
         ...planForm,
         features: planForm.features.split(',').map(f => f.trim()) // String को वापस Array बनाओ
       };
-      await axios.put(`https://cricket-auction-backend-h8ud.onrender.com/api/plans/${selectedPlan._id}`, 
-        updatedData, { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await apiRequest({
+        method: 'put',
+        path: `/api/plans/${selectedPlan._id}`,
+        data: updatedData,
+        headers: { Authorization: `Bearer ${token}` }
+      });
       alert("💰 प्लान प्राइसिंग अपडेट हो गई!");
       setIsPlanModalOpen(false);
       fetchData();

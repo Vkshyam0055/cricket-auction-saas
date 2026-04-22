@@ -10,7 +10,21 @@ const normalizePlanName = (planName = 'Free') => {
   return 'Free';
 };
 
-const API_BASE_URL = 'https://cricket-auction-backend-h8ud.onrender.com/api';
+const API_BASE_CANDIDATES = Array.from(new Set([
+  localStorage.getItem('apiBaseUrl'),
+  import.meta.env.VITE_API_URL,
+  'https://cricket-auction-backend-h8ud.onrender.com',
+  'http://localhost:5000'
+].filter(Boolean).map((url) => String(url).replace(/\/$/, ''))));
+
+const buildApiUrl = (baseUrl, path) => {
+  const normalizedBase = String(baseUrl || '').replace(/\/$/, '');
+  const normalizedPath = String(path || '').trim();
+  const requestPath = normalizedBase.endsWith('/api') && normalizedPath.startsWith('/api/')
+    ? normalizedPath.replace(/^\/api/, '')
+    : normalizedPath;
+  return `${normalizedBase}${requestPath}`;
+};
 
 function AddTeam() {
   const navigate = useNavigate();
@@ -49,9 +63,21 @@ function AddTeam() {
   const fetchTeams = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_BASE_URL}/teams`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      let response = null;
+      let lastError = null;
+      for (const baseUrl of API_BASE_CANDIDATES) {
+        const requestUrl = buildApiUrl(baseUrl, '/api/teams');
+        try {
+          response = await axios.get(requestUrl, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          localStorage.setItem('apiBaseUrl', String(baseUrl).replace(/\/$/, ''));
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      if (!response && lastError) throw lastError;
       setTeams(response.data);
     } catch (error) { console.error("Teams fetch error:", error); }
   };
@@ -76,14 +102,24 @@ function AddTeam() {
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
       const payload = { teamName, shortName: shortName.trim().toUpperCase(), totalPurse: Number(budget), ownerName, mobile, logoUrl };
-
-      if (isEditing) {
-        await axios.put(`${API_BASE_URL}/teams/${editTeamId}`, payload, { headers });
-        alert('Team updated successfully! 🎉');
-      } else {
-        await axios.post(`${API_BASE_URL}/teams`, payload, { headers });
-        alert('Team added successfully! 🎉');
+      let lastError = null;
+      let saved = false;
+      for (const baseUrl of API_BASE_CANDIDATES) {
+        const requestUrl = isEditing
+          ? buildApiUrl(baseUrl, `/api/teams/${editTeamId}`)
+          : buildApiUrl(baseUrl, '/api/teams');
+        try {
+          if (isEditing) await axios.put(requestUrl, payload, { headers });
+          else await axios.post(requestUrl, payload, { headers });
+          localStorage.setItem('apiBaseUrl', String(baseUrl).replace(/\/$/, ''));
+          saved = true;
+          break;
+        } catch (error) {
+          lastError = error;
+        }
       }
+      if (!saved && lastError) throw lastError;
+      alert(isEditing ? 'Team updated successfully! 🎉' : 'Team added successfully! 🎉');
       
       resetForm();
       fetchTeams();
@@ -108,9 +144,21 @@ function AddTeam() {
 
     try {
       const token = localStorage.getItem('token');
-      await axios.delete(`${API_BASE_URL}/teams/${team._id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const headers = { Authorization: `Bearer ${token}` };
+      let deleted = false;
+      let lastError = null;
+      for (const baseUrl of API_BASE_CANDIDATES) {
+        const requestUrl = buildApiUrl(baseUrl, `/api/teams/${team._id}`);
+        try {
+          await axios.delete(requestUrl, { headers });
+          localStorage.setItem('apiBaseUrl', String(baseUrl).replace(/\/$/, ''));
+          deleted = true;
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      if (!deleted && lastError) throw lastError;
       if (isEditing && editTeamId === team._id) {
         resetForm();
       }

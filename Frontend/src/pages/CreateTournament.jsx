@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { TournamentContext } from '../context/TournamentContext';
+import { apiRequest } from '../utils/apiClient';
 
 function CreateTournament() {
   const navigate = useNavigate();
@@ -80,7 +81,12 @@ function CreateTournament() {
     try {
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
-      await axios.post('https://cricket-auction-backend-h8ud.onrender.com/api/tournament', { ...formData, customFields }, { headers });
+      await apiRequest({
+        method: 'post',
+        path: '/api/tournament',
+        data: { ...formData, customFields },
+        headers
+      });
       await fetchTournament(); 
       alert('🎉 टूर्नामेंट सफलतापूर्वक सेट हो गया!');
       navigate('/dashboard'); 

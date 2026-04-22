@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { TournamentContext } from '../context/TournamentContext';
+import { getSocketBaseUrl } from '../utils/apiClient';
 
 const DISPLAY_MODES = {
   day: {
@@ -72,7 +73,7 @@ function LiveScreen() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) return;
-    const socket = io('https://cricket-auction-backend-h8ud.onrender.com', {
+    const socket = io(getSocketBaseUrl(), {
       auth: { token }
     });
 

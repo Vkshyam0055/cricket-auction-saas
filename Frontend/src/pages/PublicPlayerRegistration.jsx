@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useParams } from 'react-router-dom';
-
-const API_BASE_URL = 'https://cricket-auction-backend-h8ud.onrender.com/api';
+import { apiRequest } from '../utils/apiClient';
 
 function PublicPlayerRegistration() {
   const { tournamentId } = useParams();
@@ -28,7 +27,7 @@ function PublicPlayerRegistration() {
   useEffect(() => {
     const fetchDetails = async () => {
       try {
-        const res = await axios.get(`${API_BASE_URL}/players/public/${tournamentId}`);
+        const res = await apiRequest({ method: 'get', path: `/api/players/public/${tournamentId}` });
         setTournamentDetails(res.data);
         
         // 🌟 Fix: Show poster popup if poster exists
@@ -87,7 +86,11 @@ function PublicPlayerRegistration() {
     e.preventDefault();
     if (isUploading) { alert("फोटो/फाइल अपलोड हो रही है, इंतज़ार करें..."); return; }
     try {
-      await axios.post(`${API_BASE_URL}/players/public/${tournamentId}/register`, { ...formData, customData });
+      await apiRequest({
+        method: 'post',
+        path: `/api/players/public/${tournamentId}/register`,
+        data: { ...formData, customData }
+      });
       setIsSuccess(true);
     } catch (err) { alert("Registration failed! Please try again."); }
   };

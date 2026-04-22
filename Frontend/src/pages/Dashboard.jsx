@@ -16,7 +16,21 @@ const normalizePlanName = (planName = 'Free') => {
 };
 
 // 🌟 Live Server API 🌟
-const API_BASE_URL = 'https://cricket-auction-backend-h8ud.onrender.com/api'; 
+const API_BASE_CANDIDATES = Array.from(new Set([
+  localStorage.getItem('apiBaseUrl'),
+  import.meta.env.VITE_API_URL,
+  'https://cricket-auction-backend-h8ud.onrender.com',
+  'http://localhost:5000'
+].filter(Boolean).map((url) => String(url).replace(/\/$/, ''))));
+
+const buildApiUrl = (baseUrl, path) => {
+  const normalizedBase = String(baseUrl || '').replace(/\/$/, '');
+  const normalizedPath = String(path || '').trim();
+  const requestPath = normalizedBase.endsWith('/api') && normalizedPath.startsWith('/api/')
+    ? normalizedPath.replace(/^\/api/, '')
+    : normalizedPath;
+  return `${normalizedBase}${requestPath}`;
+}; 
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -57,9 +71,23 @@ function Dashboard() {
         const token = localStorage.getItem('token');
         if (!token) return;
         const headers = { Authorization: `Bearer ${token}` };
-        const teamsRes = await axios.get(`${API_BASE_URL}/teams`, { headers });
+        let teamsRes = null;
+        let playersRes = null;
+        let usedBase = '';
+        let lastError = null;
+        for (const baseUrl of API_BASE_CANDIDATES) {
+          try {
+            teamsRes = await axios.get(buildApiUrl(baseUrl, '/api/teams'), { headers });
+            playersRes = await axios.get(buildApiUrl(baseUrl, '/api/players'), { headers });
+            usedBase = String(baseUrl).replace(/\/$/, '');
+            break;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        if (!teamsRes || !playersRes) throw lastError;
+        if (usedBase) localStorage.setItem('apiBaseUrl', usedBase);
         setTotalTeams(teamsRes.data.length);
-        const playersRes = await axios.get(`${API_BASE_URL}/players`, { headers });
         setTotalPlayers(playersRes.data.length);
       } catch (error) { console.error('डेटा लाने में दिक्कत:', error); }
     };
@@ -70,7 +98,16 @@ function Dashboard() {
     try {
       const phone = localStorage.getItem('organizerPhone');
       const deviceId = localStorage.getItem('deviceId');
-      if (deviceId) await axios.post(`${API_BASE_URL}/auth/logout`, { phone, deviceId });
+      if (deviceId) {
+        for (const baseUrl of API_BASE_CANDIDATES) {
+          try {
+            await axios.post(buildApiUrl(baseUrl, '/api/auth/logout'), { phone, deviceId });
+            break;
+          } catch (error) {
+            // try next base
+          }
+        }
+      }
     } catch (error) { console.error(error); }
     localStorage.clear(); navigate('/');
   };
@@ -89,8 +126,24 @@ function Dashboard() {
       const isCurrentlyOpen = tournament.isRegistrationOpen !== false; 
       const newStatus = !isCurrentlyOpen; // चालू है तो बंद करो, बंद है तो चालू करो
 
-      const res = await axios.patch(`${API_BASE_URL}/tournament/registration-status`, 
-        { isRegistrationOpen: newStatus }, { headers });
+      let res = null;
+      let usedBase = '';
+      let lastError = null;
+      for (const baseUrl of API_BASE_CANDIDATES) {
+        try {
+          res = await axios.patch(
+            buildApiUrl(baseUrl, '/api/tournament/registration-status'),
+            { isRegistrationOpen: newStatus },
+            { headers }
+          );
+          usedBase = String(baseUrl).replace(/\/$/, '');
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      if (!res) throw lastError;
+      if (usedBase) localStorage.setItem('apiBaseUrl', usedBase);
         
       if(res.data && res.data.tournament) {
           // 🌟 जादू: बिना रिफ्रेश किए तुरंत UI को अपडेट करो 🌟

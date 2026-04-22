@@ -18,7 +18,10 @@ const organizerActiveBids = new Map();
 const organizerScreenConfigs = new Map();
 const organizerBreakSnapshots = new Map();
 
-app.use(cors());
+app.use(cors({
+    origin: true,
+    credentials: true
+}));
 app.use(express.json());
 
 io.use((socket, next) => {

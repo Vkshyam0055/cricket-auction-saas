@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { apiRequest } from '../utils/apiClient';
 
 function LandingPage() {
   const navigate = useNavigate();
@@ -16,7 +16,7 @@ function LandingPage() {
   useEffect(() => {
     const fetchPlans = async () => {
       try {
-        const res = await axios.get('https://cricket-auction-backend-h8ud.onrender.com/api/plans');
+        const res = await apiRequest({ method: 'get', path: '/api/plans' });
         if (res.data && res.data.length > 0) {
           setPlans(res.data);
         }
