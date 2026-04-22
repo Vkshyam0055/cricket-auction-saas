@@ -34,6 +34,9 @@ function ControlPanel() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [auctionResultDatabase, setAuctionResultDatabase] = useState([]);
   const [directSellTeam, setDirectSellTeam] = useState('');
+  const [teamSearch, setTeamSearch] = useState('');
+  const [teamFilter, setTeamFilter] = useState('all');
+  const [ultraCompact, setUltraCompact] = useState(false);
 
   // 🌟 DYNAMIC BID BUTTONS VALUES 🌟
   const btn1 = tournament?.bidButton1 || 500;
@@ -465,6 +468,35 @@ function ControlPanel() {
     }
   };
 
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      const tag = String(event.target?.tagName || '').toLowerCase();
+      const isTypingTarget = ['input', 'textarea', 'select'].includes(tag) || event.target?.isContentEditable;
+      if (isTypingTarget || event.ctrlKey || event.metaKey || event.altKey) return;
+
+      const key = String(event.key || '').toLowerCase();
+      if (key === 'n') {
+        event.preventDefault();
+        pickRandomPlayer();
+      } else if (key === 's') {
+        event.preventDefault();
+        finalizePlayer('Sold');
+      } else if (key === 'u') {
+        event.preventDefault();
+        finalizePlayer('Unsold');
+      } else if (key === 'r') {
+        event.preventDefault();
+        handleResetBid();
+      } else if (key === 'b') {
+        event.preventDefault();
+        setScreenView((prev) => (prev === 'live' ? 'break' : 'live'));
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [pickRandomPlayer, finalizePlayer, handleResetBid]);
+
   const handleUndo = async () => {
     if (actionHistory.length === 0) return;
     const lastAction = actionHistory[actionHistory.length - 1];
@@ -489,7 +521,7 @@ function ControlPanel() {
     setCurrentBid(snap.currentBid);
     setBiddingTeam(snap.biddingTeam);
     setPlayerStatus(snap.playerStatus);
-    setHasBiddingStarted(Boolean(snap.biddingTeam));    
+    setHasBiddingStarted(Boolean(snap.biddingTeam));     
     setPlayers(snap.players);
     setTeams(snap.teams);
     setLastBidActions(snap.lastBidActions || []);
@@ -660,36 +692,96 @@ function ControlPanel() {
     players.some((player) => normalizeCategory(player.category) === category)
   );
   const activeBiddingTeamData = teams.find((team) => team.teamName === biddingTeam);
+  const filteredTeams = useMemo(() => {
+    const query = teamSearch.trim().toLowerCase();
+    return teams.filter((team) => {
+      const name = String(team.teamName || '').toLowerCase();
+      const shortName = String(team.shortName || '').toLowerCase();
+      const matchesSearch = !query || name.includes(query) || shortName.includes(query);
+      if (!matchesSearch) return false;
+
+      if (teamFilter === 'can-bid') {
+        return currentBid + btn1 <= Number(team.maxBid || 0) && Number(team.remainingPurse || 0) >= currentBid + btn1;
+      }
+      if (teamFilter === 'low-purse') {
+        return Number(team.remainingPurse || 0) < 100000;
+      }
+      if (teamFilter === 'active-zone') {
+        return activeBiddingTeams.some((activeTeam) => activeTeam._id === team._id);
+      }
+      return true;
+    });
+  }, [teams, teamSearch, teamFilter, currentBid, btn1, activeBiddingTeams]);
 
   return (
     <div className="h-screen bg-gray-200 overflow-hidden">
-      <header className="bg-blue-900 p-3 px-5 flex justify-between items-center shadow-lg text-white">
-        <h1 className="text-2xl font-black">⚙️ {tournament?.name} - Master Control</h1>
-        <div className="flex space-x-2 items-center">
+      <header className="bg-blue-900 p-3 px-4 lg:px-5 flex flex-col lg:flex-row lg:justify-between lg:items-center gap-2 shadow-lg text-white">
+        <h1 className="text-xl lg:text-2xl font-black truncate">⚙️ {tournament?.name} - Master Control</h1>
+        <div className="flex flex-wrap justify-end gap-2 items-center">
           <button 
             onClick={handleUndo} 
             disabled={actionHistory.length === 0}
-            className={`font-black px-4 py-2 rounded shadow-lg transition-all text-sm ${actionHistory.length > 0 ? 'bg-yellow-500 hover:bg-yellow-400 text-yellow-900' : 'bg-gray-600 text-gray-400 opacity-50'}`}
+            className={`font-black px-3 py-2 rounded shadow-lg transition-all text-xs lg:text-sm ${actionHistory.length > 0 ? 'bg-yellow-500 hover:bg-yellow-400 text-yellow-900' : 'bg-gray-600 text-gray-400 opacity-50'}`}
           >
-            ⏪ UNDO {actionHistory.length > 0 && `(${actionHistory.length})`}
+            ⏪ <span className="hidden sm:inline">UNDO</span> {actionHistory.length > 0 && `(${actionHistory.length})`}
           </button>
           <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-600">
             <button
               onClick={() => setScreenView('live')}
-              className={`px-3 py-1 rounded text-xs font-black ${screenView === 'live' ? 'bg-green-600 text-white' : 'text-slate-200'}`}
+              className={`px-2.5 py-1 rounded text-[11px] lg:text-xs font-black ${screenView === 'live' ? 'bg-green-600 text-white' : 'text-slate-200'}`}
             >
               Live Auction
             </button>
             <button
               onClick={() => setScreenView('break')}
-              className={`px-3 py-1 rounded text-xs font-black ${screenView === 'break' ? 'bg-orange-500 text-white' : 'text-slate-200'}`}
+              className={`px-2.5 py-1 rounded text-[11px] lg:text-xs font-black ${screenView === 'break' ? 'bg-orange-500 text-white' : 'text-slate-200'}`}
             >
               Break Content
             </button>
           </div>
-          <button onClick={() => setShowSettingsModal(true)} className="bg-slate-100 text-slate-800 border border-slate-300 px-3 py-2 rounded font-bold hover:bg-white transition text-sm">⚙️ Settings</button>
+          {screenView === 'break' && (
+            <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-600 rounded-lg p-1">
+              <select
+                value={breakView}
+                onChange={(e) => setBreakView(e.target.value)}
+                className="md:hidden bg-slate-900 text-white text-[11px] font-black px-2 py-1 rounded border border-slate-500 outline-none"
+              >
+                <option value="teams-dashboard">Teams Dashboard</option>
+                <option value="squad-list">Squad List</option>
+                <option value="tournament-summary">Summary</option>
+                <option value="top-biddings">Top Bids</option>
+              </select>
+              <div className="hidden md:flex items-center gap-1.5">
+                <button
+                  onClick={() => setBreakView('teams-dashboard')}
+                  className={`px-2 py-1 rounded text-[11px] font-black whitespace-nowrap ${breakView === 'teams-dashboard' ? 'bg-blue-600 text-white' : 'text-slate-200 hover:bg-slate-700'}`}
+                >
+                  Teams
+                </button>
+                <button
+                  onClick={() => setBreakView('squad-list')}
+                  className={`px-2 py-1 rounded text-[11px] font-black whitespace-nowrap ${breakView === 'squad-list' ? 'bg-blue-600 text-white' : 'text-slate-200 hover:bg-slate-700'}`}
+                >
+                  Squad
+                </button>
+                <button
+                  onClick={() => setBreakView('tournament-summary')}
+                  className={`px-2 py-1 rounded text-[11px] font-black whitespace-nowrap ${breakView === 'tournament-summary' ? 'bg-blue-600 text-white' : 'text-slate-200 hover:bg-slate-700'}`}
+                >
+                  Summary
+                </button>
+                <button
+                  onClick={() => setBreakView('top-biddings')}
+                  className={`px-2 py-1 rounded text-[11px] font-black whitespace-nowrap ${breakView === 'top-biddings' ? 'bg-blue-600 text-white' : 'text-slate-200 hover:bg-slate-700'}`}
+                >
+                  Top Bids
+                </button>
+              </div>
+            </div>
+          )}
+          <button onClick={() => setShowSettingsModal(true)} className="bg-slate-100 text-slate-800 border border-slate-300 px-3 py-2 rounded font-bold hover:bg-white transition text-xs lg:text-sm">⚙️ Settings</button>
           
-          <button onClick={() => navigate('/dashboard')} className="bg-gray-700 px-3 py-2 rounded hover:bg-gray-800 font-bold transition text-sm">Exit</button>
+          <button onClick={() => navigate('/dashboard')} className="bg-gray-700 px-3 py-2 rounded hover:bg-gray-800 font-bold transition text-xs lg:text-sm">Exit</button>
         </div>
       </header>
 
@@ -756,7 +848,7 @@ function ControlPanel() {
           )}
         </div>
 
-        <div className={`lg:col-span-8 bg-white rounded-2xl shadow-xl p-4 border-t-8 border-green-500 transition-all h-full ${!currentPlayer || playerStatus !== 'bidding' ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
+        <div className={`lg:col-span-8 bg-white rounded-2xl shadow-xl p-4 border-t-8 border-green-500 transition-all h-full flex flex-col overflow-hidden ${!currentPlayer || playerStatus !== 'bidding' ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
           
           <div className="flex items-start justify-between mb-4">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 via-yellow-500 to-green-500 animate-pulse"></div>
@@ -799,30 +891,32 @@ function ControlPanel() {
              </div>
           </div>
 
-          <div className="mb-5">
-            <h3 className="text-xs font-black uppercase tracking-widest text-purple-700 mb-2">Active Bidding Teams Zone (Max 4)</h3>
+          <div className="mb-3">
+            <h3 className="text-[11px] font-black uppercase tracking-widest text-purple-700 mb-1.5">Active Bidding Teams Zone (Max 4)</h3>
             {activeBiddingTeams.length === 0 ? (
-              <div className="border border-dashed border-purple-300 bg-purple-50 rounded-lg p-4 text-sm font-bold text-purple-700">
+              <div className="border border-dashed border-purple-300 bg-purple-50 rounded-lg p-2.5 text-xs font-bold text-purple-700">
                 No active bidding teams yet. As soon as any team bids, it will appear here automatically.
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-2">
+              <div className="flex gap-2 overflow-x-auto pb-1 mb-1">
                 {activeBiddingTeams.map((team, index) => {
                   const isHighestBidder = biddingTeam === team.teamName;
                   return (
-                    <div key={`active-${team._id}`} className={`p-3 rounded-lg border-2 transition-all ${isHighestBidder ? 'border-yellow-400 bg-yellow-50 shadow transform scale-[1.02]' : 'border-purple-300 bg-purple-50 hover:border-purple-400'}`}>
-                      <div className="flex justify-between items-center mb-2">
-                        <h3 className="font-bold text-base text-gray-800 truncate pr-1" title={team.teamName}>{team.shortName || team.teamName}</h3>
-                        <span className="text-[10px] px-2 py-1 rounded-full bg-purple-700 text-white font-black">#{index + 1}</span>
-                      </div>
-                      <div className="mb-2 p-2 rounded bg-white border border-purple-200">
-                        <p className="text-[10px] uppercase font-black text-purple-700 tracking-wider">Live Priority Team</p>
-                        <p className="text-sm font-black text-purple-900">Purse: ₹{team.remainingPurse.toLocaleString()}</p>
-                      </div>
-                      <div className="grid grid-cols-3 gap-1">
-                        <button disabled={currentBid + btn1 > Number(team.maxBid || 0)} onClick={() => updateBid(team.teamName, btn1)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">{formatBidButton(btn1)}</button>
-                        <button disabled={currentBid + btn2 > Number(team.maxBid || 0)} onClick={() => updateBid(team.teamName, btn2)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">{formatBidButton(btn2)}</button>
-                        <button disabled={currentBid + btn3 > Number(team.maxBid || 0)} onClick={() => updateBid(team.teamName, btn3)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">{formatBidButton(btn3)}</button>
+                    <div key={`active-${team._id}`} className={`flex-1 rounded-lg border transition-all ${ultraCompact ? 'min-w-[190px] max-w-[220px] p-1' : 'min-w-[220px] max-w-[260px] p-1.5'} ${isHighestBidder ? 'border-yellow-400 bg-yellow-50 shadow' : 'border-purple-300 bg-purple-50 hover:border-purple-400'}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <h3 className={`font-bold text-gray-800 truncate ${ultraCompact ? 'text-[11px]' : 'text-xs'}`} title={team.teamName}>{team.shortName || team.teamName}</h3>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-700 text-white font-black shrink-0">#{index + 1}</span>
+                          </div>
+                          <p className={`font-black text-purple-900 leading-tight ${ultraCompact ? 'text-[9px]' : 'text-[10px]'}`}>Purse: ₹{team.remainingPurse.toLocaleString()}</p>
+                          <p className="text-[9px] text-purple-700 font-semibold leading-tight">Max: {formatCurrency(team.maxBid)}</p>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1 shrink-0">
+                          <button disabled={currentBid + btn1 > Number(team.maxBid || 0)} onClick={() => updateBid(team.teamName, btn1)} className={`bg-blue-100 text-blue-800 font-black rounded hover:bg-blue-200 border border-blue-300 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed ${ultraCompact ? 'py-0.5 px-0.5 text-[9px]' : 'py-1 px-1 text-[10px]'}`}>{formatBidButton(btn1)}</button>
+                          <button disabled={currentBid + btn2 > Number(team.maxBid || 0)} onClick={() => updateBid(team.teamName, btn2)} className={`bg-blue-100 text-blue-800 font-black rounded hover:bg-blue-200 border border-blue-300 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed ${ultraCompact ? 'py-0.5 px-0.5 text-[9px]' : 'py-1 px-1 text-[10px]'}`}>{formatBidButton(btn2)}</button>
+                          <button disabled={currentBid + btn3 > Number(team.maxBid || 0)} onClick={() => updateBid(team.teamName, btn3)} className={`bg-blue-100 text-blue-800 font-black rounded hover:bg-blue-200 border border-blue-300 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed ${ultraCompact ? 'py-0.5 px-0.5 text-[9px]' : 'py-1 px-1 text-[10px]'}`}>{formatBidButton(btn3)}</button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -831,39 +925,79 @@ function ControlPanel() {
             )}
           </div>
 
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-2">
             <h3 className="text-xs font-black uppercase tracking-widest text-gray-600">All Teams</h3>
-            <p className="text-[11px] font-bold text-gray-500">All teams stay visible and can still bid anytime.</p>
+            <p className="text-[11px] font-bold text-gray-500">Visible {filteredTeams.length}/{teams.length} • Only this list scrolls.</p>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2 pb-1">
-            {teams.map((team) => {
-              const isHighestBidder = biddingTeam === team.teamName;
-              return (
-                <div key={team._id} className={`p-3 rounded-lg border-2 transition-all ${isHighestBidder ? 'border-yellow-400 bg-yellow-50 shadow transform scale-[1.02]' : 'border-gray-200 bg-gray-50 hover:border-blue-300'}`}>
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="font-bold text-base text-gray-800 truncate pr-1" title={team.teamName}>{team.shortName || team.teamName}</h3>
-                    <div className="text-right shrink-0">
-                      <span className="text-[10px] font-bold text-gray-500 uppercase block leading-none mb-0.5">Purse Left</span>
-                      <span className={`font-black text-sm ${Number(team.remainingPurse || 0) < 50000 ? 'text-red-500' : 'text-green-600'}`}>₹{Number(team.remainingPurse || 0).toLocaleString()}</span>
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+            <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border border-gray-200 rounded-md p-2 mb-2 shadow-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  value={teamSearch}
+                  onChange={(e) => setTeamSearch(e.target.value)}
+                  placeholder="Search team / short name"
+                  className="flex-1 min-w-[180px] p-1.5 border border-gray-300 rounded text-xs font-bold outline-none focus:border-blue-500"
+                />
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setTeamFilter('all')} className={`px-2 py-1 rounded text-[11px] font-black border ${teamFilter === 'all' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'}`}>All</button>
+                  <button onClick={() => setTeamFilter('can-bid')} className={`px-2 py-1 rounded text-[11px] font-black border ${teamFilter === 'can-bid' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50'}`}>Can Bid</button>
+                  <button onClick={() => setTeamFilter('low-purse')} className={`px-2 py-1 rounded text-[11px] font-black border ${teamFilter === 'low-purse' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-amber-700 border-amber-300 hover:bg-amber-50'}`}>Low Purse</button>
+                  <button onClick={() => setTeamFilter('active-zone')} className={`px-2 py-1 rounded text-[11px] font-black border ${teamFilter === 'active-zone' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-purple-700 border-purple-300 hover:bg-purple-50'}`}>Active 4</button>
+                </div>
+                <button
+                  onClick={() => setUltraCompact((prev) => !prev)}
+                  className={`px-2 py-1 rounded text-[11px] font-black border ${ultraCompact ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'}`}
+                >
+                  {ultraCompact ? 'Ultra On' : 'Ultra Off'}
+                </button>
+                {(teamSearch || teamFilter !== 'all') && (
+                  <button
+                    onClick={() => {
+                      setTeamSearch('');
+                      setTeamFilter('all');
+                    }}
+                    className="px-2 py-1 rounded text-[11px] font-black border border-red-300 text-red-700 bg-red-50 hover:bg-red-100"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-1.5 pb-2 auto-rows-fr">
+              {filteredTeams.map((team) => {
+                const isHighestBidder = biddingTeam === team.teamName;
+                return (
+                  <div key={team._id} className={`rounded-md border transition-all ${ultraCompact ? 'p-1.5' : 'p-2'} ${isHighestBidder ? 'border-yellow-400 bg-yellow-50 shadow' : 'border-gray-200 bg-gray-50 hover:border-blue-300'}`}>
+                    <div className={`flex justify-between items-center ${ultraCompact ? 'mb-0.5' : 'mb-1'}`}>
+                      <h3 className={`font-bold text-gray-800 truncate pr-1 ${ultraCompact ? 'text-xs' : 'text-sm'}`} title={team.teamName}>{team.shortName || team.teamName}</h3>
+                      <div className="text-right shrink-0">
+                        <span className="text-[9px] font-bold text-gray-500 uppercase block leading-none mb-0.5">Purse</span>
+                        <span className={`font-black text-[11px] ${Number(team.remainingPurse || 0) < 50000 ? 'text-red-500' : 'text-green-600'}`}>₹{Number(team.remainingPurse || 0).toLocaleString()}</span>
+                      </div>
+                    </div>
+
+                    <div className={`bg-orange-50 border border-orange-200 rounded ${ultraCompact ? 'mb-0.5 p-0.5' : 'mb-1 p-1'}`}>
+                      <p className="text-[9px] uppercase font-black text-orange-700 tracking-wider">Dynamic Max Bid</p>
+                      <p className="text-[11px] font-black text-orange-900">{formatCurrency(team.maxBid)}</p>
+                      <p className="text-[9px] text-gray-500 font-semibold">Need {team.remainingRequiredPlayers} players</p>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1">
+                      <button onClick={() => updateBid(team.teamName, btn1)} className={`bg-blue-100 text-blue-800 font-black rounded hover:bg-blue-200 border border-blue-300 shadow-sm ${ultraCompact ? 'py-0.5 px-0.5 text-[10px]' : 'py-1 px-0.5 text-[11px]'}`}>{formatBidButton(btn1)}</button>
+                      <button onClick={() => updateBid(team.teamName, btn2)} className={`bg-blue-100 text-blue-800 font-black rounded hover:bg-blue-200 border border-blue-300 shadow-sm ${ultraCompact ? 'py-0.5 px-0.5 text-[10px]' : 'py-1 px-0.5 text-[11px]'}`}>{formatBidButton(btn2)}</button>
+                      <button onClick={() => updateBid(team.teamName, btn3)} className={`bg-blue-100 text-blue-800 font-black rounded hover:bg-blue-200 border border-blue-300 shadow-sm ${ultraCompact ? 'py-0.5 px-0.5 text-[10px]' : 'py-1 px-0.5 text-[11px]'}`}>{formatBidButton(btn3)}</button>
                     </div>
                   </div>
-                  
-                  <div className="mb-2 p-2 rounded bg-orange-50 border border-orange-200">
-                    <p className="text-[10px] uppercase font-black text-orange-700 tracking-wider">Dynamic Max Bid</p>
-                    <p className="text-sm font-black text-orange-900">{formatCurrency(team.maxBid)}</p>
-                    <p className="text-[10px] text-gray-500 font-semibold">Need {team.remainingRequiredPlayers} more players</p>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-1">
-                    <button onClick={() => updateBid(team.teamName, btn1)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm">{formatBidButton(btn1)}</button>
-                    <button onClick={() => updateBid(team.teamName, btn2)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm">{formatBidButton(btn2)}</button>
-                    <button onClick={() => updateBid(team.teamName, btn3)} className="bg-blue-100 text-blue-800 font-black py-1 px-1 rounded hover:bg-blue-200 text-xs border border-blue-300 shadow-sm">{formatBidButton(btn3)}</button>
-                  </div>
-
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+            {filteredTeams.length === 0 && (
+              <div className="text-center py-6 text-xs font-bold text-gray-500 border border-dashed border-gray-300 rounded-md">
+                No teams found for current search/filter.
+              </div>
+            )}
           </div>
 
         </div>
@@ -981,17 +1115,6 @@ function ControlPanel() {
                     <option value="large">Large</option>
                   </select>
                 </div>
-                {screenView === 'break' && (
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 uppercase">Break View Type</label>
-                    <select value={breakView} onChange={(e) => setBreakView(e.target.value)} className="w-full p-2 rounded-lg border-2 border-slate-200 font-bold text-slate-800 outline-none focus:border-slate-400 mt-1">
-                      <option value="teams-dashboard">Teams Dashboard</option>
-                      <option value="squad-list">Squad List</option>
-                      <option value="tournament-summary">Tournament Summary</option>
-                      <option value="top-biddings">Top Biddings</option>
-                    </select>
-                  </div>
-                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
