@@ -1,5 +1,30 @@
 import axios from 'axios';
 
+const SESSION_EXPIRED_EVENT = 'session-expired';
+
+export const clearAuthSession = () => {
+  localStorage.removeItem('token');
+  window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
+};
+
+export const onSessionExpired = (callback) => {
+  window.addEventListener(SESSION_EXPIRED_EVENT, callback);
+  return () => window.removeEventListener(SESSION_EXPIRED_EVENT, callback);
+};
+
+export const isTokenExpired = (token) => {
+  try {
+    if (!token) return true;
+    const payloadPart = token.split('.')[1];
+    const payload = JSON.parse(atob(payloadPart));
+    const exp = Number(payload?.exp || 0);
+    if (!exp) return true;
+    return (Date.now() >= exp * 1000);
+  } catch (error) {
+    return true;
+  }
+};
+
 export const getApiBaseCandidates = () => Array.from(new Set([
   localStorage.getItem('apiBaseUrl'),
   import.meta.env.VITE_API_URL,
@@ -25,6 +50,9 @@ export const apiRequest = async ({ method = 'get', path, data, params, headers =
       localStorage.setItem('apiBaseUrl', String(baseUrl).replace(/\/$/, ''));
       return response;
     } catch (error) {
+      if (error?.response?.status === 401) {
+        clearAuthSession();
+      }      
       lastError = error;
     }
   }

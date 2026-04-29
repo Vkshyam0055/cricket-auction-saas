@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { TournamentContext } from '../context/TournamentContext';
-import { getSocketBaseUrl } from '../utils/apiClient';
+import { clearAuthSession, getSocketBaseUrl } from '../utils/apiClient';
 
 const DISPLAY_MODES = {
   day: {
@@ -115,6 +115,16 @@ function LiveScreen() {
       setSummary(snapshot.summary || {});
       setTopBiddings(Array.isArray(snapshot.topBiddings) ? snapshot.topBiddings : []);
     });
+    socket.on('sessionExpired', () => {
+      clearAuthSession();
+      navigate('/auth');
+    });
+    socket.on('connect_error', (error) => {
+      if (String(error?.message || '').toLowerCase().includes('unauthorized')) {
+        clearAuthSession();
+        navigate('/auth');
+      }
+    });    
 
     return () => {
       socket.off('updateAudienceScreen');
@@ -122,9 +132,11 @@ function LiveScreen() {
       socket.off('liveScreenConfigUpdate');
       socket.off('breakDataSnapshotSync');
       socket.off('breakDataSnapshotUpdate');
+      socket.off('sessionExpired');
+      socket.off('connect_error');      
       socket.disconnect();
     };
-  }, []);
+  }, [navigate]);
 
   const modeTheme = DISPLAY_MODES[displayMode] || DISPLAY_MODES.night;
   const photoWidthClass = PHOTO_SIZE_CLASS[photoSize] || PHOTO_SIZE_CLASS.medium;

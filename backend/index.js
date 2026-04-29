@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const Tournament = require('./models/Tournament');
+const { validateSessionById, revokeSessionById } = require('./utils/sessionAuth');
 
 const http = require('http');
 const { Server } = require('socket.io');
@@ -29,15 +30,45 @@ io.use((socket, next) => {
         const token = socket.handshake.auth?.token;
         if (!token) return next(new Error('Unauthorized'));
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        if (!decoded?.id) return next(new Error('Unauthorized'));
+        if (!decoded?.id || !decoded?.sid) return next(new Error('Unauthorized'));
         socket.organizerId = decoded.id;
+        socket.sessionId = decoded.sid;
+        socket.tokenExp = decoded.exp;        
         next();
     } catch (error) {
         next(new Error('Unauthorized'));
     }
 });
 
-io.on('connection', (socket) => {
+io.on('connection', async (socket) => {
+    const validation = await validateSessionById({ sessionId: socket.sessionId, userId: socket.organizerId });
+    if (!validation.ok) {
+        socket.emit('sessionExpired', { message: 'Session expired' });
+        return socket.disconnect(true);
+    }
+
+    const expiryMs = (Number(socket.tokenExp || 0) * 1000) - Date.now();
+    if (expiryMs <= 0) {
+        socket.emit('sessionExpired', { message: 'Session expired' });
+        return socket.disconnect(true);
+    }
+
+    const expiryTimer = setTimeout(async () => {
+        await revokeSessionById(socket.sessionId);
+        socket.emit('sessionExpired', { message: 'Session expired' });
+        socket.disconnect(true);
+    }, expiryMs);
+
+    socket.use(async (_, next) => {
+        const packetValidation = await validateSessionById({ sessionId: socket.sessionId, userId: socket.organizerId });
+        if (!packetValidation.ok) {
+            socket.emit('sessionExpired', { message: 'Session expired' });
+            socket.disconnect(true);
+            return next(new Error('Unauthorized'));
+        }
+        return next();
+    });
+
     const room = `organizer:${socket.organizerId}`;
     const organizerKey = String(socket.organizerId);
     socket.join(room);
@@ -129,6 +160,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
+        clearTimeout(expiryTimer);        
         console.log(`❌ organizer ${socket.organizerId} disconnected from live socket`);
     });
 });

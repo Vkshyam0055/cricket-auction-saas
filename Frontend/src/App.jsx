@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
 import Auth from './pages/Auth';
 import Dashboard from './pages/Dashboard';
@@ -13,17 +13,35 @@ import Teams from './pages/Teams';
 import SuperAdmin from './pages/SuperAdmin';
 import PublicPlayerRegistration from './pages/PublicPlayerRegistration'; // 🌟 नया इम्पोर्ट
 import { TournamentContext, TournamentProvider } from './context/TournamentContext';
+import { isTokenExpired, onSessionExpired } from './utils/apiClient';
 
 const ProtectedRoute = ({ children }) => {
+  const location = useLocation();
   const token = localStorage.getItem('token');
-  if (!token) return <Navigate to="/auth" />;
+  if (!token || isTokenExpired(token)) {
+    localStorage.removeItem('token');
+    return <Navigate to="/auth" replace state={{ from: location.pathname }} />;
+  }
   return children;
+};
+
+const SessionExpiryWatcher = () => {
+  const location = useLocation();
+  const [expired, setExpired] = React.useState(false);
+
+  React.useEffect(() => onSessionExpired(() => setExpired(true)), []);
+
+  if (expired && location.pathname !== '/auth') {
+    return <Navigate to="/auth" replace />;
+  }
+  return null;
 };
 
 function App() {
   return (
     <TournamentProvider>
       <BrowserRouter>
+        <SessionExpiryWatcher />
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/auth" element={<Auth />} />

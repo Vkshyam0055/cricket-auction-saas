@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { resolveEffectivePlan } = require('../utils/planPolicy');
+const { createSessionAndToken, revokeSessionById } = require('../utils/sessionAuth');
 
 // 1. आयोजक का रजिस्ट्रेशन
 router.post('/register', async (req, res) => {
@@ -87,12 +88,18 @@ router.post('/login', async (req, res) => {
             }
         }
 
-        const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
+        const { token, expiresAt } = await createSessionAndToken({
+            user,
+            deviceId,
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent')
+        });
 
         const normalizedPlan = resolveEffectivePlan(user);
 
         res.json({ 
             message: "लॉगिन सफल!", token, 
+            sessionExpiresAt: expiresAt,            
             user: { name: user.name, phone: user.phone, role: user.role, plan: normalizedPlan } 
         });
     } catch (err) {
@@ -105,6 +112,18 @@ router.post('/login', async (req, res) => {
 router.post('/logout', async (req, res) => {
     try {
         const { phone, deviceId } = req.body;
+        const authHeader = req.header('Authorization');
+        const token = authHeader && authHeader.split(' ')[1];
+
+        if (token) {
+            try {
+                const decoded = jwt.verify(token, process.env.JWT_SECRET);
+                await revokeSessionById(decoded.sid);
+            } catch (error) {
+                // ignore token parsing errors for backward compatibility
+            }
+        }
+                
         if (phone && deviceId) {
             const user = await User.findOne({ phone });
             if (user && Array.isArray(user.activeDevices)) {

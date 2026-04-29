@@ -44,6 +44,13 @@ function SuperAdmin() {
     fetchData();
   }, [navigate]);
 
+  useEffect(() => {
+    const refreshId = setInterval(() => {
+      fetchData();
+    }, 60000);
+    return () => clearInterval(refreshId);
+  }, []);
+
   // --- Organizer Logic ---
   const openEditModal = (user) => {
     setSelectedUser(user);

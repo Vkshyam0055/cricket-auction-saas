@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useRef, useMemo, useCallback } 
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { TournamentContext } from '../context/TournamentContext';
-import { apiRequest, getSocketBaseUrl } from '../utils/apiClient';
+import { apiRequest, clearAuthSession, getSocketBaseUrl } from '../utils/apiClient';
 
 function ControlPanel() {
   const navigate = useNavigate();
@@ -208,14 +208,28 @@ function ControlPanel() {
       configVersionRef.current = Number(data.version || 0);
     });
 
+    socket.on('sessionExpired', () => {
+      clearAuthSession();
+      navigate('/auth');
+    });
+
+    socket.on('connect_error', (error) => {
+      if (String(error?.message || '').toLowerCase().includes('unauthorized')) {
+        clearAuthSession();
+        navigate('/auth');
+      }
+    });
+
     return () => {
       socket.off('activeBiddingSync');
       socket.off('activeBiddingUpdate');
       socket.off('liveScreenConfigSync');
+      socket.off('sessionExpired');
+      socket.off('connect_error');      
       socket.disconnect();
       socketRef.current = null;
     };
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     if (!socketRef.current?.connected) return;
