@@ -5,7 +5,6 @@ import { TournamentContext } from '../context/TournamentContext';
 
 const API_BASE_CANDIDATES = Array.from(new Set([
   import.meta.env.VITE_API_URL,
-  'https://cricket-auction-backend-h8ud.onrender.com',
   'http://localhost:5000'
 ].filter(Boolean).map((url) => String(url).replace(/\/$/, ''))));
 
@@ -43,6 +42,7 @@ function Auth() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+    const [email, setEmail] = useState('');
 
   // 🌟 ब्राउज़र के लिए एक यूनीक Device ID बनाना 
   useEffect(() => {
@@ -70,6 +70,8 @@ function Auth() {
         localStorage.setItem('organizerPhone', phone);
         localStorage.setItem('organizerPlan', res.data.user.plan || 'Basic'); // <-- नया कोड!
         localStorage.setItem('organizerRole', res.data.user.role || 'Organizer');
+        localStorage.setItem('organizerEmail', res.data.user.email || '');
+        if (res.data.requiresEmailUpdate) { navigate('/complete-profile-email'); return; }
         
         await fetchTournament();
         
@@ -80,6 +82,7 @@ function Auth() {
         await postWithFallback('/api/auth/register', { 
             name, 
             phone, 
+            email, 
             password 
         });
         
@@ -154,6 +157,8 @@ function Auth() {
               />
             </div>
 
+            {!isLogin && (<div><label className="block text-sm font-bold text-gray-700 mb-1">Email</label><input type="email" required placeholder="e.g. you@mail.com" className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-blue-500 focus:ring-0 outline-none font-semibold transition" value={email} onChange={(e) => setEmail(e.target.value)} /></div>)}
+
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-1">Password</label>
               <input 
@@ -162,6 +167,17 @@ function Auth() {
                 className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-blue-500 focus:ring-0 outline-none font-bold text-lg tracking-widest transition"
                 value={password} onChange={(e) => setPassword(e.target.value)} 
               />
+              {isLogin && (
+                <div className="mt-2 text-right">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/forgot-password')}
+                    className="text-sm font-bold text-blue-600 hover:text-blue-800 underline decoration-2 underline-offset-4 transition"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
+              )}              
             </div>
 
 

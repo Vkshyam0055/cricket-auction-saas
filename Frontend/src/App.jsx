@@ -12,6 +12,9 @@ import AddPlayer from './pages/AddPlayer';
 import Teams from './pages/Teams';
 import SuperAdmin from './pages/SuperAdmin';
 import PublicPlayerRegistration from './pages/PublicPlayerRegistration'; // 🌟 नया इम्पोर्ट
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+import CompleteProfileEmail from './pages/CompleteProfileEmail';
 import { TournamentContext, TournamentProvider } from './context/TournamentContext';
 import { isTokenExpired, onSessionExpired } from './utils/apiClient';
 
@@ -45,6 +48,9 @@ function App() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/auth" element={<Auth />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
+          <Route path="/complete-profile-email" element={<ProtectedRoute><CompleteProfileEmail /></ProtectedRoute>} />          
           
           {/* 🌟 FIX: यहाँ :tournamentId लगा दिया है ताकि यूनीक लिंक बन सके 🌟 */}
           <Route path="/register/:tournamentId" element={<PublicPlayerRegistration />} />

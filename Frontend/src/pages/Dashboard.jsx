@@ -1,4 +1,5 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
+import HamburgerMenu from '../components/HamburgerMenu';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { TournamentContext } from '../context/TournamentContext';
@@ -19,7 +20,6 @@ const normalizePlanName = (planName = 'Free') => {
 const API_BASE_CANDIDATES = Array.from(new Set([
   localStorage.getItem('apiBaseUrl'),
   import.meta.env.VITE_API_URL,
-  'https://cricket-auction-backend-h8ud.onrender.com',
   'http://localhost:5000'
 ].filter(Boolean).map((url) => String(url).replace(/\/$/, ''))));
 
@@ -43,6 +43,8 @@ function Dashboard() {
   const [organizerPlan, setOrganizerPlan] = useState('Free');
   const [organizerRole, setOrganizerRole] = useState('Organizer');
   const [isUpdatingRegistration, setIsUpdatingRegistration] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [organizerEmail, setOrganizerEmail] = useState('');  
 
   const normalizedPlan = useMemo(() => (organizerRole === 'SuperAdmin' ? 'Pro' : normalizePlanName(organizerPlan)), [organizerPlan, organizerRole]);
   const activePolicy = PLAN_POLICIES[normalizedPlan];
@@ -63,6 +65,8 @@ function Dashboard() {
     if (storedName) setOrganizerName(storedName);
     if (storedPlan) setOrganizerPlan(storedPlan);
     if (storedRole) setOrganizerRole(storedRole);
+    const storedEmail = localStorage.getItem('organizerEmail');
+    if (storedEmail) setOrganizerEmail(storedEmail);    
   }, []);
 
   useEffect(() => {
@@ -163,6 +167,7 @@ function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-100">
+      <HamburgerMenu open={menuOpen} onClose={() => setMenuOpen(false)} profile={{name: organizerName, email: organizerEmail, phone: localStorage.getItem('organizerPhone')}} onLogout={handleLogout} onNavigate={(item)=>{ setMenuOpen(false); if (item==='Create Auction') navigate('/create-tournament'); if (item==='My Auction') navigate('/dashboard'); if (item==='Join as Player' && tournament?._id) window.open(`${window.location.origin}/register/${tournament._id}`, '_blank'); if (item==='View Auction') navigate('/live'); if (item==='Reset Password') navigate('/forgot-password'); }} />      
       <nav className="bg-blue-800 p-4 text-white flex flex-col md:flex-row justify-between items-center shadow-lg gap-4 md:gap-0">
         <div className="flex items-center space-x-3">
           {tournament.logoUrl && <img src={tournament.logoUrl} alt="Logo" className="w-10 h-10 rounded-full bg-white border-2 border-blue-400" />}
@@ -181,7 +186,7 @@ function Dashboard() {
               </span>
             </div>
           </div>
-          <button onClick={handleLogout} className="bg-red-500 px-4 py-2 rounded-full hover:bg-red-600 font-bold shadow-md ml-2">Logout 🚪</button>
+          <button onClick={() => setMenuOpen(true)} className="bg-white/10 px-3 py-2 rounded-lg hover:bg-white/20 font-bold">☰</button>
         </div>
       </nav>
 

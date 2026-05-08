@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 const API_BASE_CANDIDATES = Array.from(new Set([
   import.meta.env.VITE_API_URL,
-  'https://cricket-auction-backend-h8ud.onrender.com',
   'http://localhost:5000'
 ].filter(Boolean).map((url) => String(url).replace(/\/$/, ''))));
 
@@ -95,7 +94,7 @@ function Login() {
           >
             Login 🚀
           </button>
-        </form>
+        </form><div className='mt-3 text-right'><Link to='/forgot-password' className='text-sm text-blue-700 underline'>Forgot Password?</Link></div>
       </div>
     </div>
   );
