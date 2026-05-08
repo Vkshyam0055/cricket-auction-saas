@@ -25,12 +25,19 @@ export const isTokenExpired = (token) => {
   }
 };
 
-export const getApiBaseCandidates = () => Array.from(new Set([
-  localStorage.getItem('apiBaseUrl'),
-  import.meta.env.VITE_API_URL,
-  'https://cricket-auction-backend-h8ud.onrender.com',
-  'http://localhost:5000'
-].filter(Boolean).map((url) => String(url).replace(/\/$/, ''))));
+export const getApiBaseCandidates = () => {
+  const candidates = [
+    getSafeStoredBaseUrl(),
+    normalizeBaseUrl(import.meta.env.VITE_API_URL),
+    DEFAULT_PROD_API_BASE
+  ];
+
+  if (import.meta.env.DEV) {
+    candidates.push(DEFAULT_DEV_API_BASE);
+  }
+
+  return Array.from(new Set(candidates.filter(Boolean).map(normalizeBaseUrl)));
+};
 
 const buildApiUrl = (baseUrl, path) => {
   const normalizedBase = String(baseUrl || '').replace(/\/$/, '');
@@ -60,6 +67,22 @@ export const apiRequest = async ({ method = 'get', path, data, params, headers =
 };
 
 export const getSocketBaseUrl = () => {
-  const firstBase = getApiBaseCandidates()[0] || 'https://cricket-auction-backend-h8ud.onrender.com';
+  const firstBase = getApiBaseCandidates()[0] || DEFAULT_PROD_API_BASE;
   return String(firstBase).replace(/\/api$/, '');
+};
+const DEFAULT_PROD_API_BASE = 'https://cricket-auction-backend-h8ud.onrender.com';
+const DEFAULT_DEV_API_BASE = 'http://localhost:5000';
+
+const normalizeBaseUrl = (url) => String(url || '').trim().replace(/\/$/, '');
+const isLocalhostUrl = (url) => /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(normalizeBaseUrl(url));
+
+const getSafeStoredBaseUrl = () => {
+  const stored = normalizeBaseUrl(localStorage.getItem('apiBaseUrl'));
+  if (!stored) return '';
+
+  if (import.meta.env.PROD && isLocalhostUrl(stored)) {
+    localStorage.removeItem('apiBaseUrl');
+    return '';
+  }
+  return stored;
 };

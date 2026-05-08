@@ -1,15 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
-
-const buildUrl = (path) => {
-  const base = (localStorage.getItem('apiBaseUrl') || import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, '');
-  const normalizedPath = String(path || '').trim();
-  const requestPath = base.endsWith('/api') && normalizedPath.startsWith('/api/')
-    ? normalizedPath.replace(/^\/api/, '')
-    : normalizedPath;
-  return `${base}${requestPath}`;
-};
+import { apiRequest } from '../utils/apiClient';
 
 export default function ResetPassword() {
   const { token } = useParams();
@@ -20,7 +11,11 @@ export default function ResetPassword() {
 
   const submit = async (e) => {
     e.preventDefault();
-    await axios.post(buildUrl(`/api/auth/reset-password/${token}`), { password, confirmPassword });
+    await apiRequest({
+      method: 'post',
+      path: `/api/auth/reset-password/${token}`,
+      data: { password, confirmPassword }
+    });
     setMsg('Password reset हो गया।');
     setTimeout(() => nav('/auth'), 800);
   };

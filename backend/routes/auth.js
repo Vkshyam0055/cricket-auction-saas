@@ -187,13 +187,36 @@ router.post('/reset-password/:token', async (req, res) => {
 router.post('/complete-profile-email', async (req, res) => {
   try {
     const { phone, email } = req.body;
-    if (!phone || !email) return res.status(400).json({ message: 'फोन और ईमेल दोनों आवश्यक हैं।' });
+    if (!email) return res.status(400).json({ message: 'ईमेल आवश्यक है।' });
     const normalizedEmail = String(email).trim().toLowerCase();
     if (!emailRegex.test(normalizedEmail)) return res.status(400).json({ message: 'मान्य ईमेल दर्ज करें।' });
 
-    const existing = await User.findOne({ email: normalizedEmail, phone: { $ne: phone } });
+    let userQuery = null;
+    if (phone) {
+      userQuery = { phone };
+    } else {
+      const authHeader = req.header('Authorization');
+      const token = authHeader && authHeader.split(' ')[1];
+      if (token) {
+        try {
+          const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          if (decoded?.id) userQuery = { _id: decoded.id };
+        } catch (error) {
+          // ignore token parse errors and fallback to validation below
+        }
+      }
+    }
+
+    if (!userQuery) return res.status(400).json({ message: 'यूज़र पहचान नहीं मिली। दोबारा लॉगिन करें।' });
+
+    const duplicateQuery = { email: normalizedEmail };
+    if (phone) duplicateQuery.phone = { $ne: phone };
+    else if (userQuery._id) duplicateQuery._id = { $ne: userQuery._id };
+
+    const existing = await User.findOne(duplicateQuery);
     if (existing) return res.status(400).json({ message: 'यह ईमेल पहले से उपयोग में है।' });
-    await User.updateOne({ phone }, { $set: { email: normalizedEmail } });
+    const updateResult = await User.updateOne(userQuery, { $set: { email: normalizedEmail } });
+    if (!updateResult.matchedCount) return res.status(404).json({ message: 'यूज़र नहीं मिला।' });
     res.json({ message: 'ईमेल अपडेट हो गया।' });
   } catch (e) {
     res.status(500).json({ message: 'ईमेल अपडेट में समस्या।' });

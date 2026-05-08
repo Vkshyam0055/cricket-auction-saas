@@ -1,37 +1,7 @@
 import React, { useState, useContext, useEffect } from 'react'; 
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import { TournamentContext } from '../context/TournamentContext'; 
-
-const API_BASE_CANDIDATES = Array.from(new Set([
-  import.meta.env.VITE_API_URL,
-  'http://localhost:5000'
-].filter(Boolean).map((url) => String(url).replace(/\/$/, ''))));
-
-const postWithFallback = async (path, body) => {
-  let lastError = null;
-  for (const baseUrl of API_BASE_CANDIDATES) {
-    const normalizedBase = String(baseUrl).replace(/\/$/, '');
-    const normalizedPath = String(path || '').trim();
-    const requestPath = normalizedBase.endsWith('/api') && normalizedPath.startsWith('/api/')
-      ? normalizedPath.replace(/^\/api/, '')
-      : normalizedPath;
-    const requestUrl = `${normalizedBase}${requestPath}`;
-    try {
-      console.log('[Auth] trying URL:', requestUrl);
-      const response = await axios.post(requestUrl, body);
-      localStorage.setItem('apiBaseUrl', normalizedBase);
-      return response;
-    } catch (error) {
-      lastError = error;
-      const status = error?.response?.status;
-      if (status && status < 500) {
-        throw error;
-      }
-    }
-  }
-  throw lastError || new Error('No API base URL reachable');
-};
+import { apiRequest } from '../utils/apiClient';
 
 function Auth() {
   const navigate = useNavigate();
@@ -58,11 +28,11 @@ function Auth() {
     try {
       if (isLogin) {
         const deviceId = localStorage.getItem('deviceId');
-        const res = await postWithFallback('/api/auth/login', { 
+        const res = await apiRequest({ method: 'post', path: '/api/auth/login', data: { 
             phone, 
             password,
             deviceId 
-        });
+        }});
         
         // 🌟 FEATURE LOCK LOGIC: यूज़र का प्लान और डेटा मेमोरी में सेव करें 🌟
         localStorage.setItem('token', res.data.token);
@@ -79,12 +49,12 @@ function Auth() {
         navigate('/dashboard'); 
         
       } else {
-        await postWithFallback('/api/auth/register', { 
+        await apiRequest({ method: 'post', path: '/api/auth/register', data: { 
             name, 
             phone, 
             email, 
             password 
-        });
+        }});
         
         alert("रजिस्ट्रेशन सफल रहा! ✅ कृपया अब अपने नंबर और पासवर्ड से लॉगिन करें।");
         setIsLogin(true); 
