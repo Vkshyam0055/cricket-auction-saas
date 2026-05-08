@@ -1,14 +1,5 @@
 import React, { useState } from 'react';
-import axios from 'axios';
-
-const buildUrl = (path) => {
-  const base = (localStorage.getItem('apiBaseUrl') || import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, '');
-  const normalizedPath = String(path || '').trim();
-  const requestPath = base.endsWith('/api') && normalizedPath.startsWith('/api/')
-    ? normalizedPath.replace(/^\/api/, '')
-    : normalizedPath;
-  return `${base}${requestPath}`;
-};
+import { apiRequest } from '../utils/apiClient';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -16,7 +7,7 @@ export default function ForgotPassword() {
 
   const submit = async (e) => {
     e.preventDefault();
-    await axios.post(buildUrl('/api/auth/forgot-password'), { email });
+    await apiRequest({ method: 'post', path: '/api/auth/forgot-password', data: { email } });
     setMsg('अगर ईमेल मौजूद है तो रीसेट लिंक भेज दिया गया है।');
   };
 

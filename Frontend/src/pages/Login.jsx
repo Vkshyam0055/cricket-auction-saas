@@ -1,36 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import axios from 'axios';
-
-const API_BASE_CANDIDATES = Array.from(new Set([
-  import.meta.env.VITE_API_URL,
-  'http://localhost:5000'
-].filter(Boolean).map((url) => String(url).replace(/\/$/, ''))));
-
-const postWithFallback = async (path, body) => {
-  let lastError = null;
-  for (const baseUrl of API_BASE_CANDIDATES) {
-    const normalizedBase = String(baseUrl).replace(/\/$/, '');
-    const normalizedPath = String(path || '').trim();
-    const requestPath = normalizedBase.endsWith('/api') && normalizedPath.startsWith('/api/')
-      ? normalizedPath.replace(/^\/api/, '')
-      : normalizedPath;
-    const requestUrl = `${normalizedBase}${requestPath}`;
-    try {
-      console.log('[Login] trying URL:', requestUrl);
-      const response = await axios.post(requestUrl, body);
-      localStorage.setItem('apiBaseUrl', normalizedBase);
-      return response;
-    } catch (error) {
-      lastError = error;
-      const status = error?.response?.status;
-      if (status && status < 500) {
-        throw error;
-      }
-    }
-  }
-  throw lastError || new Error('No API base URL reachable');
-};
+import { apiRequest } from '../utils/apiClient';
 
 function Login() {
   const [phone, setPhone] = useState('');
@@ -42,10 +12,7 @@ function Login() {
     
     try {
       // 1. डाकिया (Axios) बैकएंड के पास नंबर और पासवर्ड लेकर जा रहा है
-      const response = await postWithFallback('/api/auth/login', {
-        phone: phone,
-        password: password
-      });
+      const response = await apiRequest({ method: 'post', path: '/api/auth/login', data: { phone, password } });
 
       // 2. लॉगिन सफल! बैकएंड ने जो 'डिजिटल पास' (Token) दिया, उसे ब्राउज़र में सेव कर लो
       localStorage.setItem('token', response.data.token);
