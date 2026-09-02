@@ -17,6 +17,7 @@ function PublicPlayerRegistration() {
   const [customData, setCustomData] = useState({});
   const [isSuccess, setIsSuccess] = useState(false);
   const [isUploading, setIsUploading] = useState(false); 
+  const [paymentActionMessage, setPaymentActionMessage] = useState('');
 
   // 🌟 NEW: Poster Popup State
   const [showPosterPopup, setShowPosterPopup] = useState(false);
@@ -49,6 +50,57 @@ function PublicPlayerRegistration() {
   const handleStandardChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
   const handleCustomChange = (e, label, type) => {
       setCustomData({ ...customData, [label]: type === 'checkbox' ? e.target.checked : e.target.value });
+  };
+
+  const handleCopyUpiId = async () => {
+    const upiId = tournamentDetails?.upiId;
+    if (!upiId) return;
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(upiId);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = upiId;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        const copied = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        if (!copied) throw new Error('Clipboard copy failed');
+      }
+      setPaymentActionMessage('UPI ID copied!');
+    } catch (err) {
+      console.error('UPI ID copy failed:', err);
+      setPaymentActionMessage('Could not copy the UPI ID. Please copy it manually.');
+    }
+  };
+
+  const handleDownloadQrCode = async () => {
+    const qrUrl = tournamentDetails?.upiQrUrl;
+    if (!qrUrl) return;
+
+    try {
+      // Cloudinary QR images are cross-origin, so download a Blob to preserve browser download behavior.
+      const response = await fetch(qrUrl);
+      if (!response.ok) throw new Error('QR image download failed');
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = 'upi-qr-code';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+      setPaymentActionMessage('QR code download started!');
+    } catch (err) {
+      console.error('QR code download failed:', err);
+      const qrWindow = window.open(qrUrl, '_blank', 'noopener,noreferrer');
+      setPaymentActionMessage(qrWindow ? 'QR code opened in a new tab. Save it from there.' : 'Could not download the QR code. Please try again.');
+    }
   };
 
   const uploadToCloudinary = async (file) => {
@@ -126,8 +178,19 @@ function PublicPlayerRegistration() {
             <div className="bg-green-50 p-5 rounded-2xl border-2 border-green-200 text-center shadow-inner mb-6">
                <h3 className="font-black text-green-800 uppercase tracking-widest mb-3">💸 Registration Fee</h3>
                {tournamentDetails.paymentMessage && <p className="text-sm font-bold text-gray-700 mb-4">{tournamentDetails.paymentMessage}</p>}
-               {tournamentDetails.upiQrUrl && <div className="bg-white p-2 rounded-xl shadow-md inline-block mb-3 border-2 border-green-100"><img src={tournamentDetails.upiQrUrl} alt="Scan to Pay" className="w-36 h-36 object-contain" /></div>}
-               {tournamentDetails.upiId && <div className="bg-white p-3 rounded-xl border shadow-sm mx-auto mt-2 flex items-center justify-center space-x-2"><span className="text-xl">🏦</span><div><p className="text-[10px] text-gray-500 font-bold uppercase leading-none">UPI ID</p><p className="font-black text-base text-gray-800 tracking-wide">{tournamentDetails.upiId}</p></div></div>}
+               {tournamentDetails.upiQrUrl && (
+                 <div className="flex flex-col items-center mb-3">
+                   <div className="bg-white p-2 rounded-xl shadow-md inline-block border-2 border-green-100"><img src={tournamentDetails.upiQrUrl} alt="Scan to Pay" className="w-36 h-36 object-contain" /></div>
+                   <button type="button" onClick={handleDownloadQrCode} title="Download QR Code" aria-label="Download QR Code" className="mt-2 bg-green-600 hover:bg-green-700 text-white w-10 h-10 rounded-lg font-bold text-lg shadow-sm inline-flex items-center justify-center"><span aria-hidden="true">⬇️</span></button>
+                 </div>
+               )}
+               {tournamentDetails.upiId && (
+                 <div className="bg-white p-3 rounded-xl border shadow-sm mx-auto mt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                   <div className="flex items-center justify-center space-x-2"><span className="text-xl">🏦</span><div><p className="text-[10px] text-gray-500 font-bold uppercase leading-none">UPI ID</p><p className="font-black text-base text-gray-800 tracking-wide">{tournamentDetails.upiId}</p></div></div>
+                   <button type="button" onClick={handleCopyUpiId} title="Copy UPI ID" aria-label="Copy UPI ID" className="bg-white hover:bg-green-50 text-green-700 w-10 h-10 rounded-lg font-bold text-lg border border-green-300 inline-flex items-center justify-center"><span aria-hidden="true">📋</span></button>
+                 </div>
+               )}
+               {paymentActionMessage && <p className={`mt-3 text-xs font-bold ${paymentActionMessage.startsWith('Could') ? 'text-red-600' : 'text-green-700'}`}>{paymentActionMessage}</p>}
             </div>
           )}
 

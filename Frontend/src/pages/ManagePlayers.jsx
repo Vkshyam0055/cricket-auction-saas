@@ -141,16 +141,19 @@ function ManagePlayers() {
 
     try {
       const token = localStorage.getItem('token');
-      await apiRequest({
+      const response = await apiRequest({
         method: 'put',
         path: `/api/players/remove-icon/${player._id}`,
         data: {},
         headers: { Authorization: `Bearer ${token}` }
       });
-      alert(`✅ ${player.name} अब ICON नहीं है और वापस auction pool में आ गया है।`);
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'ICON remove नहीं हो पाया।');
+      }
+      alert(`✅ ${response.data.message}`);
       fetchPlayers();
-    } catch {
-      alert('ICON remove नहीं हो पाया।');
+    } catch (error) {
+      alert(error.response?.data?.message || error.message || 'ICON remove नहीं हो पाया।');
     }
   };
 

@@ -45,6 +45,7 @@ function Dashboard() {
   const [isUpdatingRegistration, setIsUpdatingRegistration] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [organizerEmail, setOrganizerEmail] = useState('');  
+  const [registrationLinkMessage, setRegistrationLinkMessage] = useState('');
 
   const normalizedPlan = useMemo(() => (organizerRole === 'SuperAdmin' ? 'Pro' : normalizePlanName(organizerPlan)), [organizerPlan, organizerRole]);
   const activePolicy = PLAN_POLICIES[normalizedPlan];
@@ -117,6 +118,34 @@ function Dashboard() {
   };
 
   const handleUpgradeClick = () => alert('🚀 फीचर अनलॉक करने के लिए अपने प्लान को अपग्रेड करें। सहायता के लिए एडमिन से संपर्क करें।');
+
+  const copyTextToClipboard = async (text) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.opacity = '0';
+    document.body.appendChild(textArea);
+    textArea.select();
+    const copied = document.execCommand('copy');
+    document.body.removeChild(textArea);
+    if (!copied) throw new Error('Clipboard copy failed');
+  };
+
+  const handleCopyRegistrationLink = async () => {
+    if (!publicRegistrationUrl) return;
+    try {
+      await copyTextToClipboard(publicRegistrationUrl);
+      setRegistrationLinkMessage('Registration link copied!');
+    } catch (error) {
+      console.error('Registration link copy failed:', error);
+      setRegistrationLinkMessage('Could not copy the link. Please copy it manually.');
+    }
+  };
 
   // 🌟 FIX: INSTANT TOGGLE LOGIC 🌟
   const handleRegistrationToggle = async () => {
@@ -242,19 +271,27 @@ function Dashboard() {
                 </p>
               </div>
               
-              <div className="flex items-center space-x-3 bg-white p-2 rounded-xl border border-gray-300 shadow-sm">
-                <span className="text-sm font-bold text-gray-600">Status:</span>
-                <button
-                  type="button"
-                  onClick={handleRegistrationToggle}
-                  disabled={isUpdatingRegistration}
-                  className={`relative inline-flex h-8 w-16 items-center rounded-full transition-colors ${tournament?.isRegistrationOpen !== false ? 'bg-green-500' : 'bg-gray-400'}`}
-                >
-                  <span className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${tournament?.isRegistrationOpen !== false ? 'translate-x-9' : 'translate-x-1'}`} />
-                </button>
-                <span className={`text-sm font-black uppercase ${tournament?.isRegistrationOpen !== false ? 'text-green-600' : 'text-red-500'}`}>
-                  {tournament?.isRegistrationOpen !== false ? 'ON' : 'OFF'}
-                </span>
+              <div className="flex flex-col sm:flex-row items-center gap-3">
+                <div className="text-center sm:text-right">
+                  <button type="button" onClick={handleCopyRegistrationLink} title="Copy Registration Link" aria-label="Copy Registration Link" className="bg-blue-600 hover:bg-blue-700 text-white w-10 h-10 rounded-lg font-bold text-lg shadow-sm inline-flex items-center justify-center" >
+                    <span aria-hidden="true">📋</span>
+                  </button>
+                  {registrationLinkMessage && <p className={`mt-1 text-xs font-bold ${registrationLinkMessage.startsWith('Could') ? 'text-red-600' : 'text-green-600'}`}>{registrationLinkMessage}</p>}
+                </div>
+                <div className="flex items-center space-x-3 bg-white p-2 rounded-xl border border-gray-300 shadow-sm">
+                  <span className="text-sm font-bold text-gray-600">Status:</span>
+                  <button
+                    type="button"
+                    onClick={handleRegistrationToggle}
+                    disabled={isUpdatingRegistration}
+                    className={`relative inline-flex h-8 w-16 items-center rounded-full transition-colors ${tournament?.isRegistrationOpen !== false ? 'bg-green-500' : 'bg-gray-400'}`}
+                  >
+                    <span className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${tournament?.isRegistrationOpen !== false ? 'translate-x-9' : 'translate-x-1'}`} />
+                  </button>
+                  <span className={`text-sm font-black uppercase ${tournament?.isRegistrationOpen !== false ? 'text-green-600' : 'text-red-500'}`}>
+                    {tournament?.isRegistrationOpen !== false ? 'ON' : 'OFF'}
+                  </span>
+                </div>
               </div>
             </div>
           )}

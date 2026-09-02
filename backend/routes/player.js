@@ -363,26 +363,49 @@ router.put('/make-icon/:id', async (req, res) => {
 });
 
 router.put('/remove-icon/:id', async (req, res) => {
+    const session = await mongoose.startSession();
+
     try {
-        const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
-        if (!player) return res.status(404).json({ message: "Player not found" });
+        let responsePayload = null;
 
-        if (player.isIcon && player.soldTo && player.soldTo !== 'Unsold') {
-            const team = await Team.findOne({ teamName: player.soldTo, organizer: req.user.id });
-            if (team) {
-                team.remainingPurse += Number(player.soldPrice || 0);
-                await team.save();
-            }
-        }
+        await session.withTransaction(async () => {
+            const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id }).session(session);
+            if (!player) throw new Error('PLAYER_NOT_FOUND');
+            if (!player.isIcon) throw new Error('PLAYER_NOT_ICON');
 
-        player.isIcon = false;
-        player.soldTo = 'Unsold';
-        player.soldPrice = 0;
-        player.auctionStatus = player.approvalStatus === 'Approved' ? 'ReadyForAuction' : 'Pending';
-        await player.save();
+            const refundAmount = Number(player.soldPrice);
+            if (!Number.isFinite(refundAmount) || refundAmount < 0) throw new Error('INVALID_ICON_PRICE');
 
-        res.json({ message: "Icon removed successfully!", player });
-    } catch (error) { res.status(500).json({ message: "Error" }); }
+            const team = await Team.findOneAndUpdate(
+                { teamName: player.soldTo, organizer: req.user.id },
+                { $inc: { remainingPurse: refundAmount } },
+                { new: true, session }
+            );
+            if (!team) throw new Error('TEAM_NOT_FOUND');
+
+            player.isIcon = false;
+            player.soldTo = 'Unsold';
+            player.soldPrice = 0;
+            player.auctionStatus = 'ReadyForAuction';
+            await player.save({ session });
+
+            responsePayload = {
+                success: true,
+                message: 'Icon removed successfully!',
+                data: { player, team }
+            };
+        });
+
+        return res.json(responsePayload);
+    } catch (error) {
+        if (error.message === 'PLAYER_NOT_FOUND') return res.status(404).json({ success: false, message: 'Player not found' });
+        if (error.message === 'PLAYER_NOT_ICON') return res.status(409).json({ success: false, message: 'Player is not an icon player' });
+        if (error.message === 'TEAM_NOT_FOUND') return res.status(404).json({ success: false, message: 'Team not found for this icon player' });
+        if (error.message === 'INVALID_ICON_PRICE') return res.status(409).json({ success: false, message: 'Invalid icon price' });
+        return res.status(500).json({ success: false, message: 'Error removing icon player' });
+    } finally {
+        session.endSession();
+    }
 });
 
 module.exports = router;
