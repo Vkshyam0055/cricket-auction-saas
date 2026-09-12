@@ -6,6 +6,22 @@ const SESSION_TTL_MS = SESSION_TTL_HOURS * 60 * 60 * 1000;
 
 const addHours = (date, hours) => new Date(date.getTime() + (hours * 60 * 60 * 1000));
 
+const getActiveDeviceIdsForUser = async (userId) => {
+    if (!userId) return [];
+
+    const sessions = await UserSession.find({
+        user: userId,
+        revokedAt: null,
+        expiresAt: { $gt: new Date() }
+    }).select('deviceId').lean();
+
+    return [...new Set(
+        sessions
+            .map((session) => String(session.deviceId || '').trim())
+            .filter(Boolean)
+    )];
+};
+
 const createSessionAndToken = async ({ user, deviceId = '', ipAddress = '', userAgent = '' }) => {
     const now = new Date();
     const expiresAt = addHours(now, SESSION_TTL_HOURS);
@@ -63,6 +79,7 @@ module.exports = {
     SESSION_TTL_HOURS,
     SESSION_TTL_MS,
     createSessionAndToken,
+    getActiveDeviceIdsForUser,
     validateSessionById,
     revokeSessionById,
     revokeAllSessionsForUser

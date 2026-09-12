@@ -100,13 +100,18 @@ function Dashboard() {
   }, [tournament]);
 
   const handleLogout = async () => {
+    const deviceId = localStorage.getItem('deviceId');
     try {
       const phone = localStorage.getItem('organizerPhone');
-      const deviceId = localStorage.getItem('deviceId');
+      const token = localStorage.getItem('token');
       if (deviceId) {
         for (const baseUrl of API_BASE_CANDIDATES) {
           try {
-            await axios.post(buildApiUrl(baseUrl, '/api/auth/logout'), { phone, deviceId });
+            await axios.post(
+              buildApiUrl(baseUrl, '/api/auth/logout'),
+              { phone, deviceId },
+              token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
+            );
             break;
           } catch (error) {
             // try next base
@@ -114,7 +119,9 @@ function Dashboard() {
         }
       }
     } catch (error) { console.error(error); }
-    localStorage.clear(); navigate('/');
+    localStorage.clear();
+    if (deviceId) localStorage.setItem('deviceId', deviceId);
+    navigate('/');
   };
 
   const handleUpgradeClick = () => alert('🚀 फीचर अनलॉक करने के लिए अपने प्लान को अपग्रेड करें। सहायता के लिए एडमिन से संपर्क करें।');

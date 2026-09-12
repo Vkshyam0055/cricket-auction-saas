@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const User = require('../models/User');
 const { resolveEffectivePlan } = require('../utils/planPolicy');
-const { createSessionAndToken, revokeSessionById } = require('../utils/sessionAuth');
+const { createSessionAndToken, getActiveDeviceIdsForUser, revokeSessionById } = require('../utils/sessionAuth');
 
 const createResetToken = () => crypto.randomBytes(32).toString('hex');
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
@@ -78,6 +78,7 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { phone, password, deviceId } = req.body;
+    const normalizedDeviceId = String(deviceId || '').trim();
     const user = await User.findOne({ phone });
     if (!user) return res.status(400).json({ message: 'यह नंबर रजिस्टर नहीं है!' });
     if (!user.isActive) return res.status(403).json({ message: 'आपका अकाउंट सस्पेंड कर दिया गया है।' });
@@ -92,18 +93,19 @@ router.post('/login', async (req, res) => {
       user.password = migratedPassword;
     }
 
-    if (!Array.isArray(user.activeDevices)) user.activeDevices = [];
-    if (deviceId) {
-      if (user.role !== 'SuperAdmin' && !user.activeDevices.includes(deviceId) && user.activeDevices.length >= user.maxDevicesAllowed) {
+    const activeDeviceIds = await getActiveDeviceIdsForUser(user._id);
+    await User.updateOne({ _id: user._id }, { $set: { activeDevices: activeDeviceIds } });
+
+    if (normalizedDeviceId) {
+      if (user.role !== 'SuperAdmin' && !activeDeviceIds.includes(normalizedDeviceId) && activeDeviceIds.length >= user.maxDevicesAllowed) {
         return res.status(403).json({ message: `लॉगिन लिमिट पूरी हो गई है! आपका प्लान सिर्फ ${user.maxDevicesAllowed} डिवाइस की अनुमति देता है।` });
-      }
-      if (!user.activeDevices.includes(deviceId)) {
-        await User.updateOne({ _id: user._id }, { $addToSet: { activeDevices: deviceId } });
-        user.activeDevices.push(deviceId);
       }
     }
 
-    const { token, expiresAt } = await createSessionAndToken({ user, deviceId, ipAddress: req.ip, userAgent: req.get('user-agent') });
+    const { token, expiresAt } = await createSessionAndToken({ user, deviceId: normalizedDeviceId, ipAddress: req.ip, userAgent: req.get('user-agent') });
+    if (normalizedDeviceId && !activeDeviceIds.includes(normalizedDeviceId)) {
+      await User.updateOne({ _id: user._id }, { $set: { activeDevices: [...activeDeviceIds, normalizedDeviceId] } });
+    }
     const normalizedPlan = resolveEffectivePlan(user);
     const requiresEmailUpdate = !user.email;
 
@@ -238,7 +240,10 @@ router.post('/logout', async (req, res) => {
     }
     if (phone && deviceId) {
       const user = await User.findOne({ phone });
-      if (user && Array.isArray(user.activeDevices)) await User.updateOne({ phone }, { $pull: { activeDevices: deviceId } });
+      if (user) {
+        const activeDeviceIds = await getActiveDeviceIdsForUser(user._id);
+        await User.updateOne({ _id: user._id }, { $set: { activeDevices: activeDeviceIds } });
+      }
     }
     res.json({ message: 'लॉगआउट सफल!' });
   } catch (err) {
