@@ -79,6 +79,36 @@ function SuperAdmin() {
     } catch (error) { alert("अपडेट फेल!"); }
   };
 
+  const handleImpersonate = async (user) => {
+    if (!window.confirm(`Are you sure you want to act as ${user.name}?`)) return;
+    try {
+      const currentToken = localStorage.getItem('token');
+      const res = await apiRequest({
+        method: 'post',
+        path: `/api/admin/impersonate/${user._id}`,
+        headers: { Authorization: `Bearer ${currentToken}` }
+      });
+
+      // Store current admin token and target user info
+      localStorage.setItem('adminToken', currentToken);
+      localStorage.setItem('impersonatingUser', res.data.user.name);
+      localStorage.setItem('impersonatedUserId', user._id);
+
+      // Set the new impersonation token
+      localStorage.setItem('token', res.data.token);
+      localStorage.setItem('organizerName', res.data.user.name);
+      localStorage.setItem('organizerPhone', res.data.user.phone);
+
+      alert(res.data.message);
+
+      // Reload page and navigate to dashboard as the user
+      window.location.href = '/dashboard';
+    } catch (error) {
+      console.error(error);
+      alert(error?.response?.data?.message || "Failed to start impersonation!");
+    }
+  };
+
   // --- Plan Logic ---
   const openPlanModal = (plan) => {
     setSelectedPlan(plan);
@@ -180,8 +210,9 @@ function SuperAdmin() {
                       <td className="p-4 text-center font-mono font-bold">
                           {user.activeDevicesCount} / {user.maxDevicesAllowed}
                       </td>
-                      <td className="p-4 text-center">
-                          <button onClick={() => openEditModal(user)} className="bg-gray-600 hover:bg-yellow-500 hover:text-yellow-900 p-2 rounded-lg transition-all">⚙️</button>
+                      <td className="p-4 text-center space-x-2">
+                          <button onClick={() => openEditModal(user)} title="Edit Settings" className="bg-gray-600 hover:bg-yellow-500 hover:text-yellow-900 p-2 rounded-lg transition-all">⚙️</button>
+                          <button onClick={() => handleImpersonate(user)} title="Act as User" className="bg-gray-600 hover:bg-blue-500 hover:text-blue-900 p-2 rounded-lg transition-all">🎭</button>
                       </td>
                     </tr>
                   ))}

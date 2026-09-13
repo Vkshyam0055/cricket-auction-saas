@@ -7,7 +7,84 @@ const Player = require('../models/Player');
 const UserSession = require('../models/UserSession');
 const fetchOrganizer = require('../middleware/fetchOrganizer');
 const { normalizePlanName, isSupportedPlanInput } = require('../utils/planPolicy');
-const { revokeAllSessionsForUser } = require('../utils/sessionAuth');
+const AuditLog = require('../models/AuditLog');
+const { revokeAllSessionsForUser, createSessionAndToken } = require('../utils/sessionAuth');
+
+// 🌟 IMPERSONATION ROUTES 🌟
+router.post('/impersonate/:id', fetchOrganizer, async (req, res) => {
+    try {
+        if (req.user.role !== 'SuperAdmin') {
+            return res.status(403).json({ message: "Access Denied!" });
+        }
+
+        const targetUserId = req.params.id;
+        const targetUser = await User.findById(targetUserId);
+
+        if (!targetUser) {
+            return res.status(404).json({ message: "Target user not found!" });
+        }
+
+        if (targetUser.role === 'SuperAdmin') {
+            return res.status(403).json({ message: "Cannot impersonate another SuperAdmin!" });
+        }
+
+        // Create a special session for impersonation
+        const { token, expiresAt } = await createSessionAndToken({
+            user: targetUser,
+            deviceId: 'impersonation_device', // Use a special device ID to avoid blocking normal devices
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent')
+        });
+
+        // Log the audit event
+        await AuditLog.create({
+            adminId: req.user.id,
+            targetUserId: targetUserId,
+            action: 'ENTER_IMPERSONATION'
+        });
+
+        res.json({
+            message: `Impersonating ${targetUser.name}`,
+            token,
+            sessionExpiresAt: expiresAt,
+            user: {
+                name: targetUser.name,
+                phone: targetUser.phone,
+                email: targetUser.email,
+                role: targetUser.role,
+                plan: targetUser.plan
+            }
+        });
+
+    } catch (error) {
+        console.error('Impersonate error:', error);
+        res.status(500).json({ message: "Error starting impersonation session!" });
+    }
+});
+
+router.post('/impersonate/:id/exit', fetchOrganizer, async (req, res) => {
+    try {
+        if (req.user.role !== 'SuperAdmin') {
+            return res.status(403).json({ message: "Access Denied!" });
+        }
+
+        const targetUserId = req.params.id;
+
+        // Log the audit event
+        await AuditLog.create({
+            adminId: req.user.id,
+            targetUserId: targetUserId,
+            action: 'EXIT_IMPERSONATION'
+        });
+
+        res.json({ message: "Impersonation exited successfully" });
+
+    } catch (error) {
+        console.error('Exit impersonate error:', error);
+        res.status(500).json({ message: "Error exiting impersonation session!" });
+    }
+});
+
 
 // 🌟 सिर्फ SuperAdmin के लिए पूरा डेटा लाने वाला रास्ता 🌟
 router.get('/all-data', fetchOrganizer, async (req, res) => {

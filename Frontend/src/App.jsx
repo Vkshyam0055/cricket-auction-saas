@@ -16,7 +16,67 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import CompleteProfileEmail from './pages/CompleteProfileEmail';
 import { TournamentContext, TournamentProvider } from './context/TournamentContext';
-import { isTokenExpired, onSessionExpired } from './utils/apiClient';
+import { isTokenExpired, onSessionExpired, apiRequest, clearAuthSession } from './utils/apiClient';
+
+const ImpersonationBanner = () => {
+  const adminToken = localStorage.getItem('adminToken');
+  const impersonatingUser = localStorage.getItem('impersonatingUser');
+  const impersonatedUserId = localStorage.getItem('impersonatedUserId');
+  const navigate = React.useCallback(() => window.location.href = '/super-admin', []); // use location to force full reload
+
+  if (!adminToken) return null;
+
+  const handleExit = async () => {
+    try {
+      // 1. Kill the impersonation session
+      const currentToken = localStorage.getItem('token');
+      if (currentToken) {
+        await apiRequest({
+          method: 'post',
+          path: '/api/auth/logout',
+          headers: { Authorization: `Bearer ${currentToken}` }
+        }).catch(() => {}); // Ignore error on logout
+      }
+
+      // 2. Log the exit event using the admin token
+      if (impersonatedUserId) {
+        await apiRequest({
+          method: 'post',
+          path: `/api/admin/impersonate/${impersonatedUserId}/exit`,
+          headers: { Authorization: `Bearer ${adminToken}` }
+        }).catch(e => console.error("Failed to log exit impersonation", e));
+      }
+
+      // 3. Restore the original admin token
+      localStorage.setItem('token', adminToken);
+
+      // 4. Clear the impersonation metadata
+      localStorage.removeItem('adminToken');
+      localStorage.removeItem('impersonatingUser');
+      localStorage.removeItem('impersonatedUserId');
+
+      // 5. Navigate back to super admin
+      navigate();
+    } catch (error) {
+      console.error("Error exiting impersonation", error);
+      // Fallback: force clear everything
+      clearAuthSession();
+      localStorage.removeItem('adminToken');
+      localStorage.removeItem('impersonatingUser');
+      localStorage.removeItem('impersonatedUserId');
+      window.location.href = '/auth';
+    }
+  };
+
+  return (
+    <div className="bg-red-600 text-white p-3 text-center font-bold flex justify-center items-center space-x-4 shadow-lg sticky top-0 z-50">
+      <span>⚠️ You are acting as {impersonatingUser || 'User'}</span>
+      <button onClick={handleExit} className="bg-white text-red-600 px-4 py-1 rounded-md text-sm hover:bg-gray-100 transition-colors border border-red-200">
+        Exit User Mode
+      </button>
+    </div>
+  );
+};
 
 const ProtectedRoute = ({ children }) => {
   const location = useLocation();
@@ -44,6 +104,7 @@ function App() {
   return (
     <TournamentProvider>
       <BrowserRouter>
+        <ImpersonationBanner />
         <SessionExpiryWatcher />
         <Routes>
           <Route path="/" element={<LandingPage />} />
