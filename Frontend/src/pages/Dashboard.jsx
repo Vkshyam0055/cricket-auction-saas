@@ -17,20 +17,7 @@ const normalizePlanName = (planName = 'Free') => {
 };
 
 // 🌟 Live Server API 🌟
-const API_BASE_CANDIDATES = Array.from(new Set([
-  localStorage.getItem('apiBaseUrl'),
-  import.meta.env.VITE_API_URL,
-  'http://localhost:5000'
-].filter(Boolean).map((url) => String(url).replace(/\/$/, ''))));
-
-const buildApiUrl = (baseUrl, path) => {
-  const normalizedBase = String(baseUrl || '').replace(/\/$/, '');
-  const normalizedPath = String(path || '').trim();
-  const requestPath = normalizedBase.endsWith('/api') && normalizedPath.startsWith('/api/')
-    ? normalizedPath.replace(/^\/api/, '')
-    : normalizedPath;
-  return `${normalizedBase}${requestPath}`;
-}; 
+import { apiRequest } from '../utils/apiClient';
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -76,22 +63,8 @@ function Dashboard() {
         const token = localStorage.getItem('token');
         if (!token) return;
         const headers = { Authorization: `Bearer ${token}` };
-        let teamsRes = null;
-        let playersRes = null;
-        let usedBase = '';
-        let lastError = null;
-        for (const baseUrl of API_BASE_CANDIDATES) {
-          try {
-            teamsRes = await axios.get(buildApiUrl(baseUrl, '/api/teams'), { headers });
-            playersRes = await axios.get(buildApiUrl(baseUrl, '/api/players'), { headers });
-            usedBase = String(baseUrl).replace(/\/$/, '');
-            break;
-          } catch (error) {
-            lastError = error;
-          }
-        }
-        if (!teamsRes || !playersRes) throw lastError;
-        if (usedBase) localStorage.setItem('apiBaseUrl', usedBase);
+        const teamsRes = await apiRequest({ path: '/api/teams', headers });
+        const playersRes = await apiRequest({ path: '/api/players', headers });
         setTotalTeams(teamsRes.data.length);
         setTotalPlayers(playersRes.data.length);
       } catch (error) { console.error('डेटा लाने में दिक्कत:', error); }
@@ -105,18 +78,12 @@ function Dashboard() {
       const phone = localStorage.getItem('organizerPhone');
       const token = localStorage.getItem('token');
       if (deviceId) {
-        for (const baseUrl of API_BASE_CANDIDATES) {
-          try {
-            await axios.post(
-              buildApiUrl(baseUrl, '/api/auth/logout'),
-              { phone, deviceId },
-              token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
-            );
-            break;
-          } catch (error) {
-            // try next base
-          }
-        }
+        await apiRequest({
+          method: 'post',
+          path: '/api/auth/logout',
+          data: { phone, deviceId },
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
       }
     } catch (error) { console.error(error); }
     localStorage.clear();
@@ -166,24 +133,12 @@ function Dashboard() {
       const isCurrentlyOpen = tournament.isRegistrationOpen !== false; 
       const newStatus = !isCurrentlyOpen; // चालू है तो बंद करो, बंद है तो चालू करो
 
-      let res = null;
-      let usedBase = '';
-      let lastError = null;
-      for (const baseUrl of API_BASE_CANDIDATES) {
-        try {
-          res = await axios.patch(
-            buildApiUrl(baseUrl, '/api/tournament/registration-status'),
-            { isRegistrationOpen: newStatus },
-            { headers }
-          );
-          usedBase = String(baseUrl).replace(/\/$/, '');
-          break;
-        } catch (error) {
-          lastError = error;
-        }
-      }
-      if (!res) throw lastError;
-      if (usedBase) localStorage.setItem('apiBaseUrl', usedBase);
+      const res = await apiRequest({
+        method: 'patch',
+        path: '/api/tournament/registration-status',
+        data: { isRegistrationOpen: newStatus },
+        headers
+      });
         
       if(res.data && res.data.tournament) {
           // 🌟 जादू: बिना रिफ्रेश किए तुरंत UI को अपडेट करो 🌟

@@ -2,28 +2,13 @@ import React, { useEffect, useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { TournamentContext } from '../context/TournamentContext';
+import { apiRequest } from '../utils/apiClient';
 
 const PLAN_TEAM_LIMITS = { Free: 3, Basic: 8, Pro: -1 };
 const normalizePlanName = (planName = 'Free') => {
   if (['Pro', 'Pro Plan'].includes(planName)) return 'Pro';
   if (['Basic', 'Basic Plan'].includes(planName)) return 'Basic';
   return 'Free';
-};
-
-const API_BASE_CANDIDATES = Array.from(new Set([
-  localStorage.getItem('apiBaseUrl'),
-  import.meta.env.VITE_API_URL,
-  'https://cricket-auction-backend-h8ud.onrender.com',
-  'http://localhost:5000'
-].filter(Boolean).map((url) => String(url).replace(/\/$/, ''))));
-
-const buildApiUrl = (baseUrl, path) => {
-  const normalizedBase = String(baseUrl || '').replace(/\/$/, '');
-  const normalizedPath = String(path || '').trim();
-  const requestPath = normalizedBase.endsWith('/api') && normalizedPath.startsWith('/api/')
-    ? normalizedPath.replace(/^\/api/, '')
-    : normalizedPath;
-  return `${normalizedBase}${requestPath}`;
 };
 
 function AddTeam() {
@@ -63,21 +48,10 @@ function AddTeam() {
   const fetchTeams = async () => {
     try {
       const token = localStorage.getItem('token');
-      let response = null;
-      let lastError = null;
-      for (const baseUrl of API_BASE_CANDIDATES) {
-        const requestUrl = buildApiUrl(baseUrl, '/api/teams');
-        try {
-          response = await axios.get(requestUrl, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          localStorage.setItem('apiBaseUrl', String(baseUrl).replace(/\/$/, ''));
-          break;
-        } catch (error) {
-          lastError = error;
-        }
-      }
-      if (!response && lastError) throw lastError;
+      const response = await apiRequest({
+        path: '/api/teams',
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setTeams(response.data);
     } catch (error) { console.error("Teams fetch error:", error); }
   };
@@ -102,28 +76,19 @@ function AddTeam() {
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
       const payload = { teamName, shortName: shortName.trim().toUpperCase(), totalPurse: Number(budget), ownerName, mobile, logoUrl };
-      let lastError = null;
-      let saved = false;
-      for (const baseUrl of API_BASE_CANDIDATES) {
-        const requestUrl = isEditing
-          ? buildApiUrl(baseUrl, `/api/teams/${editTeamId}`)
-          : buildApiUrl(baseUrl, '/api/teams');
-        try {
-          if (isEditing) await axios.put(requestUrl, payload, { headers });
-          else await axios.post(requestUrl, payload, { headers });
-          localStorage.setItem('apiBaseUrl', String(baseUrl).replace(/\/$/, ''));
-          saved = true;
-          break;
-        } catch (error) {
-          lastError = error;
-        }
-      }
-      if (!saved && lastError) throw lastError;
+
+      await apiRequest({
+        method: isEditing ? 'put' : 'post',
+        path: isEditing ? `/api/teams/${editTeamId}` : '/api/teams',
+        data: payload,
+        headers
+      });
+
       alert(isEditing ? 'Team updated successfully! 🎉' : 'Team added successfully! 🎉');
       
       resetForm();
       fetchTeams();
-    } catch (error) { alert(error.response?.data?.message || 'Error saving team!'); }
+    } catch (error) { alert(error?.response?.data?.message || 'Error saving team!'); }
   };
 
   const handleEditClick = (team) => {
@@ -145,27 +110,20 @@ function AddTeam() {
     try {
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
-      let deleted = false;
-      let lastError = null;
-      for (const baseUrl of API_BASE_CANDIDATES) {
-        const requestUrl = buildApiUrl(baseUrl, `/api/teams/${team._id}`);
-        try {
-          await axios.delete(requestUrl, { headers });
-          localStorage.setItem('apiBaseUrl', String(baseUrl).replace(/\/$/, ''));
-          deleted = true;
-          break;
-        } catch (error) {
-          lastError = error;
-        }
-      }
-      if (!deleted && lastError) throw lastError;
+
+      await apiRequest({
+        method: 'delete',
+        path: `/api/teams/${team._id}`,
+        headers
+      });
+
       if (isEditing && editTeamId === team._id) {
         resetForm();
       }
       fetchTeams();
       alert('Team deleted successfully! 🗑️');
     } catch (error) {
-      alert(error.response?.data?.message || 'Team delete failed!');
+      alert(error?.response?.data?.message || 'Team delete failed!');
     }
   };
 

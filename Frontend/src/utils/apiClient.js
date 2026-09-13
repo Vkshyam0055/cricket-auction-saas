@@ -28,12 +28,16 @@ export const isTokenExpired = (token) => {
 export const getApiBaseCandidates = () => {
   const candidates = [
     getSafeStoredBaseUrl(),
-    normalizeBaseUrl(import.meta.env.VITE_API_URL),
-    DEFAULT_PROD_API_BASE
+    normalizeBaseUrl(import.meta.env.VITE_API_URL)
   ];
 
   if (import.meta.env.DEV) {
+    // In dev, prefer localhost over prod
     candidates.push(DEFAULT_DEV_API_BASE);
+    candidates.push(DEFAULT_PROD_API_BASE);
+  } else {
+    // In prod, just use prod
+    candidates.push(DEFAULT_PROD_API_BASE);
   }
 
   return Array.from(new Set(candidates.filter(Boolean).map(normalizeBaseUrl)));
@@ -50,17 +54,21 @@ const buildApiUrl = (baseUrl, path) => {
 
 export const apiRequest = async ({ method = 'get', path, data, params, headers = {} }) => {
   let lastError = null;
-  for (const baseUrl of getApiBaseCandidates()) {
+  const candidates = getApiBaseCandidates();
+  for (let i = 0; i < candidates.length; i++) {
+    const baseUrl = candidates[i];
     const requestUrl = buildApiUrl(baseUrl, path);
     try {
       const response = await axios({ method, url: requestUrl, data, params, headers });
       localStorage.setItem('apiBaseUrl', String(baseUrl).replace(/\/$/, ''));
       return response;
     } catch (error) {
-      if (error?.response?.status === 401) {
+      lastError = error;
+      // If it's a 401 and we've exhausted all candidates, clear session.
+      // But don't clear it immediately, since a token might be valid locally but invalid on PROD.
+      if (error?.response?.status === 401 && i === candidates.length - 1) {
         clearAuthSession();
       }      
-      lastError = error;
     }
   }
   throw lastError || new Error('No API base URL reachable');

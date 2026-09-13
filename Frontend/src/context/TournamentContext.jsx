@@ -1,22 +1,7 @@
 import React, { createContext, useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import { apiRequest } from '../utils/apiClient';
 
 export const TournamentContext = createContext();
-
-const API_BASE_CANDIDATES = () => Array.from(new Set([
-  import.meta.env.VITE_API_URL,
-  'https://cricket-auction-backend-h8ud.onrender.com',
-  'http://localhost:5000'
-].filter(Boolean).map((url) => String(url).replace(/\/$/, ''))));
-
-const buildRequestUrl = (baseUrl, path) => {
-  const normalizedBase = String(baseUrl || '').replace(/\/$/, '');
-  const normalizedPath = String(path || '').trim();
-  const requestPath = normalizedBase.endsWith('/api') && normalizedPath.startsWith('/api/')
-    ? normalizedPath.replace(/^\/api/, '')
-    : normalizedPath;
-  return `${normalizedBase}${requestPath}`;
-};
 
 export const TournamentProvider = ({ children }) => {
   const [tournament, setTournament] = useState(null);
@@ -36,29 +21,18 @@ export const TournamentProvider = ({ children }) => {
 
       const headers = { Authorization: `Bearer ${token}` };
       let resolvedTournament = null;
-      let fetched = false;
-      let lastError = null;
 
-      for (const baseUrl of API_BASE_CANDIDATES()) {
-        const requestUrl = buildRequestUrl(baseUrl, '/api/tournament');
-        try {
-          const response = await axios.get(requestUrl, { headers });
-          localStorage.setItem('apiBaseUrl', String(baseUrl).replace(/\/$/, ''));
-          resolvedTournament = response.data || null;
-          fetched = true;
-          break;
-        } catch (error) {
-          lastError = error;
-          const status = error?.response?.status;
-          if (status === 404) {
-            resolvedTournament = null;
-            fetched = true;
-            break;
-          }
+      try {
+        const response = await apiRequest({ path: '/api/tournament', headers });
+        resolvedTournament = response.data || null;
+      } catch (error) {
+        if (error?.response?.status === 404) {
+          resolvedTournament = null;
+        } else {
+          throw error;
         }
       }
 
-      if (!fetched && lastError) throw lastError;
       setTournament(resolvedTournament);
     } catch (error) {
       console.error("Error fetching tournament:", error);

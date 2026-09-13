@@ -1,22 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-
-const API_BASE_CANDIDATES = Array.from(new Set([
-  localStorage.getItem('apiBaseUrl'),
-  import.meta.env.VITE_API_URL,
-  'https://cricket-auction-backend-h8ud.onrender.com',
-  'http://localhost:5000'
-].filter(Boolean).map((url) => String(url).replace(/\/$/, ''))));
-
-const buildApiUrl = (baseUrl, path) => {
-  const normalizedBase = String(baseUrl || '').replace(/\/$/, '');
-  const normalizedPath = String(path || '').trim();
-  const requestPath = normalizedBase.endsWith('/api') && normalizedPath.startsWith('/api/')
-    ? normalizedPath.replace(/^\/api/, '')
-    : normalizedPath;
-  return `${normalizedBase}${requestPath}`;
-};
+import { apiRequest } from '../utils/apiClient';
 
 function AddPlayer() {
   const navigate = useNavigate();
@@ -59,20 +44,12 @@ function AddPlayer() {
     try {
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
-      let saved = false;
-      let lastError = null;
-      for (const baseUrl of API_BASE_CANDIDATES) {
-        const requestUrl = buildApiUrl(baseUrl, '/api/players');
-        try {
-          await axios.post(requestUrl, formData, { headers });
-          localStorage.setItem('apiBaseUrl', String(baseUrl).replace(/\/$/, ''));
-          saved = true;
-          break;
-        } catch (error) {
-          lastError = error;
-        }
-      }
-      if (!saved && lastError) throw lastError;
+      await apiRequest({
+        method: 'post',
+        path: '/api/players',
+        data: formData,
+        headers
+      });
       alert(`🎉 खिलाड़ी '${formData.name}' को सफलतापूर्वक ऐड कर लिया गया है!`);
       navigate('/dashboard');
     } catch (err) {
