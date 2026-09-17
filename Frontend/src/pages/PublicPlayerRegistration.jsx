@@ -147,105 +147,404 @@ function PublicPlayerRegistration() {
     } catch (err) { alert("Registration failed! Please try again."); }
   };
 
-  if (loading) return <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center font-bold">Loading...</div>;
-  if (error || !tournamentDetails) return <div className="min-h-screen bg-gray-900 flex items-center justify-center p-6 text-center"><div className="bg-white p-10 rounded-3xl shadow-2xl"><h2 className="text-2xl font-black text-gray-800">{error}</h2></div></div>;
-  if (isSuccess) return <div className="min-h-screen bg-green-50 flex items-center justify-center p-6 text-center"><div className="bg-white p-8 rounded-3xl shadow-2xl border-t-8 border-green-500"><div className="text-6xl mb-4">✅</div><h2 className="text-3xl font-black text-gray-800 mb-2">Success!</h2><p className="text-gray-600 font-medium">आपका रजिस्ट्रेशन सफलतापूर्वक हो गया है।</p></div></div>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center font-sans p-4">
+        <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <div className="font-black text-lg tracking-tight">PLAYER REGISTRATION</div>
+        <p className="text-xs text-slate-400 font-medium mt-1">Loading tournament information...</p>
+      </div>
+    );
+  }
+
+  if (error || !tournamentDetails) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 sm:p-6 font-sans">
+        <div className="bg-white p-8 sm:p-10 rounded-3xl shadow-2xl text-center max-w-md w-full border border-slate-200">
+          <div className="w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center text-2xl mx-auto mb-4 border border-rose-100">
+            ⚠️
+          </div>
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 mb-2">Registration Unavailable</h2>
+          <p className="text-slate-600 text-sm font-medium">{error || 'Tournament registration link is invalid or closed.'}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isSuccess) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 sm:p-6 font-sans">
+        <div className="bg-white p-8 sm:p-10 rounded-3xl shadow-2xl text-center max-w-md w-full border border-slate-200">
+          <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-3xl mx-auto mb-4 border border-emerald-100">
+            ✓
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-black text-slate-900 mb-2 tracking-tight">Registration Successful!</h2>
+          <p className="text-slate-600 text-sm font-medium mb-6 leading-relaxed">
+            आपका रजिस्ट्रेशन सफलतापूर्वक जमा हो गया है। टूर्नामेंट आयोजक विवरण की पुष्टि करेंगे।
+          </p>
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-left mb-6">
+            <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Tournament</p>
+            <p className="text-sm font-black text-slate-900 mt-0.5">{tournamentDetails.name}</p>
+            <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mt-3">Player Name</p>
+            <p className="text-sm font-black text-slate-900 mt-0.5">{formData.name}</p>
+          </div>
+          <p className="text-xs text-slate-400 font-medium">You may close this window or contact the tournament organizer for queries.</p>
+        </div>
+      </div>
+    );
+  }
 
   // 🌟 POSTER POPUP OVERLAY 🌟
   if (showPosterPopup) {
-      return (
-          <div className="fixed inset-0 z-[100] bg-gray-900 bg-opacity-95 flex flex-col items-center justify-center p-6 backdrop-blur-sm">
-             <img src={tournamentDetails.tournamentPoster} alt="Tournament Poster" className="max-w-full max-h-[75vh] rounded-2xl shadow-2xl object-contain mb-8 border-4 border-gray-800" />
-             <button onClick={() => setShowPosterPopup(false)} className="bg-yellow-400 text-black font-black text-xl px-12 py-4 rounded-full shadow-[0_0_25px_rgba(250,204,21,0.5)] hover:bg-yellow-500 hover:scale-105 active:scale-95 transition-all">
-                 Proceed to Registration 👉
-             </button>
-          </div>
-      );
+    return (
+      <div className="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-4 sm:p-6">
+        <div className="relative max-w-lg w-full flex flex-col items-center">
+          <img
+            src={tournamentDetails.tournamentPoster}
+            alt="Tournament Poster"
+            className="max-w-full max-h-[72vh] rounded-2xl shadow-2xl object-contain mb-6 border border-slate-800"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPosterPopup(false)}
+            className="bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-sm sm:text-base px-8 py-3.5 rounded-full shadow-lg shadow-amber-400/25 active:scale-95 transition-all"
+          >
+            Proceed to Registration 👉
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black p-4 flex flex-col items-center pb-20">
-      <div className="mb-8 text-center mt-6">
-        {tournamentDetails.logoUrl && <img src={tournamentDetails.logoUrl} alt="Logo" className="w-24 h-24 mx-auto mb-4 rounded-full bg-white object-contain border-4 border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.5)]" />}
-        <h1 className="text-4xl font-black text-white italic uppercase">{tournamentDetails.name}</h1>
-        <p className="text-yellow-300 font-bold uppercase tracking-widest mt-2">Player Registration</p>
+    <div className="min-h-screen bg-slate-950 font-sans text-slate-900 p-3 sm:p-6 lg:p-8 flex flex-col items-center justify-center relative overflow-hidden pb-16">
+      {/* Background ambient orbs */}
+      <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-72 sm:w-96 h-72 sm:h-96 bg-indigo-600/15 rounded-full blur-[90px] pointer-events-none"></div>
+      <div className="absolute bottom-1/4 right-1/4 translate-x-1/2 translate-y-1/2 w-72 sm:w-96 h-72 sm:h-96 bg-blue-600/15 rounded-full blur-[90px] pointer-events-none"></div>
+
+      {/* Tournament Identity Header */}
+      <div className="mb-6 sm:mb-8 text-center mt-4 relative z-10 max-w-xl">
+        {tournamentDetails.logoUrl ? (
+          <img
+            src={tournamentDetails.logoUrl}
+            alt="Logo"
+            className="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-3.5 rounded-2xl bg-white p-1 object-contain border border-slate-700 shadow-xl"
+          />
+        ) : (
+          <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-3.5 rounded-2xl bg-gradient-to-tr from-amber-400 to-yellow-500 p-0.5 shadow-xl flex items-center justify-center">
+            <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center text-2xl sm:text-3xl">
+              🏏
+            </div>
+          </div>
+        )}
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight leading-tight">
+          {tournamentDetails.name}
+        </h1>
+        <div className="mt-2">
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest bg-amber-400/15 text-amber-400 border border-amber-400/30">
+            Player Registration Form
+          </span>
+        </div>
       </div>
 
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border-t-8 border-yellow-500">
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+      {/* Main Registration Form Card */}
+      <div className="w-full max-w-xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden border border-slate-800/20 relative z-10">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-8 space-y-5 sm:space-y-6">
           
+          {/* 🌟 Payment & Registration Fee Section 🌟 */}
           {(tournamentDetails.upiQrUrl || tournamentDetails.upiId || tournamentDetails.paymentMessage) && (
-            <div className="bg-green-50 p-5 rounded-2xl border-2 border-green-200 text-center shadow-inner mb-6">
-               <h3 className="font-black text-green-800 uppercase tracking-widest mb-3">💸 Registration Fee</h3>
-               {tournamentDetails.paymentMessage && <p className="text-sm font-bold text-gray-700 mb-4">{tournamentDetails.paymentMessage}</p>}
-               {tournamentDetails.upiQrUrl && (
-                 <div className="flex flex-col items-center mb-3">
-                   <div className="bg-white p-2 rounded-xl shadow-md inline-block border-2 border-green-100"><img src={tournamentDetails.upiQrUrl} alt="Scan to Pay" className="w-36 h-36 object-contain" /></div>
-                   <button type="button" onClick={handleDownloadQrCode} title="Download QR Code" aria-label="Download QR Code" className="mt-2 bg-green-600 hover:bg-green-700 text-white w-10 h-10 rounded-lg font-bold text-lg shadow-sm inline-flex items-center justify-center"><span aria-hidden="true">⬇️</span></button>
-                 </div>
-               )}
-               {tournamentDetails.upiId && (
-                 <div className="bg-white p-3 rounded-xl border shadow-sm mx-auto mt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
-                   <div className="flex items-center justify-center space-x-2"><span className="text-xl">🏦</span><div><p className="text-[10px] text-gray-500 font-bold uppercase leading-none">UPI ID</p><p className="font-black text-base text-gray-800 tracking-wide">{tournamentDetails.upiId}</p></div></div>
-                   <button type="button" onClick={handleCopyUpiId} title="Copy UPI ID" aria-label="Copy UPI ID" className="bg-white hover:bg-green-50 text-green-700 w-10 h-10 rounded-lg font-bold text-lg border border-green-300 inline-flex items-center justify-center"><span aria-hidden="true">📋</span></button>
-                 </div>
-               )}
-               {paymentActionMessage && <p className={`mt-3 text-xs font-bold ${paymentActionMessage.startsWith('Could') ? 'text-red-600' : 'text-green-700'}`}>{paymentActionMessage}</p>}
+            <div className="bg-gradient-to-b from-emerald-50/80 via-slate-50/40 to-white p-5 sm:p-6 rounded-2xl border border-emerald-200/80 text-center shadow-2xs">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200 mb-3">
+                <span>💸</span>
+                <span>Registration Fee Instructions</span>
+              </div>
+              
+              {tournamentDetails.paymentMessage && (
+                <p className="text-xs sm:text-sm font-semibold text-slate-700 mb-4 leading-relaxed">
+                  {tournamentDetails.paymentMessage}
+                </p>
+              )}
+
+              {tournamentDetails.upiQrUrl && (
+                <div className="flex flex-col items-center mb-4">
+                  <div className="bg-white p-3 rounded-2xl shadow-sm inline-block border border-slate-200">
+                    <img
+                      src={tournamentDetails.upiQrUrl}
+                      alt="Scan to Pay"
+                      className="w-36 h-36 sm:w-40 sm:h-40 object-contain rounded-xl"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleDownloadQrCode}
+                    className="mt-2.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition"
+                    title="Download QR Code"
+                  >
+                    <span>⬇️</span>
+                    <span>Download QR</span>
+                  </button>
+                </div>
+              )}
+
+              {tournamentDetails.upiId && (
+                <div className="bg-white p-3 sm:p-3.5 rounded-xl border border-slate-200 shadow-2xs mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 max-w-sm">
+                  <div className="flex items-center space-x-2.5 min-w-0 text-left">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center text-base shrink-0 border border-emerald-100">
+                      🏦
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-slate-500 font-bold uppercase leading-none">UPI ID</p>
+                      <p className="font-black text-sm sm:text-base text-slate-900 tracking-wide truncate">
+                        {tournamentDetails.upiId}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyUpiId}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-900 hover:bg-indigo-600 active:bg-indigo-700 text-white text-xs font-bold transition border border-slate-800 shrink-0 shadow-2xs"
+                    title="Copy UPI ID"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    <span>{paymentActionMessage === 'UPI ID copied!' ? 'Copied! ✓' : 'Copy UPI'}</span>
+                  </button>
+                </div>
+              )}
+
+              {paymentActionMessage && (
+                <p className={`mt-3 text-xs font-bold ${paymentActionMessage.startsWith('Could') ? 'text-rose-600' : 'text-emerald-700'}`}>
+                  {paymentActionMessage}
+                </p>
+              )}
             </div>
           )}
 
-          <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex flex-col items-center">
-             {formData.photoUrl ? <img src={formData.photoUrl} alt="Preview" className="w-24 h-24 rounded-full object-cover shadow-md mb-2" /> : <div className="w-24 h-24 rounded-full bg-gray-200 shadow-md mb-2 flex items-center justify-center text-3xl">📷</div>}
-             <label className="cursor-pointer bg-white px-4 py-2 rounded-lg font-bold text-sm shadow-sm border border-blue-200 text-blue-700 hover:bg-blue-100">
-                {isUploading ? 'Uploading...' : 'Upload Profile Photo'}
-                <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" disabled={isUploading} />
-             </label>
+          {/* 🌟 Profile Photo Upload Area 🌟 */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+              Player Photo
+            </label>
+            <div className="p-5 rounded-2xl border-2 border-dashed border-slate-300 hover:border-blue-500 bg-slate-50/70 hover:bg-blue-50/30 transition-all flex flex-col items-center justify-center text-center group">
+              {formData.photoUrl ? (
+                <div className="relative mb-3">
+                  <img
+                    src={formData.photoUrl}
+                    alt="Preview"
+                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover shadow-md border-2 border-white ring-2 ring-blue-500"
+                  />
+                  <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-md shadow-xs">
+                    ✓
+                  </span>
+                </div>
+              ) : (
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center text-3xl mb-3 shadow-inner group-hover:scale-105 transition-transform">
+                  📷
+                </div>
+              )}
+              <label className="cursor-pointer inline-flex items-center gap-2 bg-white px-4 py-2 rounded-xl font-bold text-xs sm:text-sm shadow-xs border border-slate-300 text-slate-700 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all">
+                <span>{isUploading ? 'Uploading...' : formData.photoUrl ? 'Change Photo' : 'Upload Profile Photo'}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                  disabled={isUploading}
+                />
+              </label>
+              <p className="text-[11px] text-slate-400 font-medium mt-1.5">JPG, PNG or WEBP up to 5MB</p>
+            </div>
           </div>
 
-          <div><label className="block text-xs font-black text-gray-500 uppercase mb-1">Full Name *</label><input name="name" required onChange={handleStandardChange} className="w-full p-3 bg-gray-100 rounded-xl font-bold" /></div>
-          <div className="grid grid-cols-2 gap-4">
-            <div><label className="block text-xs font-black text-gray-500 uppercase mb-1">Age</label><input name="age" type="number" onChange={handleStandardChange} className="w-full p-3 bg-gray-100 rounded-xl font-bold" /></div>
-            <div><label className="block text-xs font-black text-gray-500 uppercase mb-1">Mobile *</label><input name="mobile" required onChange={handleStandardChange} className="w-full p-3 bg-gray-100 rounded-xl font-bold" /></div>
+          {/* Full Name */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+              Full Name *
+            </label>
+            <input
+              name="name"
+              type="text"
+              required
+              placeholder="e.g. Virat Kohli"
+              onChange={handleStandardChange}
+              className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-300 bg-white text-slate-900 font-semibold placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all text-sm sm:text-base"
+            />
           </div>
-          <div><label className="block text-xs font-black text-gray-500 uppercase mb-1">Role *</label><select name="role" onChange={handleStandardChange} className="w-full p-3 bg-gray-100 rounded-xl font-bold text-blue-700"><option value="Batsman">Batsman</option><option value="Bowler">Bowler</option><option value="All-Rounder">All-Rounder</option><option value="Wicket Keeper">Wicket Keeper</option></select></div>
-          <div><label className="block text-xs font-black text-gray-500 uppercase mb-1">City/Village</label><input name="city" onChange={handleStandardChange} className="w-full p-3 bg-gray-100 rounded-xl font-bold" /></div>
 
+          {/* Age & Mobile */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                Age
+              </label>
+              <input
+                name="age"
+                type="number"
+                placeholder="e.g. 24"
+                onChange={handleStandardChange}
+                className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-300 bg-white text-slate-900 font-semibold placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all text-sm sm:text-base"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                Mobile Number *
+              </label>
+              <input
+                name="mobile"
+                type="tel"
+                required
+                placeholder="e.g. 9876543210"
+                onChange={handleStandardChange}
+                className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-300 bg-white text-slate-900 font-semibold placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all text-sm sm:text-base"
+              />
+            </div>
+          </div>
+
+          {/* Playing Role */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+              Playing Role *
+            </label>
+            <div className="relative">
+              <select
+                name="role"
+                onChange={handleStandardChange}
+                className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-300 bg-white text-slate-900 font-bold focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all text-sm sm:text-base appearance-none cursor-pointer"
+              >
+                <option value="Batsman">Batsman</option>
+                <option value="Bowler">Bowler</option>
+                <option value="All-Rounder">All-Rounder</option>
+                <option value="Wicket Keeper">Wicket Keeper</option>
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-slate-500">
+                ▼
+              </div>
+            </div>
+          </div>
+
+          {/* City / Village */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+              City / Village
+            </label>
+            <input
+              name="city"
+              type="text"
+              placeholder="e.g. Jaipur"
+              onChange={handleStandardChange}
+              className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-300 bg-white text-slate-900 font-semibold placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all text-sm sm:text-base"
+            />
+          </div>
+
+          {/* 🌟 Dynamic Custom Tournament Fields 🌟 */}
           {tournamentDetails.customFields && tournamentDetails.customFields.length > 0 && (
-             <div className="mt-6 pt-6 border-t-2 border-dashed border-gray-200 space-y-5">
-                <h3 className="font-black text-gray-400 uppercase tracking-widest text-center text-xs mb-4">Additional Information</h3>
-                {tournamentDetails.customFields.map((field, idx) => (
-                   <div key={idx}>
-                      {field.type !== 'checkbox' && <label className="block text-xs font-black text-gray-500 uppercase mb-1">{field.label} {field.required && '*'}</label>}
-                      {field.type === 'text' && <input type="text" required={field.required} onChange={(e) => handleCustomChange(e, field.label, field.type)} className="w-full p-3 bg-indigo-50 border border-indigo-100 rounded-xl font-bold text-indigo-900" />}
-                      {field.type === 'number' && <input type="number" required={field.required} onChange={(e) => handleCustomChange(e, field.label, field.type)} className="w-full p-3 bg-indigo-50 border border-indigo-100 rounded-xl font-bold text-indigo-900" />}
-                      {field.type === 'dropdown' && (
-                         <select required={field.required} onChange={(e) => handleCustomChange(e, field.label, field.type)} className="w-full p-3 bg-indigo-50 border border-indigo-100 rounded-xl font-bold text-indigo-900">
-                            <option value="">-- Select --</option>
-                            {field.options?.map((opt, i) => <option key={i} value={opt}>{opt}</option>)}
-                         </select>
-                      )}
-                      {field.type === 'file' && (
-                         <div className="flex flex-col items-start space-y-2">
-                            {customData[field.label] ? <a href={customData[field.label]} target="_blank" rel="noreferrer" className="text-green-600 font-bold text-sm bg-green-50 px-3 py-1 rounded border border-green-200">✅ File Uploaded</a> : null}
-                            <label className="cursor-pointer bg-white px-4 py-2 rounded-lg font-bold text-sm shadow-sm border border-indigo-200 text-indigo-700 w-full text-center">
-                               {isUploading ? 'Uploading...' : `Upload ${field.label}`}
-                               <input type="file" required={field.required && !customData[field.label]} onChange={(e) => handleCustomFileUpload(e, field.label)} className="hidden" disabled={isUploading} />
-                            </label>
-                         </div>
-                      )}
-                      {field.type === 'checkbox' && (
-                         <label className="flex items-center space-x-3 bg-indigo-50 p-3 rounded-xl border border-indigo-100 cursor-pointer">
-                            <input type="checkbox" required={field.required} onChange={(e) => handleCustomChange(e, field.label, field.type)} className="w-5 h-5 accent-indigo-600" />
-                            <span className="font-bold text-indigo-900 text-sm">{field.label} {field.required && '*'}</span>
-                         </label>
-                      )}
-                   </div>
-                ))}
-             </div>
+            <div className="mt-6 pt-6 border-t border-slate-200 space-y-4">
+              <div className="text-center">
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+                  Additional Tournament Information
+                </span>
+              </div>
+              {tournamentDetails.customFields.map((field, idx) => (
+                <div key={idx} className="pt-1">
+                  {field.type !== 'checkbox' && (
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                      {field.label} {field.required && <span className="text-rose-600">*</span>}
+                    </label>
+                  )}
+                  {field.type === 'text' && (
+                    <input
+                      type="text"
+                      required={field.required}
+                      placeholder={`Enter ${field.label}`}
+                      onChange={(e) => handleCustomChange(e, field.label, field.type)}
+                      className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-300 bg-white text-slate-900 font-semibold placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all text-sm sm:text-base"
+                    />
+                  )}
+                  {field.type === 'number' && (
+                    <input
+                      type="number"
+                      required={field.required}
+                      placeholder={`Enter ${field.label}`}
+                      onChange={(e) => handleCustomChange(e, field.label, field.type)}
+                      className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-300 bg-white text-slate-900 font-semibold placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all text-sm sm:text-base"
+                    />
+                  )}
+                  {field.type === 'dropdown' && (
+                    <div className="relative">
+                      <select
+                        required={field.required}
+                        onChange={(e) => handleCustomChange(e, field.label, field.type)}
+                        className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-300 bg-white text-slate-900 font-semibold focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all text-sm sm:text-base appearance-none cursor-pointer"
+                      >
+                        <option value="">-- Select {field.label} --</option>
+                        {field.options?.map((opt, i) => (
+                          <option key={i} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-slate-500">
+                        ▼
+                      </div>
+                    </div>
+                  )}
+                  {field.type === 'file' && (
+                    <div className="p-4 rounded-2xl border-2 border-dashed border-slate-300 hover:border-blue-500 bg-slate-50/70 hover:bg-blue-50/30 transition-all flex flex-col items-center justify-center text-center gap-2">
+                      <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-xl">
+                        📄
+                      </div>
+                      {customData[field.label] ? (
+                        <div className="flex items-center gap-2 flex-wrap justify-center">
+                          <a
+                            href={customData[field.label]}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 text-emerald-700 font-bold text-xs bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-100 transition"
+                          >
+                            <span>✓</span>
+                            <span>{field.label} Uploaded (Click to View)</span>
+                          </a>
+                        </div>
+                      ) : null}
+                      <label className="cursor-pointer inline-flex items-center justify-center gap-2 bg-white px-4 py-2 rounded-xl font-bold text-xs sm:text-sm shadow-xs border border-slate-300 text-slate-700 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all">
+                        <span>{isUploading ? 'Uploading...' : customData[field.label] ? `Change ${field.label}` : `Upload ${field.label}`}</span>
+                        <input
+                          type="file"
+                          required={field.required && !customData[field.label]}
+                          onChange={(e) => handleCustomFileUpload(e, field.label)}
+                          className="hidden"
+                          disabled={isUploading}
+                        />
+                      </label>
+                      <p className="text-[11px] text-slate-400 font-medium">Images, PDF or documents up to 5MB</p>
+                    </div>
+                  )}
+                  {field.type === 'checkbox' && (
+                    <label className="flex items-center space-x-3 bg-slate-50 hover:bg-slate-100 p-3.5 rounded-xl border border-slate-200 cursor-pointer transition">
+                      <input
+                        type="checkbox"
+                        required={field.required}
+                        onChange={(e) => handleCustomChange(e, field.label, field.type)}
+                        className="w-4 h-4 rounded text-blue-600 accent-blue-600 cursor-pointer"
+                      />
+                      <span className="font-bold text-slate-800 text-xs sm:text-sm">
+                        {field.label} {field.required && <span className="text-rose-600">*</span>}
+                      </span>
+                    </label>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
           
-          <button type="submit" disabled={isUploading} className="w-full mt-4 text-white font-black py-4 rounded-2xl text-lg bg-blue-700 hover:bg-blue-800 shadow-xl active:scale-95 transition">
-            REGISTER NOW ⚡
+          {/* Submit CTA Button */}
+          <button
+            type="submit"
+            disabled={isUploading}
+            className="w-full py-3.5 sm:py-4 rounded-xl font-black text-base sm:text-lg text-white bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 hover:from-indigo-500 hover:to-blue-500 shadow-lg shadow-indigo-600/25 hover:shadow-indigo-600/40 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-4"
+          >
+            {isUploading ? 'Uploading File... ⏳' : 'REGISTER NOW ⚡'}
           </button>
         </form>
       </div>

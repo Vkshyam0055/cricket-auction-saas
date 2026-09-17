@@ -187,142 +187,582 @@ function ManagePlayers() {
 
   const selectedIconTeamData = teams.find((team) => team.teamName === iconTeam);
 
+  const renderApprovalStatusPill = (status) => {
+    if (status === 'Approved') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-black text-[10px] uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
+          ✓ Approved
+        </span>
+      );
+    }
+    if (status === 'Rejected') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-black text-[10px] uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-200 shadow-2xs">
+          ✕ Rejected
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-black text-[10px] uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200 shadow-2xs">
+        ⏳ Pending
+      </span>
+    );
+  };
+
+  const renderAuctionStatusPill = (status, soldTo) => {
+    if (status === 'Sold') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-black text-[10px] uppercase tracking-wider bg-indigo-100 text-indigo-800 border border-indigo-200">
+          <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
+          Sold {soldTo && soldTo !== 'Unsold' ? `(${getTeamShortName(soldTo)})` : ''}
+        </span>
+      );
+    }
+    if (status === 'ReadyForAuction' || status === 'Ready') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-black text-[10px] uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+          Ready For Auction
+        </span>
+      );
+    }
+    if (status === 'Unsold') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-black text-[10px] uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+          Unsold
+        </span>
+      );
+    }
+    if (status === 'InAuction') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-black text-[10px] uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
+          ⚡ In Bidding
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
+        {status || 'In Pool'}
+      </span>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-gray-100 p-8">
-      <div className="max-w-7xl mx-auto bg-white p-8 rounded-2xl shadow-xl border-t-8 border-indigo-600 relative">
-        <div className="flex justify-between items-center mb-8">
+    <div className="min-h-screen bg-slate-50/70 font-sans text-slate-900 selection:bg-indigo-500 selection:text-white p-4 sm:p-6 lg:p-8">
+      <div className="max-w-7xl mx-auto space-y-6">
+        
+        {/* 🌟 1. Top SaaS Header 🌟 */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-5 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs">
           <div>
-            <h2 className="text-3xl font-black text-gray-800">🛠️ Player Management</h2>
-            <p className="text-gray-500 font-bold mt-1">Approve players, view full details, and assign ICONs.</p>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[10px] font-black uppercase tracking-widest text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200">
+                PLAYER ROSTER & APPROVALS
+              </span>
+              <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                {players.length} Total Players
+              </span>
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+              🛠️ Player Management
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-600 font-medium mt-1">
+              Review registrations, approve auction pool players, assign base prices, categories & ICON status.
+            </p>
           </div>
-          <button onClick={() => navigate('/dashboard')} className="bg-gray-800 text-white px-6 py-3 rounded-lg font-bold hover:bg-gray-700">⬅ Back</button>
+          <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard')}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 active:bg-slate-700 text-white font-bold text-xs sm:text-sm shadow-xs transition"
+            >
+              <span>←</span>
+              <span>Back to Dashboard</span>
+            </button>
+          </div>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-indigo-50 text-indigo-900 border-b-2 border-indigo-200">
-                <th className="p-4 font-black">S. No.</th>
-                <th className="p-4 font-black">Player</th>
-                <th className="p-4 font-black">Role / City</th>
-                <th className="p-4 font-black">Category</th>
-                <th className="p-4 font-black">Source</th>
-                <th className="p-4 font-black w-32">Base Price</th>
-                <th className="p-4 font-black text-center">Status</th>
-                <th className="p-4 font-black text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {players.map((player, index) => (
-                <tr key={player._id} className="border-b hover:bg-gray-50 transition">
-                  <td className="p-4 font-black text-gray-700">{index + 1}</td>
-                  <td className="p-4">
-                    <button onClick={() => openDetailsModal(player)} className="flex items-center space-x-3 text-left w-full">
-                      <img src={player.photoUrl || 'https://via.placeholder.com/50'} alt="img" className="w-12 h-12 rounded-full object-cover border-2 shadow-sm" />
-                      <div>
-                        <p className="font-bold text-gray-800 text-lg hover:underline">{player.name}</p>
-                        {player.isIcon && <span className="bg-yellow-100 text-yellow-800 text-xs font-bold px-2 py-1 rounded border border-yellow-300">⭐ ICON</span>}
+        {/* 🌟 2. Mobile View: Stacked Player Cards (360px - 480px width) 🌟 */}
+        <div className="block md:hidden space-y-3">
+          {players.length === 0 ? (
+            <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center text-slate-500 font-semibold text-sm shadow-2xs">
+              No players found in this tournament.
+            </div>
+          ) : (
+            players.map((player, index) => (
+              <div
+                key={player._id}
+                className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs space-y-3"
+              >
+                {/* Top Row: Avatar + Name + ICON badge */}
+                <div className="flex items-start justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openDetailsModal(player)}
+                    className="flex items-center gap-3 text-left min-w-0 flex-1 group"
+                  >
+                    <img
+                      src={player.photoUrl || 'https://via.placeholder.com/50'}
+                      alt={player.name}
+                      className="w-12 h-12 rounded-xl object-cover border border-slate-200 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs text-slate-400 font-black">#{index + 1}</span>
+                        <h3 className="font-bold text-slate-900 text-sm truncate group-hover:text-indigo-600 transition">
+                          {player.name}
+                        </h3>
                       </div>
-                    </button>
-                  </td>
-                  <td className="p-4">
-                    <p className="font-bold text-blue-700">{player.role}</p>
-                    <p className="text-sm text-gray-500 font-medium">📍 {player.city || 'N/A'}</p>
-                  </td>
-                  <td className="p-4">
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                        <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-100">
+                          {player.role}
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-medium">
+                          📍 {player.city || 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+
+                  {player.isIcon && (
+                    <span className="bg-amber-100 text-amber-900 text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-300 shrink-0">
+                      ⭐ ICON
+                    </span>
+                  )}
+                </div>
+
+                {/* Middle Row: Inline Category & Base Price Inputs */}
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">
+                      Category
+                    </label>
                     <input
                       type="text"
                       defaultValue={player.category || ''}
-                      placeholder="Category"
+                      placeholder="e.g. Gold"
                       onBlur={(e) => handleCategoryUpdate(player._id, e.target.value)}
-                      className="w-full p-2 border-2 rounded bg-white focus:border-indigo-500 outline-none font-bold text-purple-700"
+                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-slate-50 font-bold text-xs text-purple-700 focus:bg-white focus:border-indigo-600 focus:outline-none transition"
                       disabled={player.isIcon || player.auctionStatus === 'Sold'}
                     />
-                  </td>
-                  <td className="p-4 font-bold text-gray-700">{getSourceLabel(player.source)}</td>
-                  <td className="p-4">
-                    <input type="number" defaultValue={player.basePrice} onBlur={(e) => handlePriceUpdate(player._id, e.target.value)} className="w-full p-2 border-2 rounded bg-white focus:border-indigo-500 outline-none font-bold text-green-700" disabled={player.isIcon || player.auctionStatus === 'Sold'} />
-                  </td>
-                  <td className="p-4 text-center">
-                    {player.approvalStatus === 'Pending' ? (
-                      <div className="flex justify-center space-x-2">
-                        <button onClick={() => handleApproval(player._id, 'Approved')} className="bg-green-100 text-green-700 border border-green-400 px-3 py-1 rounded font-bold hover:bg-green-200">✔</button>
-                        <button onClick={() => handleApproval(player._id, 'Rejected')} className="bg-red-100 text-red-700 border border-red-400 px-3 py-1 rounded font-bold hover:bg-red-200">✖</button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center">
-                        <span className={`px-3 py-1 rounded font-bold text-xs ${player.approvalStatus === 'Approved' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>{player.approvalStatus}</span>
-                        <span className="font-bold text-gray-600 text-sm mt-1">{player.auctionStatus} {player.soldTo && player.soldTo !== 'Unsold' && `(${getTeamShortName(player.soldTo)})`}</span>
-                      </div>
-                    )}
-                  </td>
-                  <td className="p-4 text-right space-x-2">
-                    <button onClick={() => openIconModal(player)} disabled={player.isIcon || player.auctionStatus === 'Sold'} className="bg-yellow-400 text-yellow-900 px-2 py-2 rounded font-black hover:bg-yellow-500 shadow-sm disabled:opacity-30" title="Make ICON">⭐</button>
-                    <button onClick={() => handleRemoveIcon(player)} disabled={!player.isIcon} className="bg-orange-100 text-orange-700 border border-orange-300 px-2 py-2 rounded font-black hover:bg-orange-200 shadow-sm disabled:opacity-30" title="Remove ICON">⭐❌</button>
-                    <button onClick={() => handleDelete(player._id, player.name)} className="bg-gray-200 text-gray-600 px-3 py-2 rounded font-bold hover:bg-red-500 hover:text-white transition shadow-sm" title="Delete">🗑️</button>
-                  </td>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">
+                      Base Price (₹)
+                    </label>
+                    <input
+                      type="number"
+                      defaultValue={player.basePrice}
+                      onBlur={(e) => handlePriceUpdate(player._id, e.target.value)}
+                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-slate-50 font-black text-xs text-emerald-700 focus:bg-white focus:border-indigo-600 focus:outline-none transition"
+                      disabled={player.isIcon || player.auctionStatus === 'Sold'}
+                    />
+                  </div>
+                </div>
+
+                {/* Status & Source Row */}
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+                  <span className="text-[11px] font-medium text-slate-500 truncate">
+                    {getSourceLabel(player.source)}
+                  </span>
+                  
+                  {player.approvalStatus === 'Pending' ? (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleApproval(player._id, 'Approved')}
+                        className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs px-3 py-1 rounded-lg transition shadow-xs"
+                      >
+                        ✓ Approve
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleApproval(player._id, 'Rejected')}
+                        className="bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-bold text-xs px-2.5 py-1 rounded-lg transition shadow-xs"
+                      >
+                        ✕ Reject
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
+                      {renderApprovalStatusPill(player.approvalStatus)}
+                      {renderAuctionStatusPill(player.auctionStatus, player.soldTo)}
+                    </div>
+                  )}
+                </div>
+
+                {/* Action Buttons Row */}
+                <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => openDetailsModal(player)}
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition"
+                  >
+                    Details 🔍
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openIconModal(player)}
+                    disabled={player.isIcon || player.auctionStatus === 'Sold'}
+                    className="px-2.5 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold text-xs transition disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Make ICON"
+                  >
+                    ⭐ Make ICON
+                  </button>
+                  {player.isIcon && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveIcon(player)}
+                      className="px-2.5 py-1.5 rounded-lg bg-orange-100 hover:bg-orange-200 text-orange-800 border border-orange-300 font-bold text-xs transition"
+                      title="Remove ICON"
+                    >
+                      Remove ICON ✕
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(player._id, player.name)}
+                    className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-600 border border-rose-200 transition"
+                    title="Delete Player"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* 🌟 3. Desktop View: Modern Data Table (md and above) 🌟 */}
+        <div className="hidden md:block bg-white rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-100/90 text-slate-700 border-b border-slate-200 text-xs font-black uppercase tracking-wider">
+                  <th className="p-4 w-16">S. No.</th>
+                  <th className="p-4">Player</th>
+                  <th className="p-4">Role / City</th>
+                  <th className="p-4 w-36">Category</th>
+                  <th className="p-4">Source</th>
+                  <th className="p-4 w-36">Base Price</th>
+                  <th className="p-4 text-center">Status</th>
+                  <th className="p-4 text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {players.length === 0 ? (
+                  <tr>
+                    <td colSpan="8" className="p-8 text-center text-slate-500 font-medium text-sm">
+                      No players registered yet.
+                    </td>
+                  </tr>
+                ) : (
+                  players.map((player, index) => (
+                    <tr key={player._id} className="hover:bg-slate-50/80 transition-colors group">
+                      <td className="p-4 font-bold text-xs text-slate-500">{index + 1}</td>
+                      <td className="p-4">
+                        <button
+                          type="button"
+                          onClick={() => openDetailsModal(player)}
+                          className="flex items-center space-x-3 text-left w-full group/item"
+                        >
+                          <img
+                            src={player.photoUrl || 'https://via.placeholder.com/50'}
+                            alt={player.name}
+                            className="w-11 h-11 rounded-xl object-cover border border-slate-200 shadow-2xs shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <p className="font-bold text-slate-900 text-sm group-hover/item:text-indigo-600 transition truncate">
+                              {player.name}
+                            </p>
+                            {player.isIcon && (
+                              <span className="inline-block mt-0.5 bg-amber-100 text-amber-900 text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-300">
+                                ⭐ ICON
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      </td>
+                      <td className="p-4">
+                        <p className="font-bold text-indigo-700 text-xs">{player.role}</p>
+                        <p className="text-xs text-slate-500 font-medium">📍 {player.city || 'N/A'}</p>
+                      </td>
+                      <td className="p-4">
+                        <input
+                          type="text"
+                          defaultValue={player.category || ''}
+                          placeholder="Category"
+                          onBlur={(e) => handleCategoryUpdate(player._id, e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg bg-slate-50/70 focus:bg-white focus:border-indigo-600 outline-none font-bold text-xs text-purple-700 transition"
+                          disabled={player.isIcon || player.auctionStatus === 'Sold'}
+                        />
+                      </td>
+                      <td className="p-4 font-semibold text-xs text-slate-600">
+                        {getSourceLabel(player.source)}
+                      </td>
+                      <td className="p-4">
+                        <input
+                          type="number"
+                          defaultValue={player.basePrice}
+                          onBlur={(e) => handlePriceUpdate(player._id, e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg bg-slate-50/70 focus:bg-white focus:border-indigo-600 outline-none font-black text-xs text-emerald-700 transition"
+                          disabled={player.isIcon || player.auctionStatus === 'Sold'}
+                        />
+                      </td>
+                      <td className="p-4 text-center">
+                        {player.approvalStatus === 'Pending' ? (
+                          <div className="flex justify-center items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleApproval(player._id, 'Approved')}
+                              className="bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 active:bg-emerald-200 px-2.5 py-1 rounded-lg font-bold text-xs transition shadow-2xs"
+                              title="Approve Player"
+                            >
+                              ✔ Approve
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleApproval(player._id, 'Rejected')}
+                              className="bg-rose-50 text-rose-700 border border-rose-300 hover:bg-rose-100 active:bg-rose-200 px-2 py-1 rounded-lg font-bold text-xs transition shadow-2xs"
+                              title="Reject Player"
+                            >
+                              ✖ Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center gap-1">
+                            {renderApprovalStatusPill(player.approvalStatus)}
+                            {renderAuctionStatusPill(player.auctionStatus, player.soldTo)}
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-4 text-right">
+                        <div className="flex items-center justify-end space-x-1.5">
+                          <button
+                            type="button"
+                            onClick={() => openIconModal(player)}
+                            disabled={player.isIcon || player.auctionStatus === 'Sold'}
+                            className="w-8 h-8 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 flex items-center justify-center font-black text-sm shadow-2xs disabled:opacity-30 disabled:cursor-not-allowed transition"
+                            title="Make ICON"
+                          >
+                            ⭐
+                          </button>
+                          {player.isIcon && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveIcon(player)}
+                              className="w-8 h-8 rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200 flex items-center justify-center font-bold text-xs shadow-2xs transition"
+                              title="Remove ICON"
+                            >
+                              ⭐✕
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => openDetailsModal(player)}
+                            className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 flex items-center justify-center font-bold text-sm shadow-2xs transition"
+                            title="View Player Details"
+                          >
+                            🔍
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(player._id, player.name)}
+                            className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white border border-rose-200 flex items-center justify-center font-bold text-sm transition shadow-2xs"
+                            title="Delete Player"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
+      {/* 🌟 4. Assign ICON Modal 🌟 */}
       {isIconModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
-          <div className="bg-white p-8 rounded-3xl w-[400px] border-t-8 border-yellow-400">
-            <h2 className="text-2xl font-black mb-2">⭐ Assign ICON</h2>
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white p-6 sm:p-8 rounded-3xl w-full max-w-md border border-slate-200 shadow-2xl relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">⭐</span>
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900">Assign ICON Player</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsIconModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-lg transition"
+              >
+                &times;
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 font-medium mb-4">
+              Assigning <strong className="text-slate-900">{selectedPlayer?.name}</strong> directly to a team franchise as an Icon player.
+            </p>
+
             <form onSubmit={handleMakeIconSubmit} className="space-y-4">
-              <select required value={iconTeam} onChange={(e) => setIconTeam(e.target.value)} className="w-full p-3 border-2 rounded-xl font-bold">
-                <option value="">-- Choose Team --</option>
-                {teams.map(t => <option key={t._id} value={t.teamName}>{t.shortName || t.teamName} (Max ₹{Number(t.maxBid || 0).toLocaleString()})</option>)}
-              </select>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Select Team *
+                </label>
+                <div className="relative">
+                  <select
+                    required
+                    value={iconTeam}
+                    onChange={(e) => setIconTeam(e.target.value)}
+                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-bold text-sm bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none appearance-none cursor-pointer"
+                  >
+                    <option value="">-- Choose Team --</option>
+                    {teams.map(t => (
+                      <option key={t._id} value={t.teamName}>
+                        {t.shortName || t.teamName} (Max Bid: ₹{Number(t.maxBid || 0).toLocaleString()})
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-slate-500">
+                    ▼
+                  </div>
+                </div>
+              </div>
+
               {selectedIconTeamData && (
-                <p className="text-xs font-bold text-orange-700 bg-orange-50 border border-orange-200 rounded-lg p-2">
-                  Dynamic Max Bid: ₹{Number(selectedIconTeamData.maxBid || 0).toLocaleString()} • Required Players Left: {Number(selectedIconTeamData.remainingRequiredPlayers || 0)}
-                </p>
-              )}              
-              <input required type="number" value={iconPrice} onChange={(e) => setIconPrice(e.target.value)} className="w-full p-3 border-2 rounded-xl font-black text-green-600" />
-              <div className="flex gap-4 pt-4">
-                <button type="button" onClick={() => setIsIconModalOpen(false)} className="flex-1 bg-gray-200 py-3 rounded-xl font-bold">Cancel</button>
-                <button type="submit" className="flex-1 bg-yellow-400 font-black py-3 rounded-xl">Assign ⭐</button>
+                <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-3 text-xs font-bold space-y-0.5">
+                  <p>Dynamic Max Bid: ₹{Number(selectedIconTeamData.maxBid || 0).toLocaleString()}</p>
+                  <p className="text-[11px] text-amber-700 font-semibold">
+                    Required Players Left: {Number(selectedIconTeamData.remainingRequiredPlayers || 0)}
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  ICON Contract Price (₹) *
+                </label>
+                <input
+                  required
+                  type="number"
+                  value={iconPrice}
+                  onChange={(e) => setIconPrice(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-black text-sm text-emerald-700 bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsIconModalOpen(false)}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 py-3 rounded-xl font-bold text-sm transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black py-3 rounded-xl text-sm shadow-md shadow-amber-400/25 transition active:scale-95"
+                >
+                  Assign ICON ⭐
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
+      {/* 🌟 5. Player Details Modal 🌟 */}
       {isDetailsModalOpen && selectedPlayer && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-8 rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-y-auto border-t-8 border-indigo-600 shadow-2xl">
-            <div className="flex justify-between items-start gap-4 mb-6">
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white p-6 sm:p-8 rounded-3xl w-full max-w-3xl max-h-[90vh] overflow-y-auto border border-slate-200 shadow-2xl">
+            <div className="flex justify-between items-start gap-4 mb-6 pb-4 border-b border-slate-100">
               <div className="flex items-center gap-4">
-                <img src={selectedPlayer.photoUrl || 'https://via.placeholder.com/80'} alt={selectedPlayer.name} className="w-20 h-20 rounded-full object-cover border-2" />
+                <img
+                  src={selectedPlayer.photoUrl || 'https://via.placeholder.com/80'}
+                  alt={selectedPlayer.name}
+                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border border-slate-200 shadow-sm"
+                />
                 <div>
-                  <h2 className="text-2xl font-black text-gray-800">{selectedPlayer.name}</h2>
-                  <p className="text-sm font-bold text-gray-500">Source: {getSourceLabel(selectedPlayer.source)}</p>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl sm:text-2xl font-black text-slate-900">{selectedPlayer.name}</h2>
+                    {selectedPlayer.isIcon && (
+                      <span className="bg-amber-100 text-amber-900 text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-300">
+                        ⭐ ICON
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                    Source: <span className="text-slate-800 font-bold">{getSourceLabel(selectedPlayer.source)}</span>
+                  </p>
                 </div>
               </div>
-              <button onClick={() => setIsDetailsModalOpen(false)} className="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
+              <button
+                type="button"
+                onClick={() => setIsDetailsModalOpen(false)}
+                className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-xl transition shrink-0"
+              >
+                &times;
+              </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">Father Name</p><p className="font-bold">{selectedPlayer.fatherName || '-'}</p></div>
-              <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">Age</p><p className="font-bold">{selectedPlayer.age || '-'}</p></div>
-              <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">Mobile</p><p className="font-bold">{selectedPlayer.mobile || '-'}</p></div>
-              <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">City</p><p className="font-bold">{selectedPlayer.city || '-'}</p></div>
-              <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">Role</p><p className="font-bold">{selectedPlayer.role || '-'}</p></div>
-              <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">Category</p><p className="font-bold">{selectedPlayer.category || '-'}</p></div>
-              <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">Base Price</p><p className="font-bold">₹ {selectedPlayer.basePrice || 0}</p></div>
-              <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">Approval</p><p className="font-bold">{selectedPlayer.approvalStatus || '-'}</p></div>
-              <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">Auction Status</p><p className="font-bold">{selectedPlayer.auctionStatus || '-'}</p></div>
-              <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">Sold To</p><p className="font-bold">{selectedPlayer.soldTo ? getTeamShortName(selectedPlayer.soldTo) : '-'}</p></div>
-              <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">Sold Price</p><p className="font-bold">₹ {selectedPlayer.soldPrice || 0}</p></div>
-              <div className="bg-gray-50 border rounded-lg p-3"><p className="text-xs uppercase text-gray-500 font-bold">ICON Player</p><p className="font-bold">{selectedPlayer.isIcon ? 'Yes' : 'No'}</p></div>
+            {/* Information Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Father Name</p>
+                <p className="font-bold text-slate-900 text-sm mt-0.5">{selectedPlayer.fatherName || '-'}</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Age</p>
+                <p className="font-bold text-slate-900 text-sm mt-0.5">{selectedPlayer.age || '-'}</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Mobile</p>
+                <p className="font-bold text-slate-900 text-sm mt-0.5">{selectedPlayer.mobile || '-'}</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">City</p>
+                <p className="font-bold text-slate-900 text-sm mt-0.5">{selectedPlayer.city || '-'}</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Role</p>
+                <p className="font-bold text-indigo-700 text-sm mt-0.5">{selectedPlayer.role || '-'}</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Category</p>
+                <p className="font-bold text-purple-700 text-sm mt-0.5">{selectedPlayer.category || '-'}</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Base Price</p>
+                <p className="font-black text-emerald-700 text-sm mt-0.5">₹ {selectedPlayer.basePrice || 0}</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Approval</p>
+                <p className="font-bold text-slate-900 text-sm mt-0.5">{selectedPlayer.approvalStatus || '-'}</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Auction Status</p>
+                <p className="font-bold text-slate-900 text-sm mt-0.5">{selectedPlayer.auctionStatus || '-'}</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Sold To</p>
+                <p className="font-bold text-slate-900 text-sm mt-0.5">{selectedPlayer.soldTo ? getTeamShortName(selectedPlayer.soldTo) : '-'}</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Sold Price</p>
+                <p className="font-black text-emerald-700 text-sm mt-0.5">₹ {selectedPlayer.soldPrice || 0}</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">ICON Player</p>
+                <p className="font-bold text-slate-900 text-sm mt-0.5">{selectedPlayer.isIcon ? 'Yes' : 'No'}</p>
+              </div>
             </div>
 
+            {/* Custom Registration Fields Section */}
             <div>
-              <h3 className="font-black text-gray-700 mb-3">Custom Registration Fields</h3>
+              <h3 className="font-black text-xs uppercase tracking-wider text-slate-700 mb-3">
+                Additional Custom Registration Fields
+              </h3>
               {renderCustomData(selectedPlayer.customData)}
             </div>
           </div>
