@@ -16,63 +16,74 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import CompleteProfileEmail from './pages/CompleteProfileEmail';
 import { TournamentContext, TournamentProvider } from './context/TournamentContext';
-import { isTokenExpired, onSessionExpired, apiRequest, clearAuthSession } from './utils/apiClient';
+import { 
+  isTokenExpired, 
+  onSessionExpired, 
+  apiRequest, 
+  clearAuthSession, 
+  restoreSuperAdminSession, 
+  clearAllAuthSessions 
+} from './utils/apiClient';
 
 const ImpersonationBanner = () => {
+  const [isExiting, setIsExiting] = React.useState(false);
   const adminToken = localStorage.getItem('adminToken');
   const impersonatingUser = localStorage.getItem('impersonatingUser');
-  const impersonatedUserId = localStorage.getItem('impersonatedUserId');
-  const navigate = React.useCallback(() => window.location.href = '/super-admin', []); // use location to force full reload
+  const impersonatingPlan = localStorage.getItem('impersonatingPlan');
 
   if (!adminToken) return null;
 
   const handleExit = async () => {
+    if (isExiting) return;
+    setIsExiting(true);
+    const currentToken = localStorage.getItem('token');
+    const impersonatedUserId = localStorage.getItem('impersonatedUserId');
+    const sessionId = localStorage.getItem('impersonationSessionId');
+
     try {
-      // 1. Kill the impersonation session
-      const currentToken = localStorage.getItem('token');
+      // 1. Log the exit event and revoke session on backend using admin token
+      if (impersonatedUserId && adminToken) {
+        await apiRequest({
+          method: 'post',
+          path: `/api/admin/impersonate/${impersonatedUserId}/exit`,
+          data: { sessionId },
+          headers: { Authorization: `Bearer ${adminToken}` }
+        }).catch((e) => console.warn("Exit API notice:", e));
+      }
+
+      // 2. Kill the impersonated user session on backend
       if (currentToken) {
         await apiRequest({
           method: 'post',
           path: '/api/auth/logout',
           headers: { Authorization: `Bearer ${currentToken}` }
-        }).catch(() => {}); // Ignore error on logout
+        }).catch(() => {});
       }
-
-      // 2. Log the exit event using the admin token
-      if (impersonatedUserId) {
-        await apiRequest({
-          method: 'post',
-          path: `/api/admin/impersonate/${impersonatedUserId}/exit`,
-          headers: { Authorization: `Bearer ${adminToken}` }
-        }).catch(e => console.error("Failed to log exit impersonation", e));
-      }
-
-      // 3. Restore the original admin token
-      localStorage.setItem('token', adminToken);
-
-      // 4. Clear the impersonation metadata
-      localStorage.removeItem('adminToken');
-      localStorage.removeItem('impersonatingUser');
-      localStorage.removeItem('impersonatedUserId');
-
-      // 5. Navigate back to super admin
-      navigate();
     } catch (error) {
       console.error("Error exiting impersonation", error);
-      // Fallback: force clear everything
-      clearAuthSession();
-      localStorage.removeItem('adminToken');
-      localStorage.removeItem('impersonatingUser');
-      localStorage.removeItem('impersonatedUserId');
-      window.location.href = '/auth';
+    } finally {
+      // 3. Always restore original Super Admin session safely
+      restoreSuperAdminSession();
+      // 4. Navigate back to super admin
+      window.location.href = '/super-admin';
     }
   };
 
   return (
-    <div className="bg-red-600 text-white p-3 text-center font-bold flex justify-center items-center space-x-4 shadow-lg sticky top-0 z-50">
-      <span>⚠️ You are acting as {impersonatingUser || 'User'}</span>
-      <button onClick={handleExit} className="bg-white text-red-600 px-4 py-1 rounded-md text-sm hover:bg-gray-100 transition-colors border border-red-200">
-        Exit User Mode
+    <div className="bg-gradient-to-r from-amber-600 via-red-600 to-amber-700 text-white px-4 py-2.5 shadow-xl sticky top-0 z-50 flex flex-wrap items-center justify-between gap-3 border-b-2 border-amber-300/40 backdrop-blur-sm">
+      <div className="flex items-center space-x-2 text-sm md:text-base font-bold tracking-wide">
+        <span className="text-xl animate-pulse">⚠️</span>
+        <span>
+          You are currently viewing as <span className="underline decoration-amber-300 font-extrabold">{impersonatingUser || 'User'}</span>
+          {impersonatingPlan ? <span className="ml-2 text-xs uppercase bg-black/30 px-2 py-0.5 rounded font-mono font-semibold">{impersonatingPlan} Plan</span> : null}
+        </span>
+      </div>
+      <button 
+        onClick={handleExit}
+        disabled={isExiting}
+        className="bg-white text-red-700 hover:bg-amber-50 active:bg-gray-100 font-black text-xs md:text-sm px-4 py-1.5 rounded-lg shadow-md hover:shadow-lg transition-all border border-amber-200 uppercase tracking-wider flex items-center space-x-1.5 disabled:opacity-60 cursor-pointer"
+      >
+        <span>{isExiting ? 'Exiting...' : 'Exit / Return to Super Admin ↩'}</span>
       </button>
     </div>
   );
@@ -81,8 +92,16 @@ const ImpersonationBanner = () => {
 const ProtectedRoute = ({ children }) => {
   const location = useLocation();
   const token = localStorage.getItem('token');
+  const adminToken = localStorage.getItem('adminToken');
+
   if (!token || isTokenExpired(token)) {
-    localStorage.removeItem('token');
+    // 🌟 Safe handling: If an impersonated token expired but admin token is still valid, recover back to super admin
+    if (adminToken && !isTokenExpired(adminToken)) {
+      restoreSuperAdminSession();
+      return <Navigate to="/super-admin" replace />;
+    }
+
+    clearAllAuthSessions();
     return <Navigate to="/auth" replace state={{ from: location.pathname }} />;
   }
   return children;
@@ -95,6 +114,11 @@ const SessionExpiryWatcher = () => {
   React.useEffect(() => onSessionExpired(() => setExpired(true)), []);
 
   if (expired && location.pathname !== '/auth') {
+    const adminToken = localStorage.getItem('adminToken');
+    if (adminToken && !isTokenExpired(adminToken)) {
+      restoreSuperAdminSession();
+      return <Navigate to="/super-admin" replace />;
+    }
     return <Navigate to="/auth" replace />;
   }
   return null;

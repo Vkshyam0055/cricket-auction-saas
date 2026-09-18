@@ -27,12 +27,28 @@ const planSchema = new mongoose.Schema(
       required: true,
       default: 3
     },
+    // -1 means unlimited players
+    playerLimit: {
+      type: Number,
+      required: true,
+      default: 50
+    },
     canPublicRegistration: {
       type: Boolean,
       required: true,
       default: false
     },
     canViewTeams: {
+      type: Boolean,
+      required: true,
+      default: false
+    },
+    canLiveScreen: {
+      type: Boolean,
+      required: true,
+      default: true
+    },
+    canCustomFields: {
       type: Boolean,
       required: true,
       default: false

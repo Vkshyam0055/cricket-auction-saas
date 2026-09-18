@@ -3,6 +3,8 @@ const UserSession = require('../models/UserSession');
 
 const SESSION_TTL_HOURS = 12;
 const SESSION_TTL_MS = SESSION_TTL_HOURS * 60 * 60 * 1000;
+const IMPERSONATION_SESSION_TTL_HOURS = 2;
+const IMPERSONATION_SESSION_TTL_MS = IMPERSONATION_SESSION_TTL_HOURS * 60 * 60 * 1000;
 
 const addHours = (date, hours) => new Date(date.getTime() + (hours * 60 * 60 * 1000));
 
@@ -12,7 +14,9 @@ const getActiveDeviceIdsForUser = async (userId) => {
     const sessions = await UserSession.find({
         user: userId,
         revokedAt: null,
-        expiresAt: { $gt: new Date() }
+        expiresAt: { $gt: new Date() },
+        isImpersonated: { $ne: true },
+        deviceId: { $ne: 'impersonation_device' }
     }).select('deviceId').lean();
 
     return [...new Set(
@@ -75,12 +79,68 @@ const validateSessionById = async ({ sessionId, userId }) => {
     return { ok: true, session };
 };
 
+const createImpersonationSessionAndToken = async ({
+    targetUser,
+    adminUser,
+    deviceId = 'impersonation_device',
+    ipAddress = '',
+    userAgent = '',
+    ttlHours = IMPERSONATION_SESSION_TTL_HOURS
+}) => {
+    const now = new Date();
+    const expiresAt = addHours(now, ttlHours);
+
+    const session = await UserSession.create({
+        user: targetUser._id,
+        deviceId: String(deviceId || 'impersonation_device'),
+        expiresAt,
+        ipAddress: String(ipAddress || ''),
+        userAgent: String(userAgent || ''),
+        isImpersonated: true,
+        impersonatedBy: adminUser.id || adminUser._id
+    });
+
+    const token = jwt.sign(
+        {
+            id: targetUser._id,
+            role: targetUser.role,
+            sid: String(session._id),
+            isImpersonated: true,
+            impersonatedBy: String(adminUser.id || adminUser._id)
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: `${ttlHours}h` }
+    );
+
+    return { session, token, expiresAt };
+};
+
+const revokeImpersonationSessionsForTarget = async ({ targetUserId, sessionId = null }) => {
+    if (!targetUserId) return;
+    const query = {
+        user: targetUserId,
+        isImpersonated: true,
+        revokedAt: null
+    };
+    if (sessionId) {
+        query._id = sessionId;
+    }
+    return await UserSession.updateMany(
+        query,
+        { $set: { revokedAt: new Date() } }
+    );
+};
+
 module.exports = {
     SESSION_TTL_HOURS,
     SESSION_TTL_MS,
+    IMPERSONATION_SESSION_TTL_HOURS,
+    IMPERSONATION_SESSION_TTL_MS,
     createSessionAndToken,
+    createImpersonationSessionAndToken,
     getActiveDeviceIdsForUser,
     validateSessionById,
     revokeSessionById,
-    revokeAllSessionsForUser
+    revokeAllSessionsForUser,
+    revokeImpersonationSessionsForTarget
 };

@@ -6,7 +6,7 @@ const Team = require('../models/Team');
 const Tournament = require('../models/Tournament');
 const User = require('../models/User');
 const fetchOrganizer = require('../middleware/fetchOrganizer');
-const { getPolicyByPlanName, resolveEffectivePlan } = require('../utils/planPolicy');
+const { getPolicyByPlanName, getEffectivePlanPolicy, resolveEffectivePlan } = require('../utils/planPolicy');
 const { getAuctionStateForOrganizer, decorateTeamsWithMaxBid } = require('../utils/maxBid');
 
 // === PUBLIC ROUTES ===
@@ -21,7 +21,7 @@ router.get('/public/:tournamentId', async (req, res) => {
 
         const organizer = await User.findById(tournament.organizer).select('plan role').lean();
         const organizerPlan = resolveEffectivePlan(organizer);
-        const policy = getPolicyByPlanName(organizerPlan);
+        const policy = await getEffectivePlanPolicy(organizerPlan);
         if (!policy.canPublicRegistration) {
             return res.status(403).json({ message: 'यह फीचर आपके आयोजक प्लान में उपलब्ध नहीं है।' });
         }
@@ -41,12 +41,21 @@ router.post('/public/:tournamentId/register', async (req, res) => {
 
         const organizer = await User.findById(tournament.organizer).select('plan role').lean();
         const organizerPlan = resolveEffectivePlan(organizer);
-        const policy = getPolicyByPlanName(organizerPlan);
+        const policy = await getEffectivePlanPolicy(organizerPlan);
         if (!policy.canPublicRegistration) {
             return res.status(403).json({ message: 'यह फीचर आपके आयोजक प्लान में उपलब्ध नहीं है।' });
         }
 
         if (tournament.isRegistrationOpen === false) return res.status(403).json({ message: 'रजिस्ट्रेशन बंद है।' });
+
+        if (policy.playerLimit !== -1) {
+            const currentPlayerCount = await Player.countDocuments({ organizer: tournament.organizer });
+            if (currentPlayerCount >= policy.playerLimit) {
+                return res.status(403).json({
+                    message: `आयोजक के ${organizerPlan} प्लान में अधिकतम ${policy.playerLimit} प्लेयर्स की अनुमति है। रजिस्ट्रेशन लिमिट पूरी हो चुकी है।`
+                });
+            }
+        }
 
         const { name, fatherName, age, mobile, city, role, category, basePrice, photoUrl, customData } = req.body;
 
@@ -80,6 +89,21 @@ const getTeamWithDynamicMaxBid = async ({ organizerId, teamName, currentBasePric
 
 router.post('/', async (req, res) => {
     try {
+        if (req.user.role !== 'SuperAdmin' || req.user.isImpersonated) {
+            const organizer = await User.findById(req.user.id).select('plan role').lean();
+            const organizerPlan = resolveEffectivePlan(organizer);
+            const policy = await getEffectivePlanPolicy(organizerPlan);
+
+            if (policy.playerLimit !== -1) {
+                const currentPlayerCount = await Player.countDocuments({ organizer: req.user.id });
+                if (currentPlayerCount >= policy.playerLimit) {
+                    return res.status(403).json({
+                        message: `आपके ${organizerPlan} प्लान में अधिकतम ${policy.playerLimit} प्लेयर्स की अनुमति है। वर्तमान में आपके पास ${currentPlayerCount} प्लेयर्स हैं। नया प्लेयर जोड़ने के लिए कृपया प्लान अपग्रेड करें।`
+                    });
+                }
+            }
+        }
+
         const { name, fatherName, age, mobile, city, role, category, basePrice, photoUrl, customData } = req.body;
         let tournamentId = req.body.tournament;
         if (!tournamentId) {

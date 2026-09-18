@@ -2,7 +2,7 @@ const express = require('express');
 const Team = require('../models/Team');
 const User = require('../models/User');
 const fetchOrganizer = require('../middleware/fetchOrganizer');
-const { getPolicyByPlanName, resolveEffectivePlan } = require('../utils/planPolicy');
+const { getPolicyByPlanName, getEffectivePlanPolicy, resolveEffectivePlan } = require('../utils/planPolicy');
 const { getAuctionStateForOrganizer, decorateTeamsWithMaxBid } = require('../utils/maxBid');
 
 const router = express.Router();
@@ -48,20 +48,21 @@ router.post('/', async (req, res) => {
       organizerId: req.user.id
     });
 
-    if (req.user.role === 'SuperAdmin') {
+    if (req.user.role === 'SuperAdmin' && !req.user.isImpersonated) {
       const savedTeam = await new Team(teamPayload).save();
       return res.json(savedTeam);
     }
 
     const organizer = await User.findById(req.user.id).select('plan').lean();
     const organizerPlan = resolveEffectivePlan(organizer);
-    const teamLimit = getPolicyByPlanName(organizerPlan).teamLimit;
+    const policy = await getEffectivePlanPolicy(organizerPlan);
+    const teamLimit = policy.teamLimit;
 
     if (teamLimit !== -1) {
       const currentTeamCount = await Team.countDocuments({ organizer: req.user.id });
       if (currentTeamCount >= teamLimit) {
         return res.status(403).json({
-          message: `आपके ${organizerPlan} प्लान में अधिकतम ${teamLimit} टीम्स की अनुमति है।`
+          message: `आपके ${organizerPlan} प्लान में अधिकतम ${teamLimit} टीम्स की अनुमति है। वर्तमान में आपके पास ${currentTeamCount} टीम्स हैं। नया टीम बनाने के लिए कृपया प्लान अपग्रेड करें।`
         });
       }
     }
@@ -76,6 +77,18 @@ router.post('/', async (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
+    if (req.headers['x-view-mode'] === 'teams-dashboard') {
+      const organizer = await User.findById(req.user.id).select('plan role').lean();
+      const organizerPlan = resolveEffectivePlan(organizer);
+      const policy = await getEffectivePlanPolicy(organizerPlan);
+      if (!policy.canViewTeams && (req.user.role !== 'SuperAdmin' || req.user.isImpersonated)) {
+        return res.status(403).json({ 
+          message: 'टीम देखने का फीचर आपके प्लान में उपलब्ध नहीं है। कृपया प्लान अपग्रेड करें।',
+          upgradeRequired: true 
+        });
+      }
+    }
+
     const queryBasePrice = Number(req.query.basePrice);
     const currentBasePrice = Number.isFinite(queryBasePrice) && queryBasePrice >= 0
       ? queryBasePrice

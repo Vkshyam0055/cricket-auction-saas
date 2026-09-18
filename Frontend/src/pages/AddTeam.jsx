@@ -3,13 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { TournamentContext } from '../context/TournamentContext';
 import { apiRequest } from '../utils/apiClient';
-
-const PLAN_TEAM_LIMITS = { Free: 3, Basic: 8, Pro: -1 };
-const normalizePlanName = (planName = 'Free') => {
-  if (['Pro', 'Pro Plan'].includes(planName)) return 'Pro';
-  if (['Basic', 'Basic Plan'].includes(planName)) return 'Basic';
-  return 'Free';
-};
+import { getEffectivePlanPolicy, fetchAndCachePlans } from '../utils/planHelper';
 
 function AddTeam() {
   const navigate = useNavigate();
@@ -31,11 +25,13 @@ function AddTeam() {
   const [logoUrl, setLogoUrl] = useState('');
 
   const [isUploading, setIsUploading] = useState(false);
+  const [plansCacheKey, setPlansCacheKey] = useState(0);
 
   useEffect(() => {
     setOrganizerPlan(localStorage.getItem('organizerPlan') || 'Free');
     setOrganizerRole(localStorage.getItem('organizerRole') || 'Organizer');
     fetchTeams();
+    fetchAndCachePlans().then(() => setPlansCacheKey(Date.now()));
   }, []);
 
   // 🌟 FIX: Automatically set budget from tournament settings
@@ -134,9 +130,9 @@ function AddTeam() {
     else setBudget(50000000);
   };
 
-  const normalizedPlan = organizerRole === 'SuperAdmin' ? 'Pro' : normalizePlanName(organizerPlan);
-  const teamLimit = PLAN_TEAM_LIMITS[normalizedPlan];
-  const isLimitReached = teamLimit !== -1 && teams.length >= teamLimit;
+  const activePolicy = getEffectivePlanPolicy(organizerPlan, organizerRole);
+  const teamLimit = activePolicy.teamLimit;
+  const isLimitReached = teamLimit !== -1 && teams.length >= teamLimit && organizerRole !== 'SuperAdmin';
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 md:p-8">

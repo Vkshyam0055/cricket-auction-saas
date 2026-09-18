@@ -1,23 +1,10 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import HamburgerMenu from '../components/HamburgerMenu';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import { TournamentContext } from '../context/TournamentContext';
 
-const PLAN_POLICIES = {
-  Free: { teamLimit: 3, canViewTeams: false, canPublicRegistration: false },
-  Basic: { teamLimit: 8, canViewTeams: true, canPublicRegistration: false },
-  Pro: { teamLimit: -1, canViewTeams: true, canPublicRegistration: true }
-};
-
-const normalizePlanName = (planName = 'Free') => {
-  if (['Pro', 'Pro Plan'].includes(planName)) return 'Pro';
-  if (['Basic', 'Basic Plan'].includes(planName)) return 'Basic';
-  return 'Free';
-};
-
-// 🌟 Live Server API 🌟
-import { apiRequest } from '../utils/apiClient';
+import { apiRequest, restoreSuperAdminSession } from '../utils/apiClient';
+import { getEffectivePlanPolicy, fetchAndCachePlans, normalizePlanName } from '../utils/planHelper';
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -33,9 +20,10 @@ function Dashboard() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [organizerEmail, setOrganizerEmail] = useState('');  
   const [registrationLinkMessage, setRegistrationLinkMessage] = useState('');
+  const [plansCacheKey, setPlansCacheKey] = useState(0);
 
   const normalizedPlan = useMemo(() => (organizerRole === 'SuperAdmin' ? 'Pro' : normalizePlanName(organizerPlan)), [organizerPlan, organizerRole]);
-  const activePolicy = PLAN_POLICIES[normalizedPlan];
+  const activePolicy = useMemo(() => getEffectivePlanPolicy(organizerPlan, organizerRole), [organizerPlan, organizerRole, plansCacheKey]);
 
   const publicRegistrationUrl = useMemo(() => {
     if (!tournament?._id) return '';
@@ -55,6 +43,10 @@ function Dashboard() {
     if (storedRole) setOrganizerRole(storedRole);
     const storedEmail = localStorage.getItem('organizerEmail');
     if (storedEmail) setOrganizerEmail(storedEmail);    
+
+    fetchAndCachePlans().then(() => {
+      setPlansCacheKey(Date.now());
+    });
   }, []);
 
   useEffect(() => {
@@ -73,6 +65,15 @@ function Dashboard() {
   }, [tournament]);
 
   const handleLogout = async () => {
+    const adminToken = localStorage.getItem('adminToken');
+    if (adminToken) {
+      const exitToAdmin = window.confirm("You are currently acting as this user. Do you want to return to Super Admin instead of logging out completely?");
+      if (exitToAdmin) {
+        restoreSuperAdminSession();
+        window.location.href = '/super-admin';
+        return;
+      }
+    }
     const deviceId = localStorage.getItem('deviceId');
     try {
       const phone = localStorage.getItem('organizerPhone');
@@ -278,8 +279,15 @@ function Dashboard() {
                 Squads
               </span>
             </div>
-            <div className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">{totalTeams}</div>
-            <div className="text-xs uppercase font-bold text-slate-500 tracking-wider mt-1">Total Teams</div>
+            <div className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+              {totalTeams}
+              {activePolicy.teamLimit !== -1 && (
+                <span className="text-base sm:text-lg font-bold text-slate-500"> / {activePolicy.teamLimit}</span>
+              )}
+            </div>
+            <div className="text-xs uppercase font-bold text-slate-500 tracking-wider mt-1">
+              {activePolicy.teamLimit === -1 ? 'Unlimited Squads' : `Squads (Max ${activePolicy.teamLimit})`}
+            </div>
           </div>
 
           {/* Total Players Card */}
@@ -292,8 +300,15 @@ function Dashboard() {
                 In Pool
               </span>
             </div>
-            <div className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">{totalPlayers}</div>
-            <div className="text-xs uppercase font-bold text-slate-500 tracking-wider mt-1">Total Players</div>
+            <div className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+              {totalPlayers}
+              {activePolicy.playerLimit !== -1 && (
+                <span className="text-base sm:text-lg font-bold text-slate-500"> / {activePolicy.playerLimit}</span>
+              )}
+            </div>
+            <div className="text-xs uppercase font-bold text-slate-500 tracking-wider mt-1">
+              {activePolicy.playerLimit === -1 ? 'Unlimited Players' : `Players (Max ${activePolicy.playerLimit})`}
+            </div>
           </div>
 
           {/* Auction Status Card */}
@@ -352,15 +367,15 @@ function Dashboard() {
 
             <button
               type="button"
-              onClick={() => navigate('/live')}
-              className="group relative flex-1 overflow-hidden rounded-2xl p-5 sm:p-7 bg-gradient-to-br from-purple-950 via-slate-900 to-indigo-950 text-white shadow-lg shadow-purple-950/25 hover:shadow-xl hover:shadow-purple-950/35 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 text-left border border-purple-800/40"
+              onClick={() => (activePolicy.canLiveScreen || organizerRole === 'SuperAdmin') ? navigate('/live') : handleUpgradeClick()}
+              className={`group relative flex-1 overflow-hidden rounded-2xl p-5 sm:p-7 bg-gradient-to-br from-purple-950 via-slate-900 to-indigo-950 text-white shadow-lg shadow-purple-950/25 hover:shadow-xl hover:shadow-purple-950/35 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 text-left border border-purple-800/40 ${(!activePolicy.canLiveScreen && organizerRole !== 'SuperAdmin') ? 'opacity-75' : ''}`}
             >
               <div className="flex items-center justify-between mb-4">
                 <div className="w-12 h-12 rounded-xl bg-purple-500/20 text-purple-300 flex items-center justify-center text-2xl border border-purple-500/30 group-hover:scale-105 transition-transform">
-                  📺
+                  {(!activePolicy.canLiveScreen && organizerRole !== 'SuperAdmin') ? '🔒' : '📺'}
                 </div>
                 <span className="text-xs font-bold text-purple-300 px-2.5 py-1 rounded-full bg-white/10 group-hover:bg-white/20 transition">
-                  Live Display →
+                  {(!activePolicy.canLiveScreen && organizerRole !== 'SuperAdmin') ? 'Upgrade Required 🔒' : 'Live Display →'}
                 </span>
               </div>
               <h4 className="text-lg sm:text-xl font-black text-white mb-1.5">Open Audience Display</h4>
@@ -434,9 +449,12 @@ function Dashboard() {
             {/* 4. View Teams */}
             <button
               type="button"
-              onClick={() => (activePolicy.canViewTeams ? navigate('/teams') : handleUpgradeClick())}
-              className="flex flex-col items-center justify-center text-center p-4 sm:p-5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 shadow-xs hover:shadow-md active:scale-95 transition-all duration-200 group"
+              onClick={() => ((activePolicy.canViewTeams || organizerRole === 'SuperAdmin') ? navigate('/teams') : handleUpgradeClick())}
+              className="flex flex-col items-center justify-center text-center p-4 sm:p-5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 shadow-xs hover:shadow-md active:scale-95 transition-all duration-200 group relative"
             >
+              {(!activePolicy.canViewTeams && organizerRole !== 'SuperAdmin') && (
+                <span className="absolute top-2 right-2 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-black border border-amber-200 shadow-2xs">🔒</span>
+              )}
               <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl mb-2.5 group-hover:scale-110 transition-transform">
                 📊
               </div>
@@ -480,7 +498,7 @@ function Dashboard() {
           </div>
 
           {/* 🌟 Public Player Registration Link Section 🌟 */}
-          {!activePolicy.canPublicRegistration ? (
+          {(!activePolicy.canPublicRegistration && organizerRole !== 'SuperAdmin') ? (
             <div className="mt-8 p-5 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 rounded-xl bg-slate-200 text-slate-700 flex items-center justify-center text-lg shrink-0">
@@ -496,7 +514,7 @@ function Dashboard() {
                 onClick={handleUpgradeClick}
                 className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition"
               >
-                Available in Pro →
+                Upgrade to Unlock →
               </button>
             </div>
           ) : (

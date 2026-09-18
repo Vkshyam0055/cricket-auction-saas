@@ -6,7 +6,7 @@ const fetchOrganizer = async (req, res, next) => {
     const authHeader = req.header('Authorization');
     const token = authHeader && authHeader.split(' ')[1]; // "Bearer TOKEN" से सिर्फ टोकन निकालना
 
-    if (!token) {
+    if (!token || token === 'null' || token === 'undefined') {
         return res.status(401).json({ message: "पहुंच के लिए मान्य टोकन नहीं है। कृपया लॉग-इन करें!" });
     }
 
@@ -21,6 +21,7 @@ const fetchOrganizer = async (req, res, next) => {
         req.session = validation.session;
         next(); // गार्ड ने गेट खोल दिया, आगे जाने दो
     } catch (error) {
+        console.warn('⚠️ [fetchOrganizer] Token verification failed:', error?.message);
         res.status(401).json({ message: "टोकन अमान्य या एक्सपायर हो चुका है!" });
     }
 };

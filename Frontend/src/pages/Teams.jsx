@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../utils/apiClient';
 
+import { getEffectivePlanPolicy } from '../utils/planHelper';
+
 function Teams() {
   const navigate = useNavigate();
   const [teams, setTeams] = useState([]);
@@ -14,10 +16,23 @@ function Teams() {
   const normalizeStatus = (status) => String(status || '').trim().toLowerCase();
 
   useEffect(() => {
+    const organizerPlan = localStorage.getItem('organizerPlan') || 'Free';
+    const organizerRole = localStorage.getItem('organizerRole') || 'Organizer';
+    const policy = getEffectivePlanPolicy(organizerPlan, organizerRole);
+
+    if (!policy.canViewTeams && organizerRole !== 'SuperAdmin') {
+      alert('🚀 Teams dashboard is not available in your current plan. Please upgrade to unlock.');
+      navigate('/dashboard');
+      return;
+    }
+
     const fetchData = async () => {
       try {
         const token = localStorage.getItem('token');
-        const headers = { Authorization: `Bearer ${token}` };
+        const headers = { 
+          Authorization: `Bearer ${token}`,
+          'x-view-mode': 'teams-dashboard'
+        };
 
         const [teamsRes, playersRes] = await Promise.all([
           apiRequest({ method: 'get', path: '/api/teams', headers }),
@@ -36,13 +51,18 @@ function Teams() {
         }
       } catch (error) {
         console.error("डेटा लाने में दिक्कत:", error);
+        if (error?.response?.status === 403 && error?.response?.data?.upgradeRequired) {
+          alert(error.response.data.message || 'Teams dashboard is not available in your current plan.');
+          navigate('/dashboard');
+          return;
+        }
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, []);
+  }, [navigate]);
 
   // 📊 Calculations for Auction Summary
   const totalRegistered = players.length;

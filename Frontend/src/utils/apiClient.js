@@ -2,8 +2,69 @@ import axios from 'axios';
 
 const SESSION_EXPIRED_EVENT = 'session-expired';
 
-export const clearAuthSession = () => {
+export const isImpersonating = () => {
+  return Boolean(localStorage.getItem('adminToken') || localStorage.getItem('superAdminSession'));
+};
+
+export const clearAllAuthSessions = () => {
   localStorage.removeItem('token');
+  localStorage.removeItem('organizerName');
+  localStorage.removeItem('organizerPhone');
+  localStorage.removeItem('organizerPlan');
+  localStorage.removeItem('organizerRole');
+  localStorage.removeItem('organizerEmail');
+  localStorage.removeItem('superAdminSession');
+  localStorage.removeItem('adminToken');
+  localStorage.removeItem('impersonatingUser');
+  localStorage.removeItem('impersonatedUserId');
+  localStorage.removeItem('impersonationSessionId');
+  localStorage.removeItem('impersonatingRole');
+  localStorage.removeItem('impersonatingPlan');
+};
+
+export const restoreSuperAdminSession = () => {
+  try {
+    const rawSession = localStorage.getItem('superAdminSession');
+    const adminSession = rawSession ? JSON.parse(rawSession) : null;
+    const adminToken = adminSession?.token || localStorage.getItem('adminToken');
+
+    if (adminToken) {
+      localStorage.setItem('token', adminToken);
+      if (adminSession?.organizerName) localStorage.setItem('organizerName', adminSession.organizerName);
+      if (adminSession?.organizerPhone) localStorage.setItem('organizerPhone', adminSession.organizerPhone);
+      if (adminSession?.organizerPlan) localStorage.setItem('organizerPlan', adminSession.organizerPlan);
+      if (adminSession?.organizerRole) localStorage.setItem('organizerRole', adminSession.organizerRole);
+      if (adminSession?.organizerEmail) localStorage.setItem('organizerEmail', adminSession.organizerEmail);
+    } else {
+      localStorage.removeItem('token');
+    }
+  } catch (e) {
+    console.error('Failed to parse superAdminSession:', e);
+    const adminToken = localStorage.getItem('adminToken');
+    if (adminToken) {
+      localStorage.setItem('token', adminToken);
+    } else {
+      localStorage.removeItem('token');
+    }
+  } finally {
+    localStorage.removeItem('superAdminSession');
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('impersonatingUser');
+    localStorage.removeItem('impersonatedUserId');
+    localStorage.removeItem('impersonationSessionId');
+    localStorage.removeItem('impersonatingRole');
+    localStorage.removeItem('impersonatingPlan');
+  }
+};
+
+export const clearAuthSession = () => {
+  const adminToken = localStorage.getItem('adminToken');
+  if (adminToken && !isTokenExpired(adminToken)) {
+    restoreSuperAdminSession();
+    window.location.href = '/super-admin';
+    return;
+  }
+  clearAllAuthSessions();
   window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
 };
 
@@ -16,31 +77,38 @@ export const isTokenExpired = (token) => {
   try {
     if (!token) return true;
     const payloadPart = token.split('.')[1];
-    const payload = JSON.parse(atob(payloadPart));
+    if (!payloadPart) return true;
+    const base64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + (4 - (base64.length % 4)) % 4, '=');
+    const payload = JSON.parse(atob(padded));
     const exp = Number(payload?.exp || 0);
     if (!exp) return true;
     return (Date.now() >= exp * 1000);
-  } catch (error) {
+  } catch {
     return true;
   }
 };
 
 export const getApiBaseCandidates = () => {
-  const candidates = [
-    getSafeStoredBaseUrl(),
-    normalizeBaseUrl(import.meta.env.VITE_API_URL)
-  ];
-
   if (import.meta.env.DEV) {
-    // In dev, prefer localhost over prod
-    candidates.push(DEFAULT_DEV_API_BASE);
-    candidates.push(DEFAULT_PROD_API_BASE);
-  } else {
-    // In prod, just use prod
-    candidates.push(DEFAULT_PROD_API_BASE);
+    // In local dev, strictly prevent accidental requests to production Render backend
+    const devCandidates = [
+      DEFAULT_DEV_API_BASE,
+      isLocalhostUrl(import.meta.env.VITE_API_URL) ? normalizeBaseUrl(import.meta.env.VITE_API_URL) : '',
+      getSafeStoredBaseUrl()
+    ];
+    return Array.from(new Set(devCandidates.filter(Boolean).map(normalizeBaseUrl)));
   }
 
-  return Array.from(new Set(candidates.filter(Boolean).map(normalizeBaseUrl)));
+  // In production, strictly prevent accidental requests to localhost
+  const explicitViteUrl = !isLocalhostUrl(import.meta.env.VITE_API_URL) ? normalizeBaseUrl(import.meta.env.VITE_API_URL) : '';
+  const prodCandidates = [
+    getSafeStoredBaseUrl(),
+    explicitViteUrl,
+    DEFAULT_PROD_API_BASE
+  ].filter((url) => Boolean(url) && !isLocalhostUrl(url));
+
+  return Array.from(new Set(prodCandidates.map(normalizeBaseUrl)));
 };
 
 const buildApiUrl = (baseUrl, path) => {
@@ -75,7 +143,7 @@ export const apiRequest = async ({ method = 'get', path, data, params, headers =
 };
 
 export const getSocketBaseUrl = () => {
-  const firstBase = getApiBaseCandidates()[0] || DEFAULT_PROD_API_BASE;
+  const firstBase = getApiBaseCandidates()[0] || (import.meta.env.DEV ? DEFAULT_DEV_API_BASE : DEFAULT_PROD_API_BASE);
   return String(firstBase).replace(/\/api$/, '');
 };
 const DEFAULT_PROD_API_BASE = 'https://cricket-auction-backend-h8ud.onrender.com';
@@ -88,9 +156,17 @@ const getSafeStoredBaseUrl = () => {
   const stored = normalizeBaseUrl(localStorage.getItem('apiBaseUrl'));
   if (!stored) return '';
 
+  // In production, strictly purge any localhost URL
   if (import.meta.env.PROD && isLocalhostUrl(stored)) {
     localStorage.removeItem('apiBaseUrl');
     return '';
   }
+
+  // In development, strictly purge any remote production URL
+  if (import.meta.env.DEV && !isLocalhostUrl(stored)) {
+    localStorage.removeItem('apiBaseUrl');
+    return '';
+  }
+
   return stored;
 };

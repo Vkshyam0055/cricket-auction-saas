@@ -7,7 +7,9 @@ const userSessionSchema = new mongoose.Schema({
     revokedAt: { type: Date, default: null, index: true },
     lastActivityAt: { type: Date, default: Date.now },
     ipAddress: { type: String, default: '' },
-    userAgent: { type: String, default: '' }
+    userAgent: { type: String, default: '' },
+    isImpersonated: { type: Boolean, default: false },
+    impersonatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
 }, { timestamps: true });
 
 userSessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });

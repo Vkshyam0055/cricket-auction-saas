@@ -8,15 +8,27 @@ const UserSession = require('../models/UserSession');
 const fetchOrganizer = require('../middleware/fetchOrganizer');
 const { normalizePlanName, isSupportedPlanInput } = require('../utils/planPolicy');
 const AuditLog = require('../models/AuditLog');
-const { revokeAllSessionsForUser, createSessionAndToken } = require('../utils/sessionAuth');
+const { 
+    revokeAllSessionsForUser, 
+    createSessionAndToken, 
+    createImpersonationSessionAndToken, 
+    revokeImpersonationSessionsForTarget 
+} = require('../utils/sessionAuth');
+
+// 🔒 Guard: Ensure caller is genuine SuperAdmin and NOT an impersonated session
+const requireSuperAdmin = (req, res, next) => {
+    if (req.user?.isImpersonated) {
+        return res.status(403).json({ message: "Access Denied: Impersonated sessions cannot access admin endpoints!" });
+    }
+    if (req.user?.role !== 'SuperAdmin') {
+        return res.status(403).json({ message: "Access Denied!" });
+    }
+    next();
+};
 
 // 🌟 IMPERSONATION ROUTES 🌟
-router.post('/impersonate/:id', fetchOrganizer, async (req, res) => {
+router.post('/impersonate/:id', fetchOrganizer, requireSuperAdmin, async (req, res) => {
     try {
-        if (req.user.role !== 'SuperAdmin') {
-            return res.status(403).json({ message: "Access Denied!" });
-        }
-
         const targetUserId = req.params.id;
         const targetUser = await User.findById(targetUserId);
 
@@ -28,10 +40,11 @@ router.post('/impersonate/:id', fetchOrganizer, async (req, res) => {
             return res.status(403).json({ message: "Cannot impersonate another SuperAdmin!" });
         }
 
-        // Create a special session for impersonation
-        const { token, expiresAt } = await createSessionAndToken({
-            user: targetUser,
-            deviceId: 'impersonation_device', // Use a special device ID to avoid blocking normal devices
+        // Create a dedicated, short-lived session for impersonation
+        const { session, token, expiresAt } = await createImpersonationSessionAndToken({
+            targetUser,
+            adminUser: req.user,
+            deviceId: 'impersonation_device',
             ipAddress: req.ip,
             userAgent: req.get('user-agent')
         });
@@ -46,8 +59,10 @@ router.post('/impersonate/:id', fetchOrganizer, async (req, res) => {
         res.json({
             message: `Impersonating ${targetUser.name}`,
             token,
+            sessionId: session._id,
             sessionExpiresAt: expiresAt,
             user: {
+                _id: targetUser._id,
                 name: targetUser.name,
                 phone: targetUser.phone,
                 email: targetUser.email,
@@ -62,13 +77,16 @@ router.post('/impersonate/:id', fetchOrganizer, async (req, res) => {
     }
 });
 
-router.post('/impersonate/:id/exit', fetchOrganizer, async (req, res) => {
+router.post('/impersonate/:id/exit', fetchOrganizer, requireSuperAdmin, async (req, res) => {
     try {
-        if (req.user.role !== 'SuperAdmin') {
-            return res.status(403).json({ message: "Access Denied!" });
-        }
-
         const targetUserId = req.params.id;
+        const { sessionId } = req.body || {};
+
+        // Safely revoke the impersonation session(s)
+        await revokeImpersonationSessionsForTarget({
+            targetUserId,
+            sessionId: sessionId || null
+        });
 
         // Log the audit event
         await AuditLog.create({
@@ -87,11 +105,8 @@ router.post('/impersonate/:id/exit', fetchOrganizer, async (req, res) => {
 
 
 // 🌟 सिर्फ SuperAdmin के लिए पूरा डेटा लाने वाला रास्ता 🌟
-router.get('/all-data', fetchOrganizer, async (req, res) => {
+router.get('/all-data', fetchOrganizer, requireSuperAdmin, async (req, res) => {
     try {
-        if (req.user.role !== 'SuperAdmin') {
-            return res.status(403).json({ message: "Access Denied: सिर्फ Developer ही इसे देख सकता है!" });
-        }
 
         const users = await User.find({ role: 'Organizer' }).sort({ createdAt: -1 });
         const now = new Date();
@@ -99,7 +114,8 @@ router.get('/all-data', fetchOrganizer, async (req, res) => {
             {
                 $match: {
                     revokedAt: null,
-                    expiresAt: { $gt: now }
+                    expiresAt: { $gt: now },
+                    isImpersonated: { $ne: true }
                 }
             },
             {
@@ -141,10 +157,8 @@ router.get('/all-data', fetchOrganizer, async (req, res) => {
 });
 
 // 🌟 SUPER ADMIN POWER: यूज़र का प्लान और एक्सेस अपडेट करना
-router.put('/update-user/:id', fetchOrganizer, async (req, res) => {
+router.put('/update-user/:id', fetchOrganizer, requireSuperAdmin, async (req, res) => {
     try {
-        if (req.user.role !== 'SuperAdmin') return res.status(403).json({ message: "Access Denied!" });
-
         const { plan, isActive, isLifetimeFree, maxDevicesAllowed } = req.body;
         if (!isSupportedPlanInput(plan)) {
             return res.status(400).json({ message: "Invalid plan value" });
@@ -164,10 +178,8 @@ router.put('/update-user/:id', fetchOrganizer, async (req, res) => {
 });
 
 // 🌟 SUPER ADMIN POWER: यूज़र के डिवाइस रीसेट करना (अगर वो फंस जाए)
-router.put('/clear-devices/:id', fetchOrganizer, async (req, res) => {
+router.put('/clear-devices/:id', fetchOrganizer, requireSuperAdmin, async (req, res) => {
      try {
-        if (req.user.role !== 'SuperAdmin') return res.status(403).json({ message: "Access Denied!" });
-        
         // सभी डिवाइस क्लियर कर दिए
         await User.findByIdAndUpdate(req.params.id, { activeDevices: [] });
         await revokeAllSessionsForUser(req.params.id);        
@@ -178,9 +190,8 @@ router.put('/clear-devices/:id', fetchOrganizer, async (req, res) => {
      }
 });
 
-router.put('/force-logout/:id', fetchOrganizer, async (req, res) => {
+router.put('/force-logout/:id', fetchOrganizer, requireSuperAdmin, async (req, res) => {
     try {
-        if (req.user.role !== 'SuperAdmin') return res.status(403).json({ message: "Access Denied!" });
         await revokeAllSessionsForUser(req.params.id);
         res.json({ message: "यूज़र के सभी लॉगिन सेशन अमान्य कर दिए गए हैं!" });
     } catch (error) {

@@ -144,7 +144,9 @@ function PublicPlayerRegistration() {
         data: { ...formData, customData }
       });
       setIsSuccess(true);
-    } catch (err) { alert("Registration failed! Please try again."); }
+    } catch (err) { 
+      alert(err?.response?.data?.message || "Registration failed! Please try again."); 
+    }
   };
 
   if (loading) {
