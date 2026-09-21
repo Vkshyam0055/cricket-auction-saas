@@ -30,9 +30,11 @@ const tournamentSchema = new mongoose.Schema({
     paymentMessage: { type: String, default: '' },
     liveScreenConfig: {
         displayMode: { type: String, enum: ['day', 'night', 'projector'], default: 'night' },
+        layout: { type: String, enum: ['classic', 'split', 'spotlight', 'broadcast'], default: 'classic' },
         photoSize: { type: String, enum: ['small', 'medium', 'large'], default: 'medium' },
         screenView: { type: String, enum: ['live', 'break'], default: 'live' },
         breakView: { type: String, enum: ['teams-dashboard', 'squad-list', 'tournament-summary', 'top-biddings'], default: 'teams-dashboard' },
+        selectedSquadTeam: { type: String, default: '' },
         version: { type: Number, default: 0 },
         updatedAtMs: { type: Number, default: 0 }
     },    

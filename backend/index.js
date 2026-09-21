@@ -78,9 +78,11 @@ io.on('connection', async (socket) => {
     });
     const defaultScreenConfig = {
         displayMode: 'night',
+        layout: 'classic',
         photoSize: 'medium',
         screenView: 'live',
         breakView: 'teams-dashboard',
+        selectedSquadTeam: '',
         version: 0,
         updatedAtMs: 0
     };
@@ -110,7 +112,7 @@ io.on('connection', async (socket) => {
 
         if (payload.type === 'replace') {
             next = Array.isArray(payload.lastBidActions)
-                ? payload.lastBidActions.filter(Boolean).slice(-4)
+                ? payload.lastBidActions.filter(Boolean).slice(0, 4)
                 : [];
         } else if (payload.type === 'reset') {
             next = [];
@@ -132,9 +134,11 @@ io.on('connection', async (socket) => {
         }
         const nextConfig = {
             displayMode: payload.displayMode || 'night',
+            layout: payload.layout || 'classic',
             photoSize: payload.photoSize || 'medium',
             screenView: payload.screenView === 'break' ? 'break' : 'live',
             breakView: payload.breakView || 'teams-dashboard',
+            selectedSquadTeam: payload.selectedSquadTeam || '',
             version: incomingVersion,
             updatedAtMs: Number(payload.updatedAtMs || Date.now())
         };

@@ -1,3 +1,53 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@keyframes stampSlam {
+  0% {
+    opacity: 0;
+    transform: scale(2.2) rotate(-22deg);
+    filter: blur(4px);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(0.92) rotate(-4deg);
+    filter: blur(0px);
+  }
+  75% {
+    transform: scale(1.05) rotate(-7deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(-6deg);
+  }
+}
+
+@keyframes unsoldStampSlam {
+  0% {
+    opacity: 0;
+    transform: scale(2.2) rotate(20deg);
+    filter: blur(4px);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(0.92) rotate(5deg);
+    filter: blur(0px);
+  }
+  75% {
+    transform: scale(1.05) rotate(7deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(6deg);
+  }
+}
+
+.animate-stamp-sold {
+  animation: stampSlam 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  will-change: transform, opacity;
+}
+
+.animate-stamp-unsold {
+  animation: unsoldStampSlam 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  will-change: transform, opacity;
+}

@@ -251,6 +251,9 @@ router.put('/unsold/:id', async (req, res) => {
     try {
         const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
         if(!player) return res.status(404).json({ message: "Player not found" });
+        if (player.approvalStatus !== 'Approved' || player.auctionStatus !== 'ReadyForAuction' || player.isIcon) {
+            return res.status(409).json({ message: 'Player is not eligible to be marked unsold right now' });
+        }
         player.auctionStatus = 'Unsold'; await player.save();
         res.json({ message: "खिलाड़ी अनसोल्ड हो गया!", player });
     } catch (error) { res.status(500).json({ message: "एरर!" }); }
@@ -260,13 +263,127 @@ router.put('/undo/:id', async (req, res) => {
     try {
         const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
         if (!player) return res.status(404).json({ message: "खिलाड़ी नहीं मिला" });
-        if (player.auctionStatus === 'Sold' && player.soldTo && player.soldTo !== 'Unsold') {
-            const team = await Team.findOne({ teamName: player.soldTo, organizer: req.user.id });
-            if (team) { team.remainingPurse += player.soldPrice; await team.save(); }
+
+        const wasSold = (player.auctionStatus === 'Sold' || player.auctionStatus === 'Icon') &&
+                        player.soldTo && player.soldTo !== 'Unsold';
+        const refundAmount = Number(player.soldPrice) || 0;
+
+        if (wasSold && refundAmount > 0) {
+            await Team.findOneAndUpdate(
+                { teamName: player.soldTo, organizer: req.user.id },
+                { $inc: { remainingPurse: refundAmount } }
+            );
         }
-        player.auctionStatus = 'ReadyForAuction'; player.soldTo = 'Unsold'; player.soldPrice = 0; await player.save();
+
+        player.auctionStatus = 'ReadyForAuction';
+        player.soldTo = 'Unsold';
+        player.soldPrice = 0;
+        await player.save();
+
         res.json({ message: "Undo Successful!", player });
-    } catch (error) { res.status(500).json({ message: "एरर!" }); }
+    } catch (error) {
+        console.error("Undo player error:", error);
+        res.status(500).json({ message: "एरर!" });
+    }
+});
+
+router.post('/restore-unsold', async (req, res) => {
+    try {
+        const result = await Player.updateMany(
+            {
+                organizer: req.user.id,
+                approvalStatus: 'Approved',
+                auctionStatus: { $in: ['Unsold', 'Passed'] }
+            },
+            {
+                $set: {
+                    auctionStatus: 'ReadyForAuction',
+                    soldTo: 'Unsold',
+                    soldPrice: 0
+                }
+            }
+        );
+        res.json({ message: "सभी Unsold खिलाड़ी Round-2 ऑक्शन के लिए वापस आ गए हैं!", modifiedCount: result.modifiedCount });
+    } catch (error) {
+        console.error("Restore unsold error:", error);
+        res.status(500).json({ message: "अनसोल्ड प्लेयर्स को वापस लाने में समस्या आई।" });
+    }
+});
+
+router.post('/bring-all-back', async (req, res) => {
+    try {
+        const soldPlayers = await Player.find({
+            organizer: req.user.id,
+            approvalStatus: 'Approved',
+            auctionStatus: { $in: ['Sold', 'Icon'] },
+            soldTo: { $ne: 'Unsold' },
+            soldPrice: { $gt: 0 }
+        }).lean();
+
+        const refundByTeam = {};
+        for (const p of soldPlayers) {
+            if (p.soldTo) {
+                refundByTeam[p.soldTo] = (refundByTeam[p.soldTo] || 0) + (Number(p.soldPrice) || 0);
+            }
+        }
+
+        const teamUpdates = Object.entries(refundByTeam).map(([teamName, amount]) => {
+            return Team.findOneAndUpdate(
+                { teamName, organizer: req.user.id },
+                { $inc: { remainingPurse: amount } }
+            );
+        });
+        await Promise.all(teamUpdates);
+
+        const result = await Player.updateMany(
+            {
+                organizer: req.user.id,
+                approvalStatus: 'Approved',
+                auctionStatus: { $in: ['Sold', 'Unsold', 'Passed', 'Icon'] }
+            },
+            {
+                $set: {
+                    auctionStatus: 'ReadyForAuction',
+                    soldTo: 'Unsold',
+                    soldPrice: 0
+                }
+            }
+        );
+
+        res.json({ message: "सभी खिलाड़ी वापस ऑक्शन में शामिल कर लिए गए हैं!", modifiedCount: result.modifiedCount });
+    } catch (error) {
+        console.error("Bring all back error:", error);
+        res.status(500).json({ message: "सभी प्लेयर्स को वापस लाने में समस्या आई।" });
+    }
+});
+
+router.post('/reset-auction', async (req, res) => {
+    try {
+        const playerResult = await Player.updateMany(
+            { organizer: req.user.id },
+            {
+                $set: {
+                    auctionStatus: 'ReadyForAuction',
+                    soldTo: 'Unsold',
+                    soldPrice: 0
+                }
+            }
+        );
+
+        const teams = await Team.find({ organizer: req.user.id });
+        await Promise.all(teams.map((t) => {
+            return Team.findByIdAndUpdate(t._id, { remainingPurse: t.totalPurse });
+        }));
+
+        res.json({
+            message: "ऑक्शन 100% सफलतापूर्वक रीसेट हो गया है!",
+            playersReset: playerResult.modifiedCount,
+            teamsReset: teams.length
+        });
+    } catch (error) {
+        console.error("Reset auction error:", error);
+        res.status(500).json({ message: "ऑक्शन रीसेट करने में समस्या आई।" });
+    }
 });
 
 router.delete('/:id', async (req, res) => {
