@@ -60,12 +60,17 @@ io.on('connection', async (socket) => {
     }, expiryMs);
 
     socket.use(async (_, next) => {
+        const now = Date.now();
+        if (socket._lastSessionCheck && (now - socket._lastSessionCheck < 5000)) {
+            return next();
+        }
         const packetValidation = await validateSessionById({ sessionId: socket.sessionId, userId: socket.organizerId });
         if (!packetValidation.ok) {
             socket.emit('sessionExpired', { message: 'Session expired' });
             socket.disconnect(true);
             return next(new Error('Unauthorized'));
         }
+        socket._lastSessionCheck = now;
         return next();
     });
 
@@ -116,8 +121,8 @@ io.on('connection', async (socket) => {
                 : [];
         } else if (payload.type === 'reset') {
             next = [];
-        } else if (payload.type === 'append' && payload.teamName) {
-            next = [...current, payload.teamName].slice(-4);
+        } else if (payload.type === 'append' && (payload.teamId || payload.teamName)) {
+            next = [...current, payload.teamId || payload.teamName].slice(-4);
         } else {
             return;
         }
@@ -138,7 +143,7 @@ io.on('connection', async (socket) => {
             photoSize: payload.photoSize || 'medium',
             screenView: payload.screenView === 'break' ? 'break' : 'live',
             breakView: payload.breakView || 'teams-dashboard',
-            selectedSquadTeam: payload.selectedSquadTeam || '',
+            selectedSquadTeam: payload.selectedSquadTeam !== undefined ? payload.selectedSquadTeam : '',
             version: incomingVersion,
             updatedAtMs: Number(payload.updatedAtMs || Date.now())
         };
@@ -146,15 +151,13 @@ io.on('connection', async (socket) => {
         organizerScreenConfigs.set(organizerKey, nextConfig);
         io.to(room).emit('liveScreenConfigUpdate', nextConfig);
 
-        try {
-            await Tournament.findOneAndUpdate(
-                { organizer: socket.organizerId },
-                { $set: { liveScreenConfig: nextConfig } },
-                { new: true }
-            );
-        } catch (error) {
+        Tournament.findOneAndUpdate(
+            { organizer: socket.organizerId },
+            { $set: { liveScreenConfig: nextConfig } },
+            { returnDocument: 'after' }
+        ).catch((error) => {
             console.error('Failed to persist liveScreenConfig:', error.message);
-        }
+        });
     });
 
     socket.on('breakDataSnapshotUpdate', (payload = null) => {

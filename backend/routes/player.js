@@ -72,8 +72,14 @@ router.post('/public/:tournamentId/register', async (req, res) => {
 // === PRIVATE ROUTES ===
 router.use(fetchOrganizer);
 
-const getTeamWithDynamicMaxBid = async ({ organizerId, teamName, currentBasePrice, session = null }) => {
-    const teamDoc = await Team.findOne({ teamName, organizer: organizerId }).session(session).lean();
+const getTeamWithDynamicMaxBid = async ({ organizerId, teamId, teamName, currentBasePrice, session = null }) => {
+    let teamDoc = null;
+    if (teamId && mongoose.Types.ObjectId.isValid(teamId)) {
+        teamDoc = await Team.findOne({ _id: teamId, organizer: organizerId }).session(session).lean();
+    }
+    if (!teamDoc && teamName) {
+        teamDoc = await Team.findOne({ teamName, organizer: organizerId }).session(session).lean();
+    }
     if (!teamDoc) return null;
 
     const auctionState = await getAuctionStateForOrganizer({ organizerId, session });
@@ -115,6 +121,7 @@ router.post('/', async (req, res) => {
             approvalStatus: 'Approved',
             auctionStatus: 'ReadyForAuction',
             source: 'Organizer',
+            soldTo: null,
             organizer: req.user.id, tournament: tournamentId || undefined
         });
         const savedPlayer = await newPlayer.save();
@@ -124,7 +131,7 @@ router.post('/', async (req, res) => {
 
 router.get('/', async (req, res) => {
     try {
-        const players = await Player.find({ organizer: req.user.id });
+        const players = await Player.find({ organizer: req.user.id }).populate('soldTo', 'teamName shortName logoUrl logo');
         res.json(players);
     } catch (error) { res.status(500).json({ message: "एरर!" }); }
 });
@@ -132,8 +139,8 @@ router.get('/', async (req, res) => {
 
 router.post('/validate-bid', async (req, res) => {
     try {
-        const { teamName, bidAmount, playerId } = req.body;
-        if (!teamName) return res.status(400).json({ message: 'Team is required' });
+        const { teamId, teamName, bidAmount, playerId } = req.body;
+        if (!teamId && !teamName) return res.status(400).json({ message: 'Team is required' });
 
         const numericBidAmount = Number(bidAmount);
         if (!Number.isFinite(numericBidAmount) || numericBidAmount <= 0) {
@@ -149,6 +156,7 @@ router.post('/validate-bid', async (req, res) => {
 
         const team = await getTeamWithDynamicMaxBid({
             organizerId: req.user.id,
+            teamId,
             teamName,
             currentBasePrice
         });
@@ -156,8 +164,9 @@ router.post('/validate-bid', async (req, res) => {
         if (!team) return res.status(404).json({ message: 'Team not found' });
 
         if (numericBidAmount > team.maxBid) {
+            const displayName = team.teamName || teamName || 'Team';
             return res.status(400).json({
-                message: `Bid blocked. Max allowed bid for ${teamName} is ₹${team.maxBid.toLocaleString()}`,
+                message: `Bid blocked. Max allowed bid for ${displayName} is ₹${team.maxBid.toLocaleString()}`,
                 maxBid: team.maxBid,
                 remainingRequiredPlayers: team.remainingRequiredPlayers,
                 remainingPurse: team.remainingPurse
@@ -179,7 +188,7 @@ router.put('/sell/:id', async (req, res) => {
     const session = await mongoose.startSession();
 
     try {
-        const { teamName, soldPrice } = req.body;
+        const { teamId, teamName, soldPrice } = req.body;
         const numericSoldPrice = Number(soldPrice);
 
         if (!Number.isFinite(numericSoldPrice) || numericSoldPrice <= 0) {
@@ -198,6 +207,7 @@ router.put('/sell/:id', async (req, res) => {
 
             const teamWithMaxBid = await getTeamWithDynamicMaxBid({
                 organizerId: req.user.id,
+                teamId,
                 teamName,
                 currentBasePrice: player.basePrice,
                 session
@@ -205,9 +215,10 @@ router.put('/sell/:id', async (req, res) => {
             if (!teamWithMaxBid) throw new Error('TEAM_NOT_FOUND');
 
             if (numericSoldPrice > teamWithMaxBid.maxBid) {
+                const displayName = teamWithMaxBid.teamName || teamName || 'Team';
                 const err = new Error('MAX_BID_BLOCK');
                 err.meta = {
-                    message: `Bid blocked. Max allowed bid for ${teamName} is ₹${teamWithMaxBid.maxBid.toLocaleString()}`,
+                    message: `Bid blocked. Max allowed bid for ${displayName} is ₹${teamWithMaxBid.maxBid.toLocaleString()}`,
                     maxBid: teamWithMaxBid.maxBid,
                     remainingRequiredPlayers: teamWithMaxBid.remainingRequiredPlayers
                 };
@@ -216,7 +227,7 @@ router.put('/sell/:id', async (req, res) => {
 
             const teamUpdate = await Team.findOneAndUpdate(
                 {
-                    teamName,
+                    _id: teamWithMaxBid._id,
                     organizer: req.user.id,
                     remainingPurse: { $gte: numericSoldPrice }
                 },
@@ -226,12 +237,12 @@ router.put('/sell/:id', async (req, res) => {
 
             if (!teamUpdate) throw new Error('PURSE_CONFLICT');
 
-            player.soldTo = teamName;
+            player.soldTo = teamWithMaxBid._id;
             player.soldPrice = numericSoldPrice;
             player.auctionStatus = 'Sold';
             await player.save({ session });
 
-            responsePayload = { message: 'खिलाड़ी बिक गया!', player };
+            responsePayload = { message: 'खिलाड़ी बिक गया!', player, team: teamUpdate };
         });
 
         return res.json(responsePayload);
@@ -254,7 +265,10 @@ router.put('/unsold/:id', async (req, res) => {
         if (player.approvalStatus !== 'Approved' || player.auctionStatus !== 'ReadyForAuction' || player.isIcon) {
             return res.status(409).json({ message: 'Player is not eligible to be marked unsold right now' });
         }
-        player.auctionStatus = 'Unsold'; await player.save();
+        player.auctionStatus = 'Unsold';
+        player.soldTo = null;
+        player.soldPrice = 0;
+        await player.save();
         res.json({ message: "खिलाड़ी अनसोल्ड हो गया!", player });
     } catch (error) { res.status(500).json({ message: "एरर!" }); }
 });
@@ -265,18 +279,22 @@ router.put('/undo/:id', async (req, res) => {
         if (!player) return res.status(404).json({ message: "खिलाड़ी नहीं मिला" });
 
         const wasSold = (player.auctionStatus === 'Sold' || player.auctionStatus === 'Icon') &&
-                        player.soldTo && player.soldTo !== 'Unsold';
+                        Boolean(player.soldTo) && player.soldTo !== 'Unsold';
         const refundAmount = Number(player.soldPrice) || 0;
 
         if (wasSold && refundAmount > 0) {
+            const teamQuery = mongoose.Types.ObjectId.isValid(player.soldTo)
+                ? { _id: player.soldTo, organizer: req.user.id }
+                : { teamName: player.soldTo, organizer: req.user.id };
+
             await Team.findOneAndUpdate(
-                { teamName: player.soldTo, organizer: req.user.id },
+                teamQuery,
                 { $inc: { remainingPurse: refundAmount } }
             );
         }
 
         player.auctionStatus = 'ReadyForAuction';
-        player.soldTo = 'Unsold';
+        player.soldTo = null;
         player.soldPrice = 0;
         await player.save();
 
@@ -298,7 +316,7 @@ router.post('/restore-unsold', async (req, res) => {
             {
                 $set: {
                     auctionStatus: 'ReadyForAuction',
-                    soldTo: 'Unsold',
+                    soldTo: null,
                     soldPrice: 0
                 }
             }
@@ -316,20 +334,25 @@ router.post('/bring-all-back', async (req, res) => {
             organizer: req.user.id,
             approvalStatus: 'Approved',
             auctionStatus: { $in: ['Sold', 'Icon'] },
-            soldTo: { $ne: 'Unsold' },
+            soldTo: { $ne: null },
             soldPrice: { $gt: 0 }
         }).lean();
 
         const refundByTeam = {};
         for (const p of soldPlayers) {
-            if (p.soldTo) {
-                refundByTeam[p.soldTo] = (refundByTeam[p.soldTo] || 0) + (Number(p.soldPrice) || 0);
+            if (p.soldTo && p.soldTo !== 'Unsold') {
+                const teamKey = String(p.soldTo);
+                refundByTeam[teamKey] = (refundByTeam[teamKey] || 0) + (Number(p.soldPrice) || 0);
             }
         }
 
-        const teamUpdates = Object.entries(refundByTeam).map(([teamName, amount]) => {
+        const teamUpdates = Object.entries(refundByTeam).map(([teamKey, amount]) => {
+            const query = mongoose.Types.ObjectId.isValid(teamKey)
+                ? { _id: teamKey, organizer: req.user.id }
+                : { teamName: teamKey, organizer: req.user.id };
+
             return Team.findOneAndUpdate(
-                { teamName, organizer: req.user.id },
+                query,
                 { $inc: { remainingPurse: amount } }
             );
         });
@@ -344,7 +367,7 @@ router.post('/bring-all-back', async (req, res) => {
             {
                 $set: {
                     auctionStatus: 'ReadyForAuction',
-                    soldTo: 'Unsold',
+                    soldTo: null,
                     soldPrice: 0
                 }
             }
@@ -364,7 +387,7 @@ router.post('/reset-auction', async (req, res) => {
             {
                 $set: {
                     auctionStatus: 'ReadyForAuction',
-                    soldTo: 'Unsold',
+                    soldTo: null,
                     soldPrice: 0
                 }
             }
@@ -400,7 +423,7 @@ router.put('/approval/:id', async (req, res) => {
         player.approvalStatus = req.body.status;
         if (req.body.status === 'Approved') {
             player.auctionStatus = 'ReadyForAuction';
-            if (!player.soldTo) player.soldTo = 'Unsold';
+            player.soldTo = null;
             player.soldPrice = 0;
         }
         await player.save();
@@ -436,7 +459,7 @@ router.put('/make-icon/:id', async (req, res) => {
     const session = await mongoose.startSession();
 
     try {
-        const { teamName, iconPrice } = req.body;
+        const { teamId, teamName, iconPrice } = req.body;
         const numericIconPrice = Number(iconPrice);
 
         if (!Number.isFinite(numericIconPrice) || numericIconPrice < 0) {
@@ -452,6 +475,7 @@ router.put('/make-icon/:id', async (req, res) => {
 
             const teamWithMaxBid = await getTeamWithDynamicMaxBid({
                 organizerId: req.user.id,
+                teamId,
                 teamName,
                 currentBasePrice: player.basePrice,
                 session
@@ -459,9 +483,10 @@ router.put('/make-icon/:id', async (req, res) => {
             if (!teamWithMaxBid) throw new Error('TEAM_NOT_FOUND');
 
             if (numericIconPrice > teamWithMaxBid.maxBid) {
+                const displayName = teamWithMaxBid.teamName || teamName || 'Team';
                 const err = new Error('MAX_BID_BLOCK');
                 err.meta = {
-                    message: `Icon price blocked. Max allowed bid for ${teamName} is ₹${teamWithMaxBid.maxBid.toLocaleString()}`,
+                    message: `Icon price blocked. Max allowed bid for ${displayName} is ₹${teamWithMaxBid.maxBid.toLocaleString()}`,
                     maxBid: teamWithMaxBid.maxBid,
                     remainingRequiredPlayers: teamWithMaxBid.remainingRequiredPlayers
                 };
@@ -470,7 +495,7 @@ router.put('/make-icon/:id', async (req, res) => {
 
             const teamUpdate = await Team.findOneAndUpdate(
                 {
-                    teamName,
+                    _id: teamWithMaxBid._id,
                     organizer: req.user.id,
                     remainingPurse: { $gte: numericIconPrice }
                 },
@@ -480,14 +505,14 @@ router.put('/make-icon/:id', async (req, res) => {
 
             if (!teamUpdate) throw new Error('PURSE_CONFLICT');
 
-            player.soldTo = teamName;
+            player.soldTo = teamWithMaxBid._id;
             player.soldPrice = numericIconPrice;
             player.auctionStatus = 'Icon';
             player.isIcon = true;
             player.approvalStatus = 'Approved';
             await player.save({ session });
 
-            responsePayload = { message: 'Icon Assigned!', player };
+            responsePayload = { message: 'Icon Assigned!', player, team: teamUpdate };
         });
 
         return res.json(responsePayload);
@@ -517,15 +542,19 @@ router.put('/remove-icon/:id', async (req, res) => {
             const refundAmount = Number(player.soldPrice);
             if (!Number.isFinite(refundAmount) || refundAmount < 0) throw new Error('INVALID_ICON_PRICE');
 
+            const teamQuery = mongoose.Types.ObjectId.isValid(player.soldTo)
+                ? { _id: player.soldTo, organizer: req.user.id }
+                : { teamName: player.soldTo, organizer: req.user.id };
+
             const team = await Team.findOneAndUpdate(
-                { teamName: player.soldTo, organizer: req.user.id },
+                teamQuery,
                 { $inc: { remainingPurse: refundAmount } },
                 { new: true, session }
             );
             if (!team) throw new Error('TEAM_NOT_FOUND');
 
             player.isIcon = false;
-            player.soldTo = 'Unsold';
+            player.soldTo = null;
             player.soldPrice = 0;
             player.auctionStatus = 'ReadyForAuction';
             await player.save({ session });

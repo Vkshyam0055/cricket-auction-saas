@@ -38,7 +38,7 @@ function Auth() {
         localStorage.setItem('token', res.data.token);
         localStorage.setItem('organizerName', res.data.user.name);
         localStorage.setItem('organizerPhone', phone);
-        localStorage.setItem('organizerPlan', res.data.user.plan || 'Basic'); // <-- नया कोड!
+        localStorage.setItem('organizerPlan', res.data.user.plan || 'Free');
         localStorage.setItem('organizerRole', res.data.user.role || 'Organizer');
         localStorage.setItem('organizerEmail', res.data.user.email || '');
         if (res.data.requiresEmailUpdate) { navigate('/complete-profile-email'); return; }

@@ -34,7 +34,7 @@ const tournamentSchema = new mongoose.Schema({
         photoSize: { type: String, enum: ['small', 'medium', 'large'], default: 'medium' },
         screenView: { type: String, enum: ['live', 'break'], default: 'live' },
         breakView: { type: String, enum: ['teams-dashboard', 'squad-list', 'tournament-summary', 'top-biddings'], default: 'teams-dashboard' },
-        selectedSquadTeam: { type: String, default: '' },
+        selectedSquadTeam: { type: mongoose.Schema.Types.Mixed, default: null },
         version: { type: Number, default: 0 },
         updatedAtMs: { type: Number, default: 0 }
     },    

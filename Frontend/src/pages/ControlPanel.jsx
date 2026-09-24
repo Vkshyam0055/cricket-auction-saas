@@ -72,6 +72,7 @@ function ControlPanel() {
 
   const configVersionRef = useRef(0);
   const configDebounceRef = useRef(null);
+  const lastSyncedConfigRef = useRef(null);
 
   const [actionHistory, setActionHistory] = useState([]);
   const [showResultsModal, setShowResultsModal] = useState(false);
@@ -99,10 +100,31 @@ function ControlPanel() {
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString()}`;
 
-  const getTeamLabel = useCallback((teamName) => {
-    const match = teams.find((team) => team.teamName === teamName);
-    return match?.shortName || teamName || '';
+  const resolveTeam = useCallback((teamRef) => {
+    if (!teamRef) return null;
+    if (typeof teamRef === 'object') {
+      const id = teamRef._id ? String(teamRef._id) : null;
+      if (id) {
+        const found = teams.find((t) => String(t._id) === id);
+        if (found) return found;
+      }
+      return teamRef;
+    }
+    const str = String(teamRef).trim();
+    return teams.find((t) => String(t._id) === str) ||
+           teams.find((t) => t.teamName.trim().toLowerCase() === str.toLowerCase()) ||
+           null;
   }, [teams]);
+
+  const getTeamLabel = useCallback((teamRef) => {
+    const match = resolveTeam(teamRef);
+    return match?.shortName || match?.teamName || (typeof teamRef === 'string' ? teamRef : '') || '';
+  }, [resolveTeam]);
+
+  const getTeamFullName = useCallback((teamRef) => {
+    const match = resolveTeam(teamRef);
+    return match?.teamName || (typeof teamRef === 'string' ? teamRef : '') || '';
+  }, [resolveTeam]);
 
   useEffect(() => {
     localStorage.setItem('currentPlayer', JSON.stringify(currentPlayer));
@@ -125,7 +147,10 @@ function ControlPanel() {
   }, []);
 
   const syncLiveScreenConfig = useCallback((nextConfig) => {
-    if (!socketRef.current?.connected) return;
+    if (!socketRef.current?.connected || !nextConfig) return;
+    const key = `${nextConfig.displayMode}|${nextConfig.layout}|${nextConfig.photoSize}|${nextConfig.screenView}|${nextConfig.breakView}|${nextConfig.selectedSquadTeam}`;
+    if (lastSyncedConfigRef.current === key) return;
+    lastSyncedConfigRef.current = key;
     socketRef.current.emit('liveScreenConfigUpdate', nextConfig);
   }, []);
 
@@ -137,9 +162,9 @@ function ControlPanel() {
   // Map active teams list to team objects
   const activeBiddingTeams = useMemo(() => {
     return activeBiddingList
-      .map((teamName) => teams.find((team) => team.teamName === teamName))
+      .map((item) => resolveTeam(item))
       .filter(Boolean);
-  }, [activeBiddingList, teams]);
+  }, [activeBiddingList, resolveTeam]);
 
   const normalizeCategory = (category) => {
     const value = String(category || '').trim();
@@ -241,7 +266,7 @@ function ControlPanel() {
             // Legitimately sold in current session (hammer confirmation)
             setCurrentPlayer(dbPlayer);
             if (dbPlayer.soldPrice) setCurrentBid(dbPlayer.soldPrice);
-            if (dbPlayer.soldTo) setBiddingTeam(dbPlayer.soldTo);
+            if (dbPlayer.soldTo) setBiddingTeam(dbPlayer.soldTo?._id || dbPlayer.soldTo);
           }
         } else if (dbPlayer.auctionStatus?.trim().toLowerCase() === 'unsold') {
           if (currStatus === 'bidding') {
@@ -337,6 +362,7 @@ function ControlPanel() {
         setSelectedSquadTeam(data.selectedSquadTeam);
       }
       configVersionRef.current = Number(data.version || 0);
+      lastSyncedConfigRef.current = `${data.displayMode || 'night'}|${data.layout || 'classic'}|${data.photoSize || 'medium'}|${data.screenView === 'break' ? 'break' : 'live'}|${data.breakView || 'teams-dashboard'}|${data.selectedSquadTeam !== undefined ? data.selectedSquadTeam : ''}`;
     });
 
     socket.on('sessionExpired', () => {
@@ -391,22 +417,39 @@ function ControlPanel() {
   const breakDataSnapshot = useMemo(() => {
     const soldPlayers = allPlayers
       .filter((player) => String(player.auctionStatus || '').toLowerCase() === 'sold')
-      .map((player) => ({
-        _id: player._id,
-        name: player.name,
-        photoUrl: player.photoUrl,
-        role: player.role,
-        category: normalizeCategory(player.category),
-        soldTo: player.soldTo,
-        soldPrice: Number(player.soldPrice || 0)
-      }));
+      .map((player) => {
+        const teamMatch = resolveTeam(player.soldTo);
+        return {
+          _id: player._id,
+          name: player.name,
+          photoUrl: player.photoUrl,
+          role: player.role,
+          category: normalizeCategory(player.category),
+          soldTo: teamMatch ? {
+            _id: teamMatch._id,
+            teamName: teamMatch.teamName,
+            shortName: teamMatch.shortName,
+            logoUrl: teamMatch.logoUrl || teamMatch.logo || ''
+          } : player.soldTo,
+          soldPrice: Number(player.soldPrice || 0)
+        };
+      });
 
-    const squadsByTeam = soldPlayers.reduce((acc, player) => {
-      const teamName = player.soldTo || 'Unknown Team';
-      if (!acc[teamName]) acc[teamName] = [];
-      acc[teamName].push(player);
-      return acc;
-    }, {});
+    const squadsByTeam = {};
+    for (const player of soldPlayers) {
+      const team = resolveTeam(player.soldTo);
+      const keys = [
+        player.soldTo?._id ? String(player.soldTo._id) : null,
+        player.soldTo ? String(player.soldTo) : null,
+        team?._id ? String(team._id) : null,
+        team?.teamName || null
+      ].filter(Boolean);
+
+      for (const k of new Set(keys)) {
+        if (!squadsByTeam[k]) squadsByTeam[k] = [];
+        squadsByTeam[k].push(player);
+      }
+    }
 
     const unsoldCount = allPlayers.filter((player) => String(player.auctionStatus || '').toLowerCase() === 'unsold').length;
     const readyCount = allPlayers.filter((player) => String(player.auctionStatus || '').toLowerCase() === 'readyforauction').length;
@@ -423,11 +466,13 @@ function ControlPanel() {
 
     // Determine top spending team
     const spendingByTeam = teams.map((team) => {
-      const teamSold = squadsByTeam[team.teamName] || [];
+      const teamSold = squadsByTeam[String(team._id)] || squadsByTeam[team.teamName] || [];
       const spent = teamSold.reduce((sum, p) => sum + Number(p.soldPrice || 0), 0);
       return {
+        _id: team._id,
         teamName: team.teamName,
         shortName: team.shortName,
+        logoUrl: team.logoUrl || team.logo || '',
         spent,
         playersCount: teamSold.length
       };
@@ -445,7 +490,7 @@ function ControlPanel() {
         remainingPurse: Number(team.remainingPurse || 0),
         maxBid: Number(team.maxBid || 0),
         remainingRequiredPlayers: Number(team.remainingRequiredPlayers || 0),
-        squadCount: (squadsByTeam[team.teamName] || []).length
+        squadCount: (squadsByTeam[String(team._id)] || squadsByTeam[team.teamName] || []).length
       })),
       soldPlayers,
       squadsByTeam,
@@ -472,16 +517,20 @@ function ControlPanel() {
   useEffect(() => {
     const syncInterval = setInterval(() => {
       if (currentPlayer && socketRef.current) {
+        const winningTeamObj = teams.find((t) => t._id === biddingTeam || t.teamName === biddingTeam);
         socketRef.current.emit('newLiveBid', {
           bidAmount: currentBid,
-          teamName: biddingTeam,
+          teamId: winningTeamObj?._id || '',
+          teamName: winningTeamObj?.teamName || biddingTeam || '',
+          shortName: winningTeamObj?.shortName || '',
+          logoUrl: winningTeamObj?.logoUrl || winningTeamObj?.logo || '',
           player: currentPlayer,
           status: playerStatus
         });
       }
     }, 2000);
     return () => clearInterval(syncInterval);
-  }, [currentPlayer, currentBid, biddingTeam, playerStatus]);
+  }, [currentPlayer, currentBid, biddingTeam, playerStatus, teams]);
 
   const saveStateToHistory = (actionType, affectedPlayer = null) => {
     setActionHistory((prev) => [
@@ -576,52 +625,56 @@ function ControlPanel() {
   // 1. If team is already in active 4: remains in active 4 (no eviction, update recency)
   // 2. If < 4 teams: add new team
   // 3. If 4 teams and 5th team enters: replace least recently active non-leading team
-  const updateBid = async (teamName, amount, isJump = false) => {
+  const updateBid = async (teamRef, amount, isJump = false) => {
     if (playerStatus !== 'bidding') return;
 
-    const team = teams.find((t) => t.teamName === teamName);
+    const team = resolveTeam(teamRef);
+    if (!team) return;
+
     const newBidAmount = isJump ? amount : currentBid + amount;
 
-    if (team && newBidAmount > team.remainingPurse) {
-      alert(`⚠️ ${teamName} के पास इतने पैसे नहीं हैं!`);
+    if (newBidAmount > team.remainingPurse) {
+      alert(`⚠️ ${team.teamName} के पास इतने पैसे नहीं हैं!`);
       return;
     }
 
-    if (team && newBidAmount > Number(team.maxBid || 0)) {
-      alert(`🚫 ${teamName} का Max Bid ${formatCurrency(team.maxBid)} है। इस लिमिट से ऊपर bid नहीं कर सकते।`);
+    if (newBidAmount > Number(team.maxBid || 0)) {
+      alert(`🚫 ${team.teamName} का Max Bid ${formatCurrency(team.maxBid)} है। इस लिमिट से ऊपर bid नहीं कर सकते।`);
       return;
     }
 
     saveStateToHistory('BID');
 
     setCurrentBid(newBidAmount);
-    setBiddingTeam(teamName);
+    setBiddingTeam(team._id);
     setHasBiddingStarted(true);
 
     const now = Date.now();
-    const nextActivity = { ...teamBidActivity, [teamName]: now };
+    const nextActivity = { ...teamBidActivity, [String(team._id)]: now, [team.teamName]: now };
     let nextList = [...activeBiddingList];
 
-    if (nextList.includes(teamName)) {
-      // 🌟 RULE: The teams keep their original positions/order.
-      // Order must NEVER change merely because they bid again.
-      // Position is preserved in-place, only activity timestamp is updated.
+    // Check if team is already in active 4 (by _id or teamName)
+    const existingIdx = nextList.findIndex((item) => {
+      const match = resolveTeam(item);
+      return match && String(match._id) === String(team._id);
+    });
+
+    if (existingIdx !== -1) {
+      // Retain in-place, store team._id
+      nextList[existingIdx] = team._id;
     } else if (nextList.length < 4) {
-      // Less than 4 teams have bid: append to the next available slot
-      nextList.push(teamName);
+      nextList.push(team._id);
     } else {
-      // 🌟 RULE: When a 5th team bids, replace ONLY the team whose latest bid activity is the oldest.
-      // In-place replacement at that exact slot! Other 3 teams stay in their exact positions.
       let oldestIdx = 0;
-      let oldestTime = nextActivity[nextList[0]] ?? 0;
+      let oldestTime = nextActivity[String(nextList[0])] ?? nextActivity[nextList[0]] ?? 0;
       for (let i = 1; i < nextList.length; i++) {
-        const tTime = nextActivity[nextList[i]] ?? 0;
+        const tTime = nextActivity[String(nextList[i])] ?? nextActivity[nextList[i]] ?? 0;
         if (tTime < oldestTime) {
           oldestTime = tTime;
           oldestIdx = i;
         }
       }
-      nextList[oldestIdx] = teamName;
+      nextList[oldestIdx] = team._id;
     }
 
     setActiveBiddingList(nextList);
@@ -630,7 +683,10 @@ function ControlPanel() {
 
     socketRef.current?.emit('newLiveBid', {
       bidAmount: newBidAmount,
-      teamName: teamName,
+      teamId: team._id,
+      teamName: team.teamName,
+      shortName: team.shortName,
+      logoUrl: team.logoUrl || team.logo || '',
       player: currentPlayer,
       status: playerStatus
     });
@@ -658,28 +714,30 @@ function ControlPanel() {
     }
 
     const basePrice = Number(currentPlayer.basePrice || 0);
-    const selectedTeam = teams.find((team) => team.teamName === directSellTeam);
+    const selectedTeam = resolveTeam(directSellTeam);
     if (!selectedTeam) {
       alert('टीम नहीं मिली।');
       return;
     }
     if (basePrice > Number(selectedTeam.maxBid || 0)) {
-      alert(`🚫 ${getTeamLabel(directSellTeam)} का Max Bid ${formatCurrency(selectedTeam.maxBid)} है।`);
+      alert(`🚫 ${getTeamLabel(selectedTeam)} का Max Bid ${formatCurrency(selectedTeam.maxBid)} है।`);
       return;
     }
 
-    setBiddingTeam(directSellTeam);
+    setBiddingTeam(selectedTeam._id);
     setCurrentBid(basePrice);
     await finalizePlayer('Sold', {
-      soldTeamName: directSellTeam,
+      soldTeamId: selectedTeam._id,
+      soldTeamName: selectedTeam.teamName,
       soldPrice: basePrice
     });
   };
 
   const finalizePlayer = async (status, options = {}) => {
-    const soldTeamName = options.soldTeamName || biddingTeam;
+    const targetTeamRef = options.soldTeamId || options.soldTeamName || biddingTeam;
+    const winningTeam = resolveTeam(targetTeamRef);
     const soldPrice = Number(options.soldPrice || currentBid);
-    if (status === 'Sold' && !soldTeamName) {
+    if (status === 'Sold' && !winningTeam) {
       alert('टीम सेलेक्ट करें!');
       return;
     }
@@ -693,7 +751,7 @@ function ControlPanel() {
     try {
       const token = localStorage.getItem('token');
       const endpoint = status === 'Sold' ? `/api/players/sell/${currentPlayer._id}` : `/api/players/unsold/${currentPlayer._id}`;
-      const payload = status === 'Sold' ? { teamName: soldTeamName, soldPrice } : {};
+      const payload = status === 'Sold' ? { teamId: winningTeam?._id, teamName: winningTeam?.teamName, soldPrice } : {};
 
       await apiRequest({
         method: 'put',
@@ -713,15 +771,18 @@ function ControlPanel() {
       setTeamBidActivity({});
       syncActiveBiddingState('reset');
 
-      await fetchTeamsWithMaxBid();
-      await fetchData();
-
       socketRef.current?.emit('newLiveBid', {
         bidAmount: soldPrice,
-        teamName: soldTeamName,
+        teamId: winningTeam?._id || '',
+        teamName: winningTeam?.teamName || '',
+        shortName: winningTeam?.shortName || '',
+        logoUrl: winningTeam?.logoUrl || winningTeam?.logo || '',
         player: currentPlayer,
         status: status.toLowerCase()
       });
+
+      await fetchTeamsWithMaxBid();
+      await fetchData();
     } catch (error) {
       const backendMessage = error.response?.data?.message;
       if (backendMessage) {
@@ -813,15 +874,19 @@ function ControlPanel() {
     setTeamBidActivity(restoredActivity);
     syncActiveBiddingState('replace', { lastBidActions: restoredActive });
 
-    await fetchTeamsWithMaxBid();
-    await fetchData();
-
+    const restoredTeam = (snap.teams || teams).find((t) => t._id === snap.biddingTeam || t.teamName === snap.biddingTeam);
     socketRef.current?.emit('newLiveBid', {
       bidAmount: snap.currentBid || 0,
-      teamName: snap.biddingTeam || '',
+      teamId: restoredTeam?._id || '',
+      teamName: restoredTeam?.teamName || snap.biddingTeam || '',
+      shortName: restoredTeam?.shortName || '',
+      logoUrl: restoredTeam?.logoUrl || restoredTeam?.logo || '',
       player: snap.currentPlayer,
       status: snap.playerStatus
     });
+
+    await fetchTeamsWithMaxBid();
+    await fetchData();
 
     setActionHistory((prev) => prev.slice(0, -1));
   };
@@ -1015,6 +1080,7 @@ function ControlPanel() {
   // Switch Break View directly
   const handleSwitchBreakView = (view) => {
     setBreakView(view);
+    setScreenView('break');
     configVersionRef.current += 1;
     syncLiveScreenConfig({
       displayMode,
@@ -1031,6 +1097,7 @@ function ControlPanel() {
   // Select team for Squad View
   const handleSelectSquadTeam = (teamName) => {
     setSelectedSquadTeam(teamName);
+    setScreenView('break');
     configVersionRef.current += 1;
     syncLiveScreenConfig({
       displayMode,
@@ -1496,7 +1563,7 @@ function ControlPanel() {
                   >
                     <option value="">Team</option>
                     {teams.map((team) => (
-                      <option key={`base-sell-${team._id}`} value={team.teamName}>
+                      <option key={`base-sell-${team._id}`} value={team._id}>
                         {team.shortName || team.teamName}
                       </option>
                     ))}
@@ -1535,7 +1602,7 @@ function ControlPanel() {
                       );
                     }
 
-                    const isHighestBidder = biddingTeam === team.teamName;
+                    const isHighestBidder = Boolean(biddingTeam) && (String(biddingTeam) === String(team._id) || biddingTeam === team.teamName);
                     return (
                       <div
                         key={`active-${team._id}`}
@@ -1546,9 +1613,18 @@ function ControlPanel() {
                         }`}
                       >
                         <div className="flex items-center justify-between gap-1 mb-0.5">
-                          <h4 className="font-black text-xs text-slate-900 truncate" title={team.teamName}>
-                            {team.shortName || team.teamName}
-                          </h4>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            {team.logoUrl || team.logo ? (
+                              <img src={team.logoUrl || team.logo} alt="" className="w-5 h-5 rounded object-contain bg-white border border-purple-200 shrink-0" />
+                            ) : (
+                              <div className="w-5 h-5 rounded bg-purple-700 text-white font-black text-[9px] flex items-center justify-center shrink-0 uppercase">
+                                {team.shortName || team.teamName.slice(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                            <h4 className="font-black text-xs text-slate-900 truncate" title={team.teamName}>
+                              {team.shortName || team.teamName}
+                            </h4>
+                          </div>
                           {isHighestBidder ? (
                             <span className="text-[9px] px-1 rounded bg-amber-400 text-amber-950 font-black shrink-0">
                               Leader
@@ -1566,21 +1642,21 @@ function ControlPanel() {
                         <div className="grid grid-cols-3 gap-1">
                           <button
                             disabled={currentBid + btn1 > Number(team.maxBid || 0) || currentBid + btn1 > Number(team.remainingPurse || 0)}
-                            onClick={() => updateBid(team.teamName, btn1)}
+                            onClick={() => updateBid(team._id, btn1)}
                             className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
                           >
                             {formatBidButton(btn1)}
                           </button>
                           <button
                             disabled={currentBid + btn2 > Number(team.maxBid || 0) || currentBid + btn2 > Number(team.remainingPurse || 0)}
-                            onClick={() => updateBid(team.teamName, btn2)}
+                            onClick={() => updateBid(team._id, btn2)}
                             className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
                           >
                             {formatBidButton(btn2)}
                           </button>
                           <button
                             disabled={currentBid + btn3 > Number(team.maxBid || 0) || currentBid + btn3 > Number(team.remainingPurse || 0)}
-                            onClick={() => updateBid(team.teamName, btn3)}
+                            onClick={() => updateBid(team._id, btn3)}
                             className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
                           >
                             {formatBidButton(btn3)}
@@ -1656,7 +1732,7 @@ function ControlPanel() {
               <div className="flex-1 min-h-0 overflow-y-auto pr-1">
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1.5 auto-rows-fr">
                   {filteredTeams.map((team) => {
-                    const isHighestBidder = biddingTeam === team.teamName;
+                    const isHighestBidder = Boolean(biddingTeam) && (String(biddingTeam) === String(team._id) || biddingTeam === team.teamName);
                     return (
                       <div
                         key={team._id}
@@ -1668,14 +1744,23 @@ function ControlPanel() {
                       >
                         {/* ROW 1: TEAM NAME & PURSE */}
                         <div className="flex justify-between items-center mb-0.5 gap-1">
-                          <h4 className="font-bold text-xs text-slate-900 truncate" title={team.teamName}>
-                            {team.shortName || team.teamName}
-                            {isHighestBidder && (
-                              <span className="ml-1 text-[9px] text-amber-800 bg-amber-200/80 px-1 py-0.2 rounded font-black">
-                                ★ Leader
-                              </span>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            {team.logoUrl || team.logo ? (
+                              <img src={team.logoUrl || team.logo} alt="" className="w-5 h-5 rounded object-contain bg-white border border-slate-200 shrink-0" />
+                            ) : (
+                              <div className="w-5 h-5 rounded bg-gradient-to-br from-slate-700 to-slate-900 text-white font-black text-[9px] flex items-center justify-center shrink-0 uppercase">
+                                {team.shortName || team.teamName.slice(0, 2).toUpperCase()}
+                              </div>
                             )}
-                          </h4>
+                            <h4 className="font-bold text-xs text-slate-900 truncate" title={team.teamName}>
+                              {team.shortName || team.teamName}
+                              {isHighestBidder && (
+                                <span className="ml-1 text-[9px] text-amber-800 bg-amber-200/80 px-1 py-0.2 rounded font-black">
+                                  ★ Leader
+                                </span>
+                              )}
+                            </h4>
+                          </div>
                           <span
                             className={`font-black text-xs shrink-0 ${
                               Number(team.remainingPurse || 0) < 50000 ? 'text-rose-600' : 'text-emerald-700'
@@ -1698,7 +1783,7 @@ function ControlPanel() {
                               currentBid + btn1 > Number(team.maxBid || 0) ||
                               currentBid + btn1 > Number(team.remainingPurse || 0)
                             }
-                            onClick={() => updateBid(team.teamName, btn1)}
+                            onClick={() => updateBid(team._id, btn1)}
                             className="bg-blue-50 text-blue-800 font-bold rounded py-0.5 text-[10px] hover:bg-blue-100 border border-blue-200 disabled:opacity-30 disabled:cursor-not-allowed transition"
                           >
                             {formatBidButton(btn1)}
@@ -1708,7 +1793,7 @@ function ControlPanel() {
                               currentBid + btn2 > Number(team.maxBid || 0) ||
                               currentBid + btn2 > Number(team.remainingPurse || 0)
                             }
-                            onClick={() => updateBid(team.teamName, btn2)}
+                            onClick={() => updateBid(team._id, btn2)}
                             className="bg-blue-50 text-blue-800 font-bold rounded py-0.5 text-[10px] hover:bg-blue-100 border border-blue-200 disabled:opacity-30 disabled:cursor-not-allowed transition"
                           >
                             {formatBidButton(btn2)}
@@ -1718,7 +1803,7 @@ function ControlPanel() {
                               currentBid + btn3 > Number(team.maxBid || 0) ||
                               currentBid + btn3 > Number(team.remainingPurse || 0)
                             }
-                            onClick={() => updateBid(team.teamName, btn3)}
+                            onClick={() => updateBid(team._id, btn3)}
                             className="bg-blue-50 text-blue-800 font-bold rounded py-0.5 text-[10px] hover:bg-blue-100 border border-blue-200 disabled:opacity-30 disabled:cursor-not-allowed transition"
                           >
                             {formatBidButton(btn3)}
@@ -1757,7 +1842,7 @@ function ControlPanel() {
           if (!resultsSearchQuery.trim()) return true;
           const q = resultsSearchQuery.trim().toLowerCase();
           const nameMatch = p.name?.toLowerCase().includes(q);
-          const teamMatch = p.soldTo?.toLowerCase().includes(q) || getTeamLabel(p.soldTo)?.toLowerCase().includes(q);
+          const teamMatch = getTeamLabel(p.soldTo)?.toLowerCase().includes(q) || getTeamFullName(p.soldTo)?.toLowerCase().includes(q);
           const roleMatch = p.role?.toLowerCase().includes(q);
           const catMatch = p.category?.toLowerCase().includes(q);
           return nameMatch || teamMatch || roleMatch || catMatch;

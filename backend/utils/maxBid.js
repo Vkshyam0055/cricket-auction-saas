@@ -22,8 +22,8 @@ const calculateTeamMaxBid = ({ remainingPurse, remainingRequiredPlayers, current
 
 const buildSquadCountMap = (squadCounts) => new Map(
   (squadCounts || [])
-    .filter((row) => typeof row?._id === 'string' && row._id && row._id !== 'Unsold')
-    .map((row) => [row._id, safeNumber(row.count, 0)])
+    .filter((row) => row?._id && row._id !== 'Unsold')
+    .map((row) => [String(row._id), safeNumber(row.count, 0)])
 );
 
 const getAuctionStateForOrganizer = async ({ organizerId, session = null }) => {
@@ -59,9 +59,14 @@ const decorateTeamsWithMaxBid = ({ teams, auctionState, currentBasePrice }) => {
   );
 
   return (teams || []).map((team) => {
+    const teamIdStr = String(team._id || '');
     const ownedPlayers = Math.max(
       0,
-      safeNumber(auctionState?.squadCountMap?.get(team.teamName), 0)
+      safeNumber(
+        auctionState?.squadCountMap?.get(teamIdStr) ??
+        auctionState?.squadCountMap?.get(team.teamName),
+        0
+      )
     );
 
     const remainingRequiredPlayers = Math.max(

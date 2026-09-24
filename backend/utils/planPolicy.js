@@ -121,10 +121,27 @@ const resolveEffectivePlan = (user) => {
   return normalizePlanName(user?.plan || 'Free');
 };
 
+const DEFAULT_REGISTRATION_PLAN = 'Free';
+
+const getDefaultRegistrationPlan = async () => {
+  try {
+    const Plan = require('../models/Plan');
+    const freePlan = await Plan.findOne({ name: 'Free' }).lean();
+    if (freePlan && CANONICAL_PLAN_NAMES.includes(freePlan.name)) {
+      return freePlan.name;
+    }
+  } catch (err) {
+    // Fallback if Plan collection is temporarily unreachable or in mock tests
+  }
+  return DEFAULT_REGISTRATION_PLAN;
+};
+
 module.exports = {
   CANONICAL_PLAN_NAMES,
   PLAN_POLICIES: DEFAULT_PLAN_POLICIES,
   DEFAULT_PLAN_POLICIES,
+  DEFAULT_REGISTRATION_PLAN,
+  getDefaultRegistrationPlan,
   normalizePlanName,
   isSupportedPlanInput,
   getPolicyByPlanName,

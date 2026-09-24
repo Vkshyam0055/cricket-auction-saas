@@ -18,7 +18,7 @@ const playerSchema = new mongoose.Schema({
     source: { type: String, enum: ['Organizer', 'PublicRegistration'], default: 'PublicRegistration' },
     isIcon: { type: Boolean, default: false }, 
 
-    soldTo: { type: String, default: 'Unsold' },
+    soldTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: null },
     soldPrice: { type: Number, default: 0 },
     auctionStatus: { type: String, default: 'Pending' },
 

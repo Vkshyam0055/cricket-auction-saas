@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { TournamentContext } from '../context/TournamentContext';
@@ -59,6 +59,7 @@ function LiveScreen() {
   const [currentPlayer, setCurrentPlayer] = useState(null);
   const [liveBid, setLiveBid] = useState(0);
   const [liveTeam, setLiveTeam] = useState('');
+  const [liveTeamData, setLiveTeamData] = useState(null);
   const [playerStatus, setPlayerStatus] = useState('bidding');
 
   const [displayMode, setDisplayMode] = useState('night');
@@ -96,6 +97,12 @@ function LiveScreen() {
     socket.on('updateAudienceScreen', (data) => {
       setLiveBid(data.bidAmount || 0);
       setLiveTeam(data.teamName || '');
+      setLiveTeamData(data.teamId || data.logoUrl ? {
+        _id: data.teamId,
+        teamName: data.teamName,
+        shortName: data.shortName,
+        logoUrl: data.logoUrl
+      } : null);
       setPlayerStatus(data.status || 'bidding');
       if (data.player !== undefined) {
         setCurrentPlayer(data.player);
@@ -162,14 +169,71 @@ function LiveScreen() {
   const photoWidthClass = PHOTO_SIZE_CLASS[photoSize] || PHOTO_SIZE_CLASS.medium;
   const effectiveScreenView = screenView;
 
+  const { teamsById, teamsByName } = useMemo(() => {
+    const byId = new Map();
+    const byName = new Map();
+    teams.forEach((t) => {
+      if (t?._id) byId.set(String(t._id), t);
+      if (t?.teamName) byName.set(String(t.teamName).trim().toLowerCase(), t);
+    });
+    return { teamsById: byId, teamsByName: byName };
+  }, [teams]);
+
+  // Resolve team from teamRef (handles ObjectId, populated object, or teamName string)
+  const resolveTeam = useCallback((teamRef) => {
+    if (!teamRef) return null;
+    if (typeof teamRef === 'object') {
+      const id = teamRef._id ? String(teamRef._id) : null;
+      if (id) {
+        const found = teamsById.get(id);
+        if (found) return found;
+      }
+      return teamRef;
+    }
+    const str = String(teamRef).trim();
+    if (!str) return null;
+    return teamsById.get(str) ||
+           teamsByName.get(str.toLowerCase()) ||
+           null;
+  }, [teamsById, teamsByName]);
+
+  const getTeamFullName = (teamRef) => {
+    const match = resolveTeam(teamRef);
+    if (match?.teamName) return match.teamName;
+    if (typeof teamRef === 'object' && teamRef?.teamName) return teamRef.teamName;
+    if (typeof teamRef === 'string') return teamRef;
+    return 'Team';
+  };
+
+  const getTeamShortName = (teamRef) => {
+    const match = resolveTeam(teamRef);
+    if (match?.shortName) return match.shortName;
+    if (match?.teamName) return match.teamName.slice(0, 3).toUpperCase();
+    if (typeof teamRef === 'object') return teamRef?.shortName || teamRef?.teamName?.slice(0, 3).toUpperCase() || 'TM';
+    if (typeof teamRef === 'string') return teamRef.slice(0, 3).toUpperCase();
+    return 'TM';
+  };
+
+  const getTeamLogo = (teamRef) => {
+    const match = resolveTeam(teamRef);
+    return match?.logoUrl || match?.logo || (typeof teamRef === 'object' ? (teamRef?.logoUrl || teamRef?.logo || '') : '');
+  };
+
+  // Resolve active bidder team object for logos & abbreviations
+  const activeBidderTeam = resolveTeam(liveTeamData) || resolveTeam(liveTeam) || liveTeamData;
+  const activeBidderLogo = getTeamLogo(activeBidderTeam);
+  const activeBidderShortName = getTeamShortName(activeBidderTeam);
+  const activeBidderFullName = getTeamFullName(activeBidderTeam) || liveTeam || '';
+
   const renderBreakView = () => {
     /* ========================================================================= */
     /* 🌟 1. SQUAD VIEW (REQUIREMENT 7) - UP TO 20 PLAYERS, NON-SCROLLABLE 🌟 */
     /* ========================================================================= */
     if (breakView === 'squad-list') {
-      const activeTeamName = selectedSquadTeam || teams[0]?.teamName || Object.keys(squadsByTeam)[0] || '';
-      const currentTeamObj = teams.find((t) => t.teamName === activeTeamName);
-      const teamSquadPlayers = squadsByTeam[activeTeamName] || [];
+      const currentTeamObj = resolveTeam(selectedSquadTeam) || teams[0];
+      const activeTeamName = currentTeamObj?.teamName || '';
+      const teamSquadPlayers = (currentTeamObj?._id && squadsByTeam[String(currentTeamObj._id)]) ||
+                               squadsByTeam[activeTeamName] || [];
       const totalTeamSpent = teamSquadPlayers.reduce((sum, p) => sum + Number(p.soldPrice || 0), 0);
       const totalPurse = Number(currentTeamObj?.totalPurse || 0);
       const remainingPurse = Number(currentTeamObj?.remainingPurse || 0);
@@ -383,9 +447,15 @@ function LiveScreen() {
 
       // Top 5 teams by spending for the bar chart
       const teamSpending = teams.map((t) => {
-        const teamSold = squadsByTeam[t.teamName] || [];
+        const teamSold = (t._id && squadsByTeam[String(t._id)]) || squadsByTeam[t.teamName] || [];
         const spent = teamSold.reduce((s, p) => s + Number(p.soldPrice || 0), 0);
-        return { teamName: t.teamName, shortName: t.shortName, spent };
+        return {
+          _id: t._id,
+          teamName: t.teamName,
+          shortName: t.shortName,
+          logoUrl: t.logoUrl || t.logo || '',
+          spent
+        };
       }).sort((a, b) => b.spent - a.spent).slice(0, 5);
       const maxTeamSpent = teamSpending.length > 0 ? teamSpending[0].spent : 1;
 
@@ -434,9 +504,14 @@ function LiveScreen() {
                       <p className={`text-[11px] font-bold mt-0.5 ${modeTheme.mutedText}`}>{summary.highestBid.role || 'Player'} {summary.highestBid.category ? `• ${summary.highestBid.category}` : ''}</p>
                     </div>
                   </div>
-                  <div className={`rounded-lg border p-2 flex items-center justify-between ${modeTheme.panel}`}>
+                  <div className={`rounded-lg border p-2 flex items-center justify-between gap-2 ${modeTheme.panel}`}>
                     <span className="text-2xl lg:text-3xl font-black text-emerald-400">₹{Number(summary.highestBid.soldPrice || 0).toLocaleString()}</span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-500/15 text-indigo-300 border border-indigo-500/30`}>Acquired by {summary.highestBid.soldTo}</span>
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 max-w-[65%]">
+                      {getTeamLogo(summary.highestBid.soldTo) && (
+                        <img src={getTeamLogo(summary.highestBid.soldTo)} alt="" className="w-4 h-4 rounded object-cover shrink-0" />
+                      )}
+                      <span className="text-[10px] font-bold truncate">Acquired by {getTeamFullName(summary.highestBid.soldTo)}</span>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -449,9 +524,14 @@ function LiveScreen() {
               <span className="text-[9px] uppercase font-black text-indigo-400 tracking-widest block mb-1">💼 Top Spending Franchise</span>
               {summary.topSpendingTeam ? (
                 <div className="flex-1 flex flex-col justify-center items-center text-center">
-                  <h3 className="text-xl lg:text-2xl font-black truncate max-w-full">{summary.topSpendingTeam.teamName}</h3>
-                  {summary.topSpendingTeam.shortName && (
-                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-md mt-1 border ${modeTheme.panel}`}>{summary.topSpendingTeam.shortName}</span>
+                  <div className="flex items-center justify-center gap-2 mb-1">
+                    {getTeamLogo(summary.topSpendingTeam) && (
+                      <img src={getTeamLogo(summary.topSpendingTeam)} alt="" className="w-6 h-6 rounded-md object-cover border border-indigo-400/50 shrink-0" />
+                    )}
+                    <h3 className="text-xl lg:text-2xl font-black truncate max-w-full">{getTeamFullName(summary.topSpendingTeam)}</h3>
+                  </div>
+                  {getTeamShortName(summary.topSpendingTeam) && (
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-md border ${modeTheme.panel}`}>{getTeamShortName(summary.topSpendingTeam)}</span>
                   )}
                   <p className={`text-[11px] font-bold mt-1.5 ${modeTheme.mutedText}`}><span className="text-amber-400 font-black">{summary.topSpendingTeam.playersCount}</span> Players Acquired</p>
                   <div className={`rounded-lg border p-2 mt-2 w-full ${modeTheme.panel}`}>
@@ -517,7 +597,9 @@ function LiveScreen() {
                       <h4 className="font-black text-[11px] truncate max-w-full">{player.name}</h4>
                       <p className={`text-[9px] font-semibold ${modeTheme.mutedText}`}>{player.role || 'Player'}</p>
                       <span className="font-black text-xs text-emerald-400 mt-0.5">₹{Number(player.soldPrice || 0).toLocaleString()}</span>
-                      <span className={`text-[8px] font-bold mt-0.5 px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 truncate max-w-full`}>{player.soldTo}</span>
+                      <span className={`text-[8px] font-bold mt-0.5 px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 truncate max-w-full`}>
+                        {getTeamShortName(player.soldTo) || getTeamFullName(player.soldTo)}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -532,8 +614,11 @@ function LiveScreen() {
               {teamSpending.length > 0 ? (
                 <div className="space-y-1.5">
                   {teamSpending.map((team, idx) => (
-                    <div key={team.teamName} className="flex items-center gap-2 text-xs">
+                    <div key={team._id || team.teamName} className="flex items-center gap-2 text-xs">
                       <span className={`w-5 text-center font-black shrink-0 ${idx === 0 ? 'text-amber-400' : idx === 1 ? 'text-slate-300' : idx === 2 ? 'text-amber-600' : modeTheme.mutedText}`}>{idx + 1}</span>
+                      {team.logoUrl ? (
+                        <img src={team.logoUrl} alt="" className="w-4 h-4 rounded object-cover shrink-0" />
+                      ) : null}
                       <span className="font-bold truncate w-24 lg:w-32 shrink-0">{team.shortName || team.teamName}</span>
                       <div className="flex-1 h-3 rounded-full overflow-hidden bg-slate-800/50">
                         <div
@@ -708,12 +793,26 @@ function LiveScreen() {
 
                     {/* Team */}
                     <div className="col-span-3 flex items-center gap-2 min-w-0">
-                      <span className="px-1.5 py-0.5 rounded bg-indigo-600 text-white font-black text-[9px] shrink-0 border border-indigo-400/40">
-                        {player.soldTo?.slice(0, 3).toUpperCase() || 'TM'}
+                      {getTeamLogo(player.soldTo) ? (
+                        <img
+                          src={getTeamLogo(player.soldTo)}
+                          alt={getTeamFullName(player.soldTo)}
+                          className="w-5 h-5 rounded object-cover border border-amber-400/50 shadow-sm shrink-0"
+                          onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded bg-indigo-600 text-white font-black text-[9px] shrink-0 border border-indigo-400/40">
+                          {getTeamShortName(player.soldTo)}
+                        </span>
+                      )}
+                      <span className="font-bold text-xs truncate" title={getTeamFullName(player.soldTo)}>
+                        {getTeamFullName(player.soldTo)}
                       </span>
-                      <span className="font-bold text-xs truncate" title={player.soldTo}>
-                        {player.soldTo || 'Team'}
-                      </span>
+                      {getTeamLogo(player.soldTo) && getTeamShortName(player.soldTo) && (
+                        <span className="text-[9px] font-black px-1 py-0.2 rounded bg-white/10 text-amber-300 border border-amber-400/20 shrink-0">
+                          {getTeamShortName(player.soldTo)}
+                        </span>
+                      )}
                     </div>
 
                     {/* Status */}
@@ -782,7 +881,7 @@ function LiveScreen() {
         {/* Table Rows */}
         <div className="flex-1 min-h-0 flex flex-col justify-between gap-1 mt-1 overflow-hidden">
           {teamList.map((team, idx) => {
-            const teamSold = squadsByTeam[team.teamName] || [];
+            const teamSold = (team._id && squadsByTeam[String(team._id)]) || squadsByTeam[team.teamName] || [];
             const spent = teamSold.reduce((sum, p) => sum + Number(p.soldPrice || 0), 0);
             const boughtCount = teamSold.length;
             const maxRequired = Number(team.remainingRequiredPlayers || 0) + boughtCount;
@@ -969,9 +1068,16 @@ function LiveScreen() {
               <span className={`text-xs lg:text-sm font-bold uppercase ${modeTheme.mutedText}`}>
                 Highest Bidder
               </span>
-              <span className={`text-xl lg:text-2xl font-black capitalize ${modeTheme.bidderText}`}>
-                {liveTeam}
-              </span>
+              <div className="flex items-center gap-2 min-w-0">
+                {activeBidderLogo ? (
+                  <img src={activeBidderLogo} alt={activeBidderFullName} className="w-8 h-8 rounded-lg object-cover border border-amber-400/60 shadow-sm shrink-0" />
+                ) : activeBidderShortName ? (
+                  <span className="text-xs font-black px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/40 shrink-0">{activeBidderShortName}</span>
+                ) : null}
+                <span className={`text-xl lg:text-2xl font-black capitalize truncate ${modeTheme.bidderText}`}>
+                  {activeBidderFullName}
+                </span>
+              </div>
             </div>
           )}
         </div>
@@ -1040,13 +1146,18 @@ function LiveScreen() {
 
         {/* Winning Team Banner */}
         <div className={`p-4 lg:p-5 rounded-2xl border shadow-lg flex items-center justify-between gap-4 shrink-0 ${liveTeam ? modeTheme.strongPanel : modeTheme.panel}`}>
-          <div className="min-w-0">
-            <span className={`text-[10px] uppercase font-black tracking-widest block ${modeTheme.mutedText}`}>
-              Current Leader
-            </span>
-            <span className={`text-2xl lg:text-3xl font-black uppercase truncate block ${liveTeam ? modeTheme.bidderText : 'text-slate-400'}`}>
-              {liveTeam || 'No Active Bidder'}
-            </span>
+          <div className="flex items-center gap-3 min-w-0">
+            {activeBidderLogo ? (
+              <img src={activeBidderLogo} alt={activeBidderFullName} className="w-12 h-12 rounded-xl object-cover border-2 border-amber-400 shadow-md shrink-0" />
+            ) : null}
+            <div className="min-w-0">
+              <span className={`text-[10px] uppercase font-black tracking-widest block ${modeTheme.mutedText}`}>
+                Current Leader
+              </span>
+              <span className={`text-2xl lg:text-3xl font-black uppercase truncate block ${liveTeam ? modeTheme.bidderText : 'text-slate-400'}`}>
+                {activeBidderFullName || 'No Active Bidder'}
+              </span>
+            </div>
           </div>
           {liveTeam && (
             <span className="px-3 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 font-black text-xs uppercase tracking-wider shrink-0">
@@ -1128,13 +1239,18 @@ function LiveScreen() {
             </p>
           </div>
 
-          <div className={`p-4 lg:p-5 rounded-xl border shadow-md flex flex-col justify-center shrink-0 ${liveTeam ? modeTheme.strongPanel : modeTheme.panel}`}>
-            <span className={`text-[10px] uppercase font-bold tracking-widest block mb-0.5 ${modeTheme.mutedText}`}>
-              Highest Bidder Team
-            </span>
-            <span className={`text-2xl font-black uppercase truncate ${liveTeam ? modeTheme.bidderText : 'text-slate-400'}`}>
-              {liveTeam || 'Waiting for Bids'}
-            </span>
+          <div className={`p-4 lg:p-5 rounded-xl border shadow-md flex items-center gap-3.5 shrink-0 ${liveTeam ? modeTheme.strongPanel : modeTheme.panel}`}>
+            {activeBidderLogo ? (
+              <img src={activeBidderLogo} alt={activeBidderFullName} className="w-11 h-11 rounded-xl object-cover border-2 border-amber-400/70 shadow-sm shrink-0" />
+            ) : null}
+            <div className="min-w-0">
+              <span className={`text-[10px] uppercase font-bold tracking-widest block mb-0.5 ${modeTheme.mutedText}`}>
+                Highest Bidder Team
+              </span>
+              <span className={`text-2xl font-black uppercase truncate block ${liveTeam ? modeTheme.bidderText : 'text-slate-400'}`}>
+                {activeBidderFullName || 'Waiting for Bids'}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -1213,13 +1329,17 @@ function LiveScreen() {
 
         {/* Deck Item 3: Highest Bidder */}
         <div className="flex items-center gap-3 pl-4 lg:border-l border-slate-700/60 shrink-0">
-          <span className="text-2xl">👑</span>
+          {activeBidderLogo ? (
+            <img src={activeBidderLogo} alt={activeBidderFullName} className="w-10 h-10 rounded-xl object-cover border border-amber-400 shadow-sm shrink-0" />
+          ) : (
+            <span className="text-2xl">👑</span>
+          )}
           <div className="text-right">
             <span className={`text-[10px] font-bold uppercase tracking-wider block ${modeTheme.mutedText}`}>
               Leading Bidder
             </span>
             <span className={`text-xl lg:text-2xl font-black uppercase ${liveTeam ? modeTheme.bidderText : 'text-slate-400'}`}>
-              {liveTeam || 'No Bids'}
+              {activeBidderFullName || 'No Bids'}
             </span>
           </div>
         </div>
@@ -1307,7 +1427,7 @@ function LiveScreen() {
       <main className="relative z-10 flex-1 min-h-0 overflow-hidden p-3 lg:p-4 flex flex-col">
         {/* BREAK CONTENT VIEW */}
         <div
-          className={`h-full flex flex-col min-h-0 overflow-hidden transition-all duration-500 ${
+          className={`h-full flex flex-col min-h-0 overflow-hidden transition-opacity duration-150 ${
             effectiveScreenView === 'break' ? 'opacity-100' : 'opacity-0 pointer-events-none absolute inset-0 p-3 lg:p-4'
           }`}
         >
@@ -1316,7 +1436,7 @@ function LiveScreen() {
 
         {/* LIVE AUCTION PLAYER VIEW */}
         <div
-          className={`h-full flex flex-col min-h-0 overflow-hidden transition-all duration-500 ${
+          className={`h-full flex flex-col min-h-0 overflow-hidden transition-opacity duration-150 ${
             effectiveScreenView === 'live' ? 'opacity-100' : 'opacity-0 pointer-events-none absolute inset-0 p-3 lg:p-4'
           }`}
         >
@@ -1337,12 +1457,15 @@ function LiveScreen() {
               </h1>
               {liveTeam && (
                 <div className="mt-4 sm:mt-5 bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 px-6 py-2.5 rounded-2xl flex items-center gap-4 sm:gap-6 shadow-2xl border-2 border-emerald-300">
+                  {activeBidderLogo ? (
+                    <img src={activeBidderLogo} alt={activeBidderFullName} className="w-12 h-12 rounded-xl object-cover border-2 border-slate-900 shadow-md shrink-0 bg-white/20" />
+                  ) : null}
                   <div className="text-left">
                     <span className="text-[10px] uppercase font-black tracking-wider block text-slate-900/80">
                       Bought By
                     </span>
                     <p className="text-xl sm:text-2xl lg:text-3xl font-black uppercase leading-tight">
-                      {liveTeam}
+                      {activeBidderFullName}
                     </p>
                   </div>
                   <div className="border-l-2 border-slate-900/30 pl-4 sm:pl-6 text-right">

@@ -1,5 +1,6 @@
 const express = require('express');
 const Team = require('../models/Team');
+const Player = require('../models/Player');
 const User = require('../models/User');
 const fetchOrganizer = require('../middleware/fetchOrganizer');
 const { getPolicyByPlanName, getEffectivePlanPolicy, resolveEffectivePlan } = require('../utils/planPolicy');
@@ -24,12 +25,20 @@ const buildTeamPayload = ({ teamName, shortName, totalPurse, ownerName, mobile, 
 router.post('/', async (req, res) => {
   try {
     const { teamName, shortName, totalPurse, ownerName, mobile, logoUrl } = req.body;
+    const trimmedTeamName = String(teamName || '').trim();
+    if (!trimmedTeamName) {
+      return res.status(400).json({ message: 'Team name is required.' });
+    }
+
     const normalizedShortName = String(shortName || '').trim().toUpperCase();
     if (!normalizedShortName) {
       return res.status(400).json({ message: 'Short name is required.' });
     }
+    if (!/^[A-Z0-9]{1,5}$/.test(normalizedShortName)) {
+      return res.status(400).json({ message: 'Short name must be 1 to 5 alphanumeric characters (A-Z, 0-9).' });
+    }
 
-    const duplicateTeam = await Team.findOne({ teamName, organizer: req.user.id });
+    const duplicateTeam = await Team.findOne({ teamName: trimmedTeamName, organizer: req.user.id });
     if (duplicateTeam) {
       return res.status(400).json({ message: 'यह टीम पहले से मौजूद है!' });
     }
@@ -39,7 +48,7 @@ router.post('/', async (req, res) => {
     }
 
     const teamPayload = buildTeamPayload({
-      teamName,
+      teamName: trimmedTeamName,
       shortName: normalizedShortName,
       totalPurse,
       ownerName,
@@ -110,10 +119,28 @@ router.get('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { teamName, shortName, totalPurse, remainingPurse, ownerName, mobile, logoUrl } = req.body;
+    const trimmedTeamName = String(teamName || '').trim();
+    if (!trimmedTeamName) {
+      return res.status(400).json({ message: 'Team name is required.' });
+    }
+
     const normalizedShortName = String(shortName || '').trim().toUpperCase();
     if (!normalizedShortName) {
       return res.status(400).json({ message: 'Short name is required.' });
     }
+    if (!/^[A-Z0-9]{1,5}$/.test(normalizedShortName)) {
+      return res.status(400).json({ message: 'Short name must be 1 to 5 alphanumeric characters (A-Z, 0-9).' });
+    }
+
+    const duplicateTeam = await Team.findOne({
+      _id: { $ne: req.params.id },
+      teamName: trimmedTeamName,
+      organizer: req.user.id
+    });
+    if (duplicateTeam) {
+      return res.status(400).json({ message: 'यह टीम नाम पहले से मौजूद है!' });
+    }
+
     const duplicateShortName = await Team.findOne({
       _id: { $ne: req.params.id },
       shortName: normalizedShortName,
@@ -125,7 +152,7 @@ router.put('/:id', async (req, res) => {
 
     const updatedTeam = await Team.findOneAndUpdate(
       { _id: req.params.id, organizer: req.user.id },
-      { teamName, shortName: normalizedShortName, totalPurse, remainingPurse, ownerName, mobile, logoUrl, logo: logoUrl || '' },
+      { teamName: trimmedTeamName, shortName: normalizedShortName, totalPurse, remainingPurse, ownerName, mobile, logoUrl, logo: logoUrl || '' },
       { new: true }
     );
 
@@ -142,16 +169,31 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    const deletedTeam = await Team.findOneAndDelete({
+    const teamToDelete = await Team.findOne({
       _id: req.params.id,
       organizer: req.user.id
     });
 
-    if (!deletedTeam) {
+    if (!teamToDelete) {
       return res.status(404).json({ message: 'टीम नहीं मिली।' });
     }
 
-    return res.json({ message: 'टीम डिलीट हो गई।', team: deletedTeam });
+    // Safety guard: check if any players reference this team
+    const soldPlayerCount = await Player.countDocuments({
+      organizer: req.user.id,
+      auctionStatus: { $in: ['Sold', 'Icon'] },
+      soldTo: req.params.id
+    });
+
+    if (soldPlayerCount > 0) {
+      return res.status(400).json({
+        message: `इस टीम में ${soldPlayerCount} खिलाड़ी सोल्ड/आइकन हैं। टीम डिलीट करने से पहले ऑक्शन रीसेट करें या खिलाड़ियों को अनसोल्ड करें।`
+      });
+    }
+
+    await Team.deleteOne({ _id: req.params.id, organizer: req.user.id });
+
+    return res.json({ message: 'टीम डिलीट हो गई।', team: teamToDelete });
   } catch (error) {
     console.error('Team delete error:', error.message);
     return res.status(500).json({ message: 'एरर: टीम डिलीट नहीं हो पाई।' });

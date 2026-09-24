@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const User = require('../models/User');
-const { resolveEffectivePlan } = require('../utils/planPolicy');
+const { resolveEffectivePlan, getDefaultRegistrationPlan } = require('../utils/planPolicy');
 const { createSessionAndToken, getActiveDeviceIdsForUser, revokeSessionById } = require('../utils/sessionAuth');
 
 const createResetToken = () => crypto.randomBytes(32).toString('hex');
@@ -67,7 +67,8 @@ router.post('/register', async (req, res) => {
     let user = await User.findOne({ $or: [{ phone }, { email: normalizedEmail }] });
     if (user) return res.status(400).json({ message: 'इस मोबाइल या ईमेल से खाता पहले से मौजूद है!' });
     const hashedPassword = await bcrypt.hash(password, 10);
-    user = new User({ name, phone, email: normalizedEmail, password: hashedPassword, plan: 'Basic', role: 'Organizer', maxDevicesAllowed: 1, isActive: true });
+    const assignedPlan = await getDefaultRegistrationPlan();
+    user = new User({ name, phone, email: normalizedEmail, password: hashedPassword, plan: assignedPlan, role: 'Organizer', maxDevicesAllowed: 1, isActive: true });
     await user.save();
     res.status(201).json({ message: 'रजिस्ट्रेशन सफल रहा!' });
   } catch (err) {

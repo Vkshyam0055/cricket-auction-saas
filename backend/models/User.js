@@ -6,7 +6,7 @@ const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password: { type: String, required: true },
     role: { type: String, default: 'Organizer' }, 
-    plan: { type: String, enum: ['Free', 'Basic', 'Pro'], default: 'Basic' }, 
+    plan: { type: String, enum: ['Free', 'Basic', 'Pro'], default: 'Free' }, 
     isActive: { type: Boolean, default: true },
     isLifetimeFree: { type: Boolean, default: false },
     maxDevicesAllowed: { type: Number, default: 1 },

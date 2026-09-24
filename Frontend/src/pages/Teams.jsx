@@ -47,7 +47,7 @@ function Teams() {
         
         // By default, select the first team if available
         if (teamsPayload.length > 0) {
-          setSelectedTeam(teamsPayload[0].teamName);
+          setSelectedTeam(teamsPayload[0]._id);
         }
       } catch (error) {
         console.error("डेटा लाने में दिक्कत:", error);
@@ -64,18 +64,25 @@ function Teams() {
     fetchData();
   }, [navigate]);
 
+  const isPlayerInTeam = (player, team) => {
+    if (!player || !team) return false;
+    const soldToId = player.soldTo?._id ? String(player.soldTo._id) : (player.soldTo ? String(player.soldTo) : '');
+    const teamId = String(team._id || '');
+    if (soldToId && teamId && soldToId === teamId) return true;
+    return String(player.soldTo?.teamName || player.soldTo || '').trim().toLowerCase() === String(team.teamName || '').trim().toLowerCase();
+  };
+
   // 📊 Calculations for Auction Summary
   const totalRegistered = players.length;
   const totalSold = players.filter((p) => ['sold', 'icon'].includes(normalizeStatus(p.auctionStatus))).length;
   const totalUnsold = players.filter((p) => normalizeStatus(p.auctionStatus) === 'unsold').length;
 
   // 🛡️ Calculations for Team Dashboard
-  // 🌟 FIX: Icon Players हमेशा लिस्ट में सबसे ऊपर (Top) आएंगे!
+  const activeTeamData = teams.find(t => String(t._id) === String(selectedTeam) || t.teamName === selectedTeam) || teams[0];
   const squadPlayers = players
-    .filter((p) => String(p.soldTo || '').trim() === String(selectedTeam || '').trim())
+    .filter((p) => isPlayerInTeam(p, activeTeamData))
     .sort((a, b) => Number(b.isIcon || 0) - Number(a.isIcon || 0)); 
 
-  const activeTeamData = teams.find(t => t.teamName === selectedTeam);
   const teamSpentAmount = squadPlayers.reduce((acc, p) => acc + (p.soldPrice || 0), 0);
   const teamTotalPurse = (activeTeamData?.remainingPurse || 0) + teamSpentAmount;
 
@@ -150,13 +157,25 @@ function Teams() {
                   </thead>
                   <tbody className="divide-y divide-gray-800">
                     {teams.map((team) => {
-                      const tPlayers = players.filter(p => p.soldTo === team.teamName);
+                      const tPlayers = players.filter(p => isPlayerInTeam(p, team));
                       const tSpent = tPlayers.reduce((acc, p) => acc + (p.soldPrice || 0), 0);
                       const tTotal = team.remainingPurse + tSpent;
                       
                       return (
                         <tr key={team._id} className="hover:bg-[#192236] transition-colors">
-                          <td className="p-5 font-black text-white text-lg uppercase">{team.teamName}</td>
+                          <td className="p-5 font-black text-white text-lg uppercase flex items-center gap-3">
+                            {team.logoUrl || team.logo ? (
+                              <img src={team.logoUrl || team.logo} alt={team.teamName} className="w-9 h-9 rounded-lg object-contain bg-white border border-gray-700 shadow shrink-0" />
+                            ) : (
+                              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-yellow-500 to-amber-600 text-[#0B172A] font-black text-xs flex items-center justify-center shadow shrink-0">
+                                {team.shortName || team.teamName.slice(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <div className="truncate">{team.teamName}</div>
+                              {team.shortName && <div className="text-xs text-yellow-400 font-bold lowercase tracking-normal">({team.shortName})</div>}
+                            </div>
+                          </td>
                           <td className="p-5 text-center font-bold text-gray-300">₹{tTotal.toLocaleString()}</td>
                           <td className="p-5 text-center font-black text-blue-400">₹{tSpent.toLocaleString()}</td>
                           <td className="p-5 text-center font-black text-green-400">₹{team.remainingPurse.toLocaleString()}</td>
@@ -192,7 +211,7 @@ function Teams() {
                   onChange={(e) => setSelectedTeam(e.target.value)} 
                   className="w-full p-4 bg-[#0F172A] border-2 border-gray-600 text-white rounded-xl font-bold focus:border-yellow-400 outline-none uppercase"
                 >
-                  {teams.map(t => <option key={t._id} value={t.teamName}>{t.teamName}</option>)}
+                  {teams.map(t => <option key={t._id} value={t._id}>{t.teamName} {t.shortName ? `(${t.shortName})` : ''}</option>)}
                 </select>
               </div>
 
@@ -229,9 +248,16 @@ function Teams() {
             {/* Main Panel: Squad List */}
             <div className="lg:col-span-9 bg-[#1E293B] rounded-2xl shadow-2xl overflow-hidden border border-gray-700">
               <div className="bg-[#0F172A] p-5 border-b border-gray-700 flex items-center justify-between">
-                <h2 className="text-2xl font-black text-white uppercase tracking-wider flex items-center">
-                  <span className="text-yellow-400 mr-2">🛡️</span> {selectedTeam || 'Squad'} <span className="font-normal text-gray-500 ml-2">| Squad Members</span>
-                </h2>
+                <div className="flex items-center gap-3">
+                  {activeTeamData?.logoUrl || activeTeamData?.logo ? (
+                    <img src={activeTeamData.logoUrl || activeTeamData.logo} alt={activeTeamData.teamName} className="w-10 h-10 rounded-xl object-contain bg-white border border-gray-600 shadow shrink-0" />
+                  ) : (
+                    <span className="text-yellow-400 text-2xl">🛡️</span>
+                  )}
+                  <h2 className="text-2xl font-black text-white uppercase tracking-wider">
+                    {activeTeamData?.teamName || 'Squad'} <span className="font-normal text-gray-500 text-lg">| Squad Members</span>
+                  </h2>
+                </div>
               </div>
               
               <div className="overflow-x-auto">

@@ -13,7 +13,24 @@ function ManagePlayers() {
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [iconTeam, setIconTeam] = useState('');
   const [iconPrice, setIconPrice] = useState(0);
-  const getTeamShortName = (teamName) => teams.find((team) => team.teamName === teamName)?.shortName || teamName;
+
+  const getTeamShortName = (teamRef) => {
+    if (!teamRef) return '';
+    if (typeof teamRef === 'object') {
+      return teamRef.shortName || teamRef.teamName || '';
+    }
+    const match = teams.find((team) => String(team._id) === String(teamRef) || team.teamName === teamRef);
+    return match?.shortName || match?.teamName || teamRef;
+  };
+
+  const getTeamFullName = (teamRef) => {
+    if (!teamRef) return '';
+    if (typeof teamRef === 'object') {
+      return teamRef.teamName || '';
+    }
+    const match = teams.find((team) => String(team._id) === String(teamRef) || team.teamName === teamRef);
+    return match?.teamName || teamRef;
+  };
 
   const fetchPlayers = async () => {
     try {
@@ -118,7 +135,7 @@ function ManagePlayers() {
     e.preventDefault();
     if (!iconTeam) { alert('Please select a team!'); return; }
     if (selectedIconTeamData && Number(iconPrice) > Number(selectedIconTeamData.maxBid || 0)) {
-      alert(`🚫 Icon price blocked. ${iconTeam} max bid is ₹${Number(selectedIconTeamData.maxBid || 0).toLocaleString()}`);
+      alert(`🚫 Icon price blocked. ${getTeamFullName(iconTeam)} max bid is ₹${Number(selectedIconTeamData.maxBid || 0).toLocaleString()}`);
       return;
     }    
     try {
@@ -126,10 +143,10 @@ function ManagePlayers() {
       await apiRequest({
         method: 'put',
         path: `/api/players/make-icon/${selectedPlayer._id}`,
-        data: { teamName: iconTeam, iconPrice },
+        data: { teamId: iconTeam, iconPrice },
         headers: { Authorization: `Bearer ${token}` }
       });
-      alert(`⭐ ${selectedPlayer.name} is now an ICON player for ${getTeamShortName(iconTeam)}!`);
+      alert(`⭐ ${selectedPlayer.name} is now an ICON player for ${getTeamFullName(iconTeam)}!`);
       setIsIconModalOpen(false);
       fetchPlayers();
     } catch { alert('Failed to assign Icon player.'); }
@@ -185,7 +202,7 @@ function ManagePlayers() {
     );
   };
 
-  const selectedIconTeamData = teams.find((team) => team.teamName === iconTeam);
+  const selectedIconTeamData = teams.find((team) => String(team._id) === String(iconTeam) || team.teamName === iconTeam);
 
   const renderApprovalStatusPill = (status) => {
     if (status === 'Approved') {
@@ -619,8 +636,8 @@ function ManagePlayers() {
                   >
                     <option value="">-- Choose Team --</option>
                     {teams.map(t => (
-                      <option key={t._id} value={t.teamName}>
-                        {t.shortName || t.teamName} (Max Bid: ₹{Number(t.maxBid || 0).toLocaleString()})
+                      <option key={t._id} value={t._id}>
+                        {t.teamName} {t.shortName ? `(${t.shortName})` : ''} (Max Bid: ₹{Number(t.maxBid || 0).toLocaleString()})
                       </option>
                     ))}
                   </select>
@@ -746,7 +763,7 @@ function ManagePlayers() {
               </div>
               <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
                 <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Sold To</p>
-                <p className="font-bold text-slate-900 text-sm mt-0.5">{selectedPlayer.soldTo ? getTeamShortName(selectedPlayer.soldTo) : '-'}</p>
+                <p className="font-bold text-slate-900 text-sm mt-0.5">{selectedPlayer.soldTo ? getTeamFullName(selectedPlayer.soldTo) : '-'}</p>
               </div>
               <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
                 <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Sold Price</p>
