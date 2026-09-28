@@ -8,6 +8,8 @@ import ManagePlayers from './pages/ManagePlayers';
 import ControlPanel from './pages/ControlPanel';
 import LiveScreen from './pages/LiveScreen';
 import CreateTournament from './pages/CreateTournament';
+import WelcomeSetup from './pages/WelcomeSetup';
+import TournamentSettings from './pages/TournamentSettings';
 import AddPlayer from './pages/AddPlayer';
 import Teams from './pages/Teams';
 import SuperAdmin from './pages/SuperAdmin';
@@ -146,6 +148,8 @@ function App() {
           <Route path="/manage-players" element={<ProtectedRoute><ManagePlayers /></ProtectedRoute>} />
           <Route path="/control-panel" element={<ProtectedRoute><ControlPanel /></ProtectedRoute>} />
           <Route path="/create-tournament" element={<ProtectedRoute><CreateTournament /></ProtectedRoute>} />
+          <Route path="/setup" element={<ProtectedRoute><WelcomeSetup /></ProtectedRoute>} />
+          <Route path="/tournament-settings" element={<ProtectedRoute><TournamentSettings /></ProtectedRoute>} />
           <Route path="/add-player" element={<ProtectedRoute><AddPlayer /></ProtectedRoute>} />
           <Route path="/teams" element={<ProtectedRoute><Teams /></ProtectedRoute>} />
           <Route path="/live" element={<LiveScreen />} />

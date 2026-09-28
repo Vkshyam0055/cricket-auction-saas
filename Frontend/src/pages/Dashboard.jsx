@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import HamburgerMenu from '../components/HamburgerMenu';
+import PrerequisiteModal from '../components/PrerequisiteModal';
 import { useNavigate } from 'react-router-dom';
 import { TournamentContext } from '../context/TournamentContext';
 
@@ -21,6 +22,9 @@ function Dashboard() {
   const [organizerEmail, setOrganizerEmail] = useState('');  
   const [registrationLinkMessage, setRegistrationLinkMessage] = useState('');
   const [plansCacheKey, setPlansCacheKey] = useState(0);
+  const [showBudgetModal, setShowBudgetModal] = useState(false);
+  const [showBiddingModal, setShowBiddingModal] = useState(false);
+  const [jitSaving, setJitSaving] = useState(false);
 
   const normalizedPlan = useMemo(() => (organizerRole === 'SuperAdmin' ? 'Pro' : normalizePlanName(organizerPlan)), [organizerPlan, organizerRole]);
   const activePolicy = useMemo(() => getEffectivePlanPolicy(organizerPlan, organizerRole), [organizerPlan, organizerRole, plansCacheKey]);
@@ -31,7 +35,7 @@ function Dashboard() {
   }, [tournament?._id]);
 
   useEffect(() => {
-    if (!loading && !tournament) navigate('/create-tournament');
+    if (!loading && !tournament) navigate('/setup');
   }, [loading, tournament, navigate]);
 
   useEffect(() => {
@@ -155,6 +159,59 @@ function Dashboard() {
     }
   };
 
+  // 🌟 JIT Prerequisite Check Handlers 🌟
+  const isBudgetSet = tournament && (tournament.teamBudget !== 50000000 || tournament.minPlayersPerTeam !== 15);
+  const isBiddingSet = tournament && (tournament.bidButton1 !== 500 || tournament.bidButton2 !== 1000 || tournament.bidButton3 !== 5000);
+
+  const handleAddTeamClick = () => {
+    if (!isBudgetSet) {
+      setShowBudgetModal(true);
+    } else {
+      navigate('/add-team');
+    }
+  };
+
+  const handleControlPanelClick = () => {
+    if (!isBiddingSet) {
+      setShowBiddingModal(true);
+    } else {
+      navigate('/control-panel');
+    }
+  };
+
+  const handleJitSave = async (data, redirectTo) => {
+    setJitSaving(true);
+    try {
+      const token = localStorage.getItem('token');
+      const headers = { Authorization: `Bearer ${token}` };
+      const payload = {
+        name: tournament.name,
+        venue: tournament.venue,
+        logoUrl: tournament.logoUrl || '',
+        tournamentPoster: tournament.tournamentPoster || '',
+        teamBudget: data.teamBudget !== undefined ? Number(data.teamBudget) : tournament.teamBudget,
+        minPlayersPerTeam: data.minPlayersPerTeam !== undefined ? Number(data.minPlayersPerTeam) : tournament.minPlayersPerTeam,
+        bidButton1: data.bidButton1 !== undefined ? Number(data.bidButton1) : tournament.bidButton1,
+        bidButton2: data.bidButton2 !== undefined ? Number(data.bidButton2) : tournament.bidButton2,
+        bidButton3: data.bidButton3 !== undefined ? Number(data.bidButton3) : tournament.bidButton3,
+        customFields: tournament.customFields || [],
+        upiQrUrl: tournament.upiQrUrl || '',
+        upiId: tournament.upiId || '',
+        paymentMessage: tournament.paymentMessage || '',
+      };
+      await apiRequest({ method: 'post', path: '/api/tournament', data: payload, headers });
+      await fetchTournament();
+      setShowBudgetModal(false);
+      setShowBiddingModal(false);
+      navigate(redirectTo);
+    } catch (err) {
+      console.error(err);
+      alert('Settings save failed!');
+    } finally {
+      setJitSaving(false);
+    }
+  };
+
   if (loading || !tournament) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white p-4">
@@ -173,17 +230,27 @@ function Dashboard() {
         profile={{
           name: organizerName,
           email: organizerEmail,
-          phone: localStorage.getItem('organizerPhone')
+          phone: localStorage.getItem('organizerPhone'),
+          plan: normalizedPlan
         }}
         onLogout={handleLogout}
-        onNavigate={(item) => {
+        onNavigate={(key) => {
           setMenuOpen(false);
-          if (item === 'Create Auction') navigate('/create-tournament');
-          if (item === 'My Auction') navigate('/dashboard');
-          if (item === 'Join as Player' && tournament?._id)
-            window.open(`${window.location.origin}/register/${tournament._id}`, '_blank');
-          if (item === 'View Auction') navigate('/live');
-          if (item === 'Reset Password') navigate('/forgot-password');
+          switch(key) {
+            case 'dashboard': navigate('/dashboard'); break;
+            case 'tournament-settings': navigate('/tournament-settings'); break;
+            case 'view-auction': navigate('/live'); break;
+            case 'teams': navigate('/teams'); break;
+            case 'players': navigate('/manage-players'); break;
+            case 'registration-form': navigate('/create-tournament'); break;
+            case 'change-password': navigate('/forgot-password'); break;
+            case 'pricing': alert('🚀 Plans & Pricing — Coming Soon!'); break;
+            case 'tutorial-videos': alert('🎓 Tutorial Videos — Coming Soon!'); break;
+            case 'support': alert('📞 Support — Coming Soon!'); break;
+            case 'about': alert('ℹ️ About Us — Coming Soon!'); break;
+            case 'policies': alert('📜 Policies — Coming Soon!'); break;
+            default: break;
+          }
         }}
       />
 
@@ -348,7 +415,7 @@ function Dashboard() {
           <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
             <button
               type="button"
-              onClick={() => navigate('/control-panel')}
+              onClick={handleControlPanelClick}
               className="group relative flex-1 overflow-hidden rounded-2xl p-5 sm:p-7 bg-gradient-to-br from-indigo-950 via-slate-900 to-blue-950 text-white shadow-lg shadow-indigo-950/25 hover:shadow-xl hover:shadow-indigo-950/35 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 text-left border border-indigo-800/40"
             >
               <div className="flex items-center justify-between mb-4">
@@ -401,25 +468,25 @@ function Dashboard() {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-            {/* 1. Edit Info */}
+            {/* 1. Tournament Settings */}
             <button
               type="button"
-              onClick={() => navigate('/create-tournament')}
+              onClick={() => navigate('/tournament-settings')}
               className="flex flex-col items-center justify-center text-center p-4 sm:p-5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 shadow-xs hover:shadow-md active:scale-95 transition-all duration-200 group"
             >
               <div className="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl mb-2.5 group-hover:scale-110 transition-transform">
-                🏆
+                ⚙️
               </div>
               <span className="text-xs sm:text-sm font-bold text-slate-800 group-hover:text-indigo-600 transition">
-                Edit Info
+                Settings
               </span>
-              <span className="text-[10px] text-slate-500 font-medium mt-0.5 hidden sm:inline-block">Rules & Name</span>
+              <span className="text-[10px] text-slate-500 font-medium mt-0.5 hidden sm:inline-block">Tournament</span>
             </button>
 
             {/* 2. Add Team */}
             <button
               type="button"
-              onClick={() => navigate('/add-team')}
+              onClick={handleAddTeamClick}
               className="flex flex-col items-center justify-center text-center p-4 sm:p-5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 shadow-xs hover:shadow-md active:scale-95 transition-all duration-200 group"
             >
               <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl mb-2.5 group-hover:scale-110 transition-transform">
@@ -592,6 +659,36 @@ function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* 🌟 JIT Prerequisite Modals 🌟 */}
+      <PrerequisiteModal
+        open={showBudgetModal}
+        onClose={() => setShowBudgetModal(false)}
+        onSave={(data) => handleJitSave(data, '/add-team')}
+        title="पहले Team Budget & Rules सेट करें"
+        description="Team add करने से पहले purse amount और minimum players set करें।"
+        fields={[
+          { name: 'teamBudget', label: 'Points Balance / Purse per Team (₹)', type: 'number', defaultValue: tournament?.teamBudget || 100000 },
+          { name: 'minPlayersPerTeam', label: 'Min Players per Team', type: 'number', defaultValue: tournament?.minPlayersPerTeam || 16 },
+        ]}
+        saveButtonText="Save & Add Team →"
+        saving={jitSaving}
+      />
+
+      <PrerequisiteModal
+        open={showBiddingModal}
+        onClose={() => setShowBiddingModal(false)}
+        onSave={(data) => handleJitSave(data, '/control-panel')}
+        title="पहले Bidding Buttons सेट करें"
+        description="Auctioneer Panel खोलने से पहले bidding increment buttons configure करें।"
+        fields={[
+          { name: 'bidButton1', label: 'Button 1 (₹)', type: 'number', defaultValue: tournament?.bidButton1 || 500 },
+          { name: 'bidButton2', label: 'Button 2 (₹)', type: 'number', defaultValue: tournament?.bidButton2 || 1000 },
+          { name: 'bidButton3', label: 'Button 3 (₹)', type: 'number', defaultValue: tournament?.bidButton3 || 5000 },
+        ]}
+        saveButtonText="Save & Open Panel →"
+        saving={jitSaving}
+      />
     </div>
   );
 }
