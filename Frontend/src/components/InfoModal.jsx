@@ -1,7 +1,10 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { apiRequest } from '../utils/apiClient';
 
 export default function InfoModal({ open, type, onClose }) {
   const modalRef = useRef(null);
+  const [plans, setPlans] = useState([]);
+  const [loadingPlans, setLoadingPlans] = useState(false);
 
   useEffect(() => {
     const handleEscape = (e) => {
@@ -10,6 +13,34 @@ export default function InfoModal({ open, type, onClose }) {
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
   }, [open, onClose]);
+
+  useEffect(() => {
+    if (open && type === 'pricing') {
+      const fetchPlans = async () => {
+        setLoadingPlans(true);
+        try {
+          // Check cache first for instant load
+          const cached = localStorage.getItem('cricauction_plans_cache');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setPlans(parsed);
+            }
+          }
+          const res = await apiRequest({ method: 'get', path: '/api/plans' });
+          if (res.data && res.data.length > 0) {
+            setPlans(res.data);
+            localStorage.setItem('cricauction_plans_cache', JSON.stringify(res.data));
+          }
+        } catch (err) {
+          console.error(err);
+        } finally {
+          setLoadingPlans(false);
+        }
+      };
+      fetchPlans();
+    }
+  }, [open, type]);
 
   if (!open || !type) return null;
 
@@ -25,54 +56,45 @@ export default function InfoModal({ open, type, onClose }) {
             </div>
 
             <div className="space-y-3">
-              {/* Free Tier */}
-              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50">
-                <div className="flex items-center justify-between">
-                  <span className="font-black text-sm text-slate-800">FREE PLAN</span>
-                  <span className="text-[10px] uppercase font-extrabold bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full">Active</span>
-                </div>
-                <ul className="text-xs text-slate-600 mt-2 space-y-1">
-                  <li>• Up to 2 Team Squads</li>
-                  <li>• Up to 30 Pool Players</li>
-                  <li>• Core Auctioneer Console</li>
-                </ul>
-              </div>
-
-              {/* Basic Tier */}
-              <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/50">
-                <div className="flex items-center justify-between">
-                  <span className="font-black text-sm text-blue-900">BASIC PLAN</span>
-                  <span className="text-xs font-bold text-blue-700">₹999 / tournament</span>
-                </div>
-                <ul className="text-xs text-slate-600 mt-2 space-y-1">
-                  <li>• Up to 8 Team Squads</li>
-                  <li>• Up to 150 Pool Players</li>
-                  <li>• Custom Bidding Increment Buttons</li>
-                  <li>• Live Bidding Audio / SFX</li>
-                </ul>
-              </div>
-
-              {/* Pro Tier */}
-              <div className="p-3.5 rounded-xl border-2 border-indigo-500 bg-indigo-50/40 relative overflow-hidden">
-                <span className="absolute top-0 right-0 bg-indigo-600 text-white text-[9px] font-black uppercase px-2.5 py-0.5 rounded-bl-lg">
-                  POPULAR
-                </span>
-                <div className="flex items-center justify-between">
-                  <span className="font-black text-sm text-indigo-950">PRO PLAN</span>
-                  <span className="text-xs font-bold text-indigo-700">₹2,499 / tournament</span>
-                </div>
-                <ul className="text-xs text-slate-700 mt-2 space-y-1 font-medium">
-                  <li>• ⚡ Unlimited Squads & Players</li>
-                  <li>• 📺 Live TV / Projector Display Broadcast</li>
-                  <li>• 🔗 Public Player Self-Registration Link & QR</li>
-                  <li>• 📝 Custom Dynamic Form Builder</li>
-                </ul>
-              </div>
+              {loadingPlans && plans.length === 0 ? (
+                <div className="text-center text-xs text-slate-500 py-4 animate-pulse">Loading plans...</div>
+              ) : (
+                plans.map((plan) => (
+                  <div
+                    key={plan._id}
+                    className={`p-3.5 rounded-xl border ${plan.isPopular ? 'border-2 border-indigo-500 bg-indigo-50/40 relative overflow-hidden' : plan.price > 0 ? 'border-blue-200 bg-blue-50/50' : 'border-slate-200 bg-slate-50'}`}
+                  >
+                    {plan.isPopular && (
+                      <span className="absolute top-0 right-0 bg-indigo-600 text-white text-[9px] font-black uppercase px-2.5 py-0.5 rounded-bl-lg">
+                        POPULAR
+                      </span>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <span className={`font-black text-sm uppercase ${plan.isPopular ? 'text-indigo-950' : plan.price > 0 ? 'text-blue-900' : 'text-slate-800'}`}>
+                        {plan.name} PLAN
+                      </span>
+                      {plan.price === 0 ? (
+                        <span className="text-[10px] uppercase font-extrabold bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full">Free</span>
+                      ) : (
+                        <span className={`text-xs font-bold ${plan.isPopular ? 'text-indigo-700' : 'text-blue-700'}`}>
+                          ₹{plan.price} / tournament
+                        </span>
+                      )}
+                    </div>
+                    <ul className={`text-xs mt-2 space-y-1 ${plan.isPopular ? 'text-slate-700 font-medium' : 'text-slate-600'}`}>
+                      <li>• {plan.teamLimit === -1 ? 'Unlimited Teams' : `Up to ${plan.teamLimit} Teams`}</li>
+                      <li>• {plan.playerLimit === -1 ? 'Unlimited Players' : `Up to ${plan.playerLimit} Players`}</li>
+                      {plan.canPublicRegistration && <li>• 🔗 Public Player Registration</li>}
+                      {plan.canLiveScreen && <li>• 📺 Live TV Broadcast</li>}
+                    </ul>
+                  </div>
+                ))
+              )}
             </div>
 
             <div className="pt-2">
               <a
-                href="https://wa.me/?text=Hello%20Admin,%20I%20want%20to%20upgrade%20my%20Cricket%20Auction%20plan."
+                href="https://wa.me/919414900809?text=Hello%20Admin,%20I%20want%20to%20upgrade%20my%20Cricket%20Auction%20plan."
                 target="_blank"
                 rel="noreferrer"
                 className="w-full inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl shadow-md transition text-sm text-center"
@@ -142,7 +164,7 @@ export default function InfoModal({ open, type, onClose }) {
                 <span className="text-2xl">📱</span>
                 <div>
                   <div className="text-xs font-bold text-slate-500 uppercase">WhatsApp Helpline</div>
-                  <div className="text-sm font-black text-slate-800">+91 98765 43210</div>
+                  <div className="text-sm font-black text-slate-800">+91 9414900809</div>
                 </div>
               </div>
 
@@ -150,7 +172,7 @@ export default function InfoModal({ open, type, onClose }) {
                 <span className="text-2xl">✉️</span>
                 <div>
                   <div className="text-xs font-bold text-slate-500 uppercase">Email Support</div>
-                  <div className="text-sm font-black text-slate-800">support@cricauction.in</div>
+                  <div className="text-sm font-black text-slate-800">cricauction.support@gmail.com</div>
                 </div>
               </div>
 

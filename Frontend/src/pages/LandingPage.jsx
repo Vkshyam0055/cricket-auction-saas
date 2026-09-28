@@ -98,12 +98,6 @@ function LandingPage() {
 
           <div className="flex items-center space-x-2 sm:space-x-4">
             <button
-              onClick={scrollToPricing}
-              className="hidden sm:inline-flex text-sm font-bold text-slate-600 hover:text-indigo-600 transition px-3 py-2"
-            >
-              Pricing
-            </button>
-            <button
               onClick={() => navigate('/auth')}
               className="inline-flex items-center text-xs sm:text-sm font-bold text-slate-700 hover:text-slate-950 px-2.5 py-1.5 sm:px-3 sm:py-2 transition"
             >
@@ -156,12 +150,6 @@ function LandingPage() {
             >
               <span>Start Your Auction Now</span>
               <span className="ml-2">🚀</span>
-            </button>
-            <button
-              onClick={scrollToPricing}
-              className="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3.5 sm:py-4 rounded-xl font-bold text-sm sm:text-base text-white bg-slate-800/90 hover:bg-slate-800 border border-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5"
-            >
-              View Pricing & Plans
             </button>
           </div>
 
@@ -243,148 +231,6 @@ function LandingPage() {
         </div>
       </div>
 
-      {/* 🌟 DYNAMIC PRICING SECTION 🌟 */}
-      <div id="pricing" className="py-16 sm:py-20 lg:py-24 px-4 sm:px-6 lg:px-8 bg-slate-100/70 border-t border-slate-200">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-12 sm:mb-16">
-            <span className="text-xs font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-3.5 py-1 rounded-full border border-indigo-200 shadow-2xs">
-              TRANSPARENT PLANS
-            </span>
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 mt-3 sm:mt-4 tracking-tight">
-              Simple & Predictable Pricing
-            </h2>
-            <p className="mt-3 text-slate-600 text-sm sm:text-base font-medium">
-              अपनी लीग के आकार और आवश्यकताओं के अनुसार सही प्लान चुनें और तुरंत शुरू करें।
-            </p>
-          </div>
-
-          {/* Pricing Grid - Single Column on Mobile */}
-          {loadingPlans && (!plans || plans.length === 0) ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 max-w-6xl mx-auto items-stretch">
-              {[1, 2, 3].map((n) => (
-                <div key={n} className="rounded-2xl bg-white p-6 sm:p-8 lg:p-10 shadow-sm border border-slate-200 animate-pulse flex flex-col justify-between">
-                  <div>
-                    <div className="h-7 bg-slate-200 rounded w-1/2 mb-3"></div>
-                    <div className="h-4 bg-slate-200 rounded w-3/4 mb-6"></div>
-                    <div className="h-10 bg-slate-200 rounded w-1/3 mb-6"></div>
-                    <div className="space-y-3 mb-8">
-                      <div className="h-4 bg-slate-200 rounded w-5/6"></div>
-                      <div className="h-4 bg-slate-200 rounded w-4/6"></div>
-                      <div className="h-4 bg-slate-200 rounded w-3/6"></div>
-                    </div>
-                  </div>
-                  <div className="h-12 bg-slate-200 rounded-xl w-full"></div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 max-w-6xl mx-auto items-stretch">
-              {plans.map((plan) => {
-                const dynamicFeatures = getDynamicPlanFeatures(plan);
-                return plan.isPopular ? (
-                  /* 🌟 Pro Plan (High-Contrast Dark Spotlight) 🌟 */
-                  <div
-                    key={plan._id}
-                    className="relative rounded-2xl bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-900 text-white p-6 sm:p-8 lg:p-10 shadow-2xl border-2 border-amber-400 flex flex-col justify-between transform md:-translate-y-2 lg:-translate-y-4 hover:md:-translate-y-3 hover:lg:-translate-y-5 transition-all duration-300 w-full"
-                  >
-                    {/* Highlight pill */}
-                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 px-4 py-1 rounded-full font-black text-xs uppercase tracking-wider shadow-lg flex items-center space-x-1 whitespace-nowrap">
-                      <span>★</span>
-                      <span>Most Popular</span>
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between items-baseline mb-3">
-                        <h3 className="text-2xl font-black tracking-tight text-white">{plan.name}</h3>
-                        <span className="text-xs font-extrabold uppercase px-2.5 py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/40">
-                          Recommended
-                        </span>
-                      </div>
-
-                      <p className="text-slate-200 text-sm font-medium mb-4 min-h-[36px]">{plan.subtitle}</p>
-
-                      <div className="flex items-baseline mb-4 pb-4 border-b border-white/15">
-                        <span className="text-4xl sm:text-5xl font-black text-amber-400">₹{plan.price}</span>
-                        <span className="text-slate-300 text-xs sm:text-sm font-medium ml-2">/ tournament</span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2 mb-6">
-                        <span className="text-xs font-bold px-2.5 py-1 rounded-md bg-amber-400/15 text-amber-300 border border-amber-400/30">
-                          🏏 {plan.teamLimit === -1 ? 'Unlimited Teams' : `Max ${plan.teamLimit} Teams`}
-                        </span>
-                        <span className="text-xs font-bold px-2.5 py-1 rounded-md bg-indigo-500/20 text-indigo-200 border border-indigo-400/30">
-                          👥 {plan.playerLimit === -1 ? 'Unlimited Players' : `Max ${plan.playerLimit} Players`}
-                        </span>
-                      </div>
-
-                      <ul className="space-y-3 mb-8">
-                        {dynamicFeatures.map((feature, index) => (
-                          <li key={index} className="flex items-start text-sm font-semibold text-slate-100">
-                            <svg className="w-5 h-5 text-amber-400 mr-3 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                            <span>{feature}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <button
-                      onClick={() => navigate('/auth')}
-                      className="w-full py-3.5 sm:py-4 rounded-xl font-black text-sm sm:text-base text-slate-950 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer"
-                    >
-                      Get Started with Pro ⚡
-                    </button>
-                  </div>
-                ) : (
-                  /* 🌟 Standard Plans (High-Contrast Clean White Cards) 🌟 */
-                  <div
-                    key={plan._id}
-                    className="rounded-2xl bg-white p-6 sm:p-8 lg:p-10 shadow-sm hover:shadow-md border border-slate-200 hover:border-slate-300 flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 w-full"
-                  >
-                    <div>
-                      <h3 className="text-2xl font-black tracking-tight text-slate-900 mb-2">{plan.name}</h3>
-                      <p className="text-slate-600 text-sm font-medium mb-4 min-h-[36px]">{plan.subtitle}</p>
-
-                      <div className="flex items-baseline mb-4 pb-4 border-b border-slate-100">
-                        <span className="text-4xl sm:text-5xl font-black text-slate-900">₹{plan.price}</span>
-                        <span className="text-slate-600 text-xs sm:text-sm font-semibold ml-2">/ tournament</span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2 mb-6">
-                        <span className="text-xs font-bold px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">
-                          🏏 {plan.teamLimit === -1 ? 'Unlimited Teams' : `Max ${plan.teamLimit} Teams`}
-                        </span>
-                        <span className="text-xs font-bold px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          👥 {plan.playerLimit === -1 ? 'Unlimited Players' : `Max ${plan.playerLimit} Players`}
-                        </span>
-                      </div>
-
-                      <ul className="space-y-3 mb-8">
-                        {dynamicFeatures.map((feature, index) => (
-                          <li key={index} className="flex items-start text-sm font-semibold text-slate-800">
-                            <svg className="w-5 h-5 text-emerald-600 mr-3 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                            <span>{feature}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <button
-                      onClick={() => navigate('/auth')}
-                      className="w-full py-3.5 rounded-xl font-bold text-sm text-white bg-slate-900 hover:bg-slate-800 active:scale-[0.99] shadow-sm hover:shadow transition-all duration-200 cursor-pointer"
-                    >
-                      Choose {plan.name}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* 🌟 CONTACT & SUPPORT SECTION 🌟 */}
       <div className="bg-slate-900 text-white py-16 px-4 sm:px-6 lg:px-8 border-t border-slate-800">

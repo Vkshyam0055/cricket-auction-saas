@@ -73,10 +73,10 @@ export default function HamburgerMenu({ open, onClose, profile, onNavigate, onLo
         </div>
         
         {/* Menu Items */}
-        <div className="flex-1 overflow-y-auto py-2 scrollbar-thin scrollbar-thumb-slate-700">
+        <div className="flex-1 overflow-y-auto py-2">
           {groups.map((group, idx) => (
-            <div key={idx} className="mb-4">
-              <div className="px-5 py-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
+            <div key={idx} className="mb-2 sm:mb-3">
+              <div className="px-4 py-1 text-[10px] sm:text-xs font-black text-slate-500 uppercase tracking-wider">
                 {group.label}
               </div>
               <div className="space-y-0.5">
@@ -87,10 +87,10 @@ export default function HamburgerMenu({ open, onClose, profile, onNavigate, onLo
                       onNavigate(item.key);
                       onClose();
                     }}
-                    className="w-full flex items-center gap-3 px-5 py-3 text-left text-slate-300 hover:bg-slate-800 hover:text-indigo-400 transition-colors"
+                    className="w-full flex items-center gap-3 px-4 py-2 sm:px-5 sm:py-2.5 text-left text-xs sm:text-sm text-slate-300 hover:bg-slate-800 hover:text-indigo-400 transition-colors"
                   >
-                    <span className="text-lg">{item.icon}</span>
-                    <span className="font-medium">{item.text}</span>
+                    <span className="text-base sm:text-lg">{item.icon}</span>
+                    <span className="font-semibold">{item.text}</span>
                   </button>
                 ))}
               </div>

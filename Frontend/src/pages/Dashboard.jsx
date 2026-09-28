@@ -128,6 +128,23 @@ function Dashboard() {
     }
   };
 
+  const handleShareRegistrationLink = async () => {
+    if (!publicRegistrationUrl) return;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `${tournament?.name || 'Tournament'} - Player Registration`,
+          text: `Register for ${tournament?.name || 'Tournament'} using this link:`,
+          url: publicRegistrationUrl,
+        });
+      } catch (error) {
+        console.error('Error sharing:', error);
+      }
+    } else {
+      handleCopyRegistrationLink();
+    }
+  };
+
   // 🌟 FIX: INSTANT TOGGLE LOGIC 🌟
   const handleRegistrationToggle = async () => {
     if (!tournament?._id || isUpdatingRegistration) return;
@@ -256,39 +273,39 @@ function Dashboard() {
         }}
       />
 
-      {/* 🌟 Modern SaaS Navbar 🌟 */}
+      {/* 🌟 Modern SaaS Navbar (Compact Mobile App Header) 🌟 */}
       <nav className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between">
-          <div className="flex items-center space-x-3 min-w-0">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-18 flex items-center justify-between">
+          <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
             {tournament.logoUrl ? (
               <img
                 src={tournament.logoUrl}
                 alt="Logo"
-                className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-white p-0.5 border border-slate-700 object-cover shrink-0"
+                className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-white p-0.5 border border-slate-700 object-cover shrink-0"
               />
             ) : (
-              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-tr from-indigo-600 via-blue-600 to-amber-400 p-0.5 shrink-0 shadow-sm">
-                <div className="w-full h-full bg-slate-950 rounded-[9px] sm:rounded-[10px] flex items-center justify-center text-base sm:text-xl">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-gradient-to-tr from-indigo-600 via-blue-600 to-amber-400 p-0.5 shrink-0 shadow-sm">
+                <div className="w-full h-full bg-slate-950 rounded-[7px] sm:rounded-[9px] flex items-center justify-center text-sm sm:text-lg">
                   🏏
                 </div>
               </div>
             )}
             <div className="min-w-0">
-              <div className="flex items-center space-x-2">
-                <h1 className="text-base sm:text-lg font-black tracking-tight text-white truncate max-w-[170px] sm:max-w-sm">
+              <div className="flex items-center space-x-1.5 sm:space-x-2">
+                <h1 className="text-sm sm:text-base font-black tracking-tight text-white truncate max-w-[140px] sm:max-w-sm">
                   {tournament.name}
                 </h1>
-                <span className="hidden sm:inline-flex text-[10px] uppercase font-extrabold tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                <span className="hidden sm:inline-flex text-[9px] uppercase font-black tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                   Control Room
                 </span>
               </div>
-              <p className="text-[11px] text-slate-300 font-medium hidden sm:block">Tournament Management & Bidding Hub</p>
+              <p className="text-[10px] text-slate-400 font-medium hidden sm:block">Tournament Management & Bidding Hub</p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2.5 sm:space-x-3">
-            <div className="flex items-center space-x-2 bg-slate-800/80 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-700/80">
-              <div className="bg-amber-400 text-slate-950 font-black rounded-full w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-xs sm:text-sm shadow-sm shrink-0">
+          <div className="flex items-center space-x-2 sm:space-x-3">
+            <div className="flex items-center space-x-1.5 bg-slate-800/90 px-2 sm:px-3 py-1 rounded-full border border-slate-700/80">
+              <div className="bg-amber-400 text-slate-950 font-black rounded-full w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center text-xs shadow-sm shrink-0">
                 {organizerName.charAt(0).toUpperCase()}
               </div>
               <div className="hidden md:flex flex-col text-left">
@@ -306,7 +323,7 @@ function Dashboard() {
             <button
               type="button"
               onClick={() => setMenuOpen(true)}
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 border border-slate-700 flex items-center justify-center text-lg font-bold transition shadow-xs"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 border border-slate-700 flex items-center justify-center text-base sm:text-lg font-bold transition shadow-2xs"
               title="Open Navigation Menu"
               aria-label="Open Navigation Menu"
             >
@@ -316,259 +333,223 @@ function Dashboard() {
         </div>
       </nav>
 
-      {/* 🌟 Main Dashboard Container 🌟 */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Header Greeting Banner */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-6 sm:mb-8">
-          <div>
-            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-              Welcome Back, {organizerName}! 👋
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-600 font-medium mt-1">
-              Manage squads, configure auction rules, and monitor live bidding in real time.
-            </p>
-          </div>
-          <div className="flex items-center space-x-2 self-start sm:self-auto">
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
-              Live Server Connected
+      {/* 🌟 Main Dashboard Container (Mobile-First Cricbuzz Style) 🌟 */}
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-6">
+        {/* 1. Compact Status Strip (Zero Wasted Space) */}
+        <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4 px-0.5">
+          <div className="flex items-center space-x-2 min-w-0">
+            <span className="text-sm sm:text-base font-black text-slate-900 truncate">
+              👋 Hi, {organizerName}
+            </span>
+            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
+              {normalizedPlan}
             </span>
           </div>
-        </div>
-
-        {/* 🌟 1. Stats Overview Cards (Mobile-First 3-Col Grid) 🌟 */}
-        <div className="grid grid-cols-3 gap-2.5 sm:gap-6 mb-5 sm:mb-8">
-          {/* Total Teams Card */}
-          <div className="bg-white p-3 sm:p-6 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all duration-200 flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-2 sm:mb-4">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-sm sm:text-xl shadow-xs">
-                🛡️
-              </div>
-              <span className="hidden sm:inline-block text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
-                Squads
-              </span>
-            </div>
-            <div>
-              <div className="text-xl sm:text-4xl font-black text-slate-900 tracking-tight leading-none">
-                {totalTeams}
-                {activePolicy.teamLimit !== -1 && (
-                  <span className="text-xs sm:text-lg font-bold text-slate-400">/{activePolicy.teamLimit}</span>
-                )}
-              </div>
-              <div className="text-[10px] sm:text-xs uppercase font-bold text-slate-500 tracking-wider mt-1 truncate">
-                Squads
-              </div>
-            </div>
-          </div>
-
-          {/* Total Players Card */}
-          <div className="bg-white p-3 sm:p-6 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all duration-200 flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-2 sm:mb-4">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm sm:text-xl shadow-xs">
-                🏏
-              </div>
-              <span className="hidden sm:inline-block text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">
-                In Pool
-              </span>
-            </div>
-            <div>
-              <div className="text-xl sm:text-4xl font-black text-slate-900 tracking-tight leading-none">
-                {totalPlayers}
-                {activePolicy.playerLimit !== -1 && (
-                  <span className="text-xs sm:text-lg font-bold text-slate-400">/{activePolicy.playerLimit}</span>
-                )}
-              </div>
-              <div className="text-[10px] sm:text-xs uppercase font-bold text-slate-500 tracking-wider mt-1 truncate">
-                In Pool
-              </div>
-            </div>
-          </div>
-
-          {/* Auction Status Card */}
-          <div className="bg-white p-3 sm:p-6 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all duration-200 flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-2 sm:mb-4">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-sm sm:text-xl shadow-xs">
-                ⚡
-              </div>
-              <span className="hidden sm:inline-block text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
-                Status
-              </span>
-            </div>
-            <div>
-              <div className="text-sm sm:text-2xl font-black text-amber-600 tracking-tight flex items-center gap-1 leading-none">
-                <span>Ready</span>
-                <span className="text-xs sm:text-lg">🚀</span>
-              </div>
-              <div className="text-[10px] sm:text-xs uppercase font-bold text-slate-500 tracking-wider mt-1 truncate">
-                Arena
-              </div>
-            </div>
+          <div className="flex items-center space-x-1.5 shrink-0 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-bold">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Live Server</span>
           </div>
         </div>
 
-        {/* 🌟 2. Live Auction Controls (Prominent Action Cards) 🌟 */}
-        <div className="bg-white p-5 sm:p-8 rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs mb-6 sm:mb-8 relative overflow-hidden">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-6 pb-4 border-b border-slate-100">
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200">
-                LIVE CONTROL ROOM
+        {/* 🌟 2. Cricbuzz-Style "Hero Auction Match Card" (Above the Fold) 🌟 */}
+        <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 rounded-2xl p-4 sm:p-6 border border-indigo-900/40 text-white shadow-xl mb-4 sm:mb-6 relative overflow-hidden">
+          {/* Subtle Ambient Glow */}
+          <div className="absolute top-0 right-0 -mr-12 -mt-12 w-40 h-40 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none"></div>
+
+          {/* Card Top Strip */}
+          <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3.5 relative z-10">
+            <div className="flex items-center space-x-2">
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+              <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-indigo-300">
+                LIVE AUCTION ARENA
               </span>
-              <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight mt-2 flex items-center">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse mr-2.5 inline-block"></span>
-                Live Auction Controls
-              </h3>
             </div>
-            <p className="text-xs text-slate-600 font-medium">Broadcast bidding & live audience projector screens</p>
+            <div className="flex items-center space-x-1.5 text-[10px] font-extrabold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
+              <span>Ready to Start</span>
+              <span>🚀</span>
+            </div>
           </div>
 
-          {/* Buttons Stack Vertically on Mobile */}
-          <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
+          {/* Primary Action Buttons (Thumb Reachable Immediately) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-4 mb-3.5 relative z-10">
             <button
               type="button"
               onClick={handleControlPanelClick}
-              className="group relative flex-1 overflow-hidden rounded-2xl p-5 sm:p-7 bg-gradient-to-br from-indigo-950 via-slate-900 to-blue-950 text-white shadow-lg shadow-indigo-950/25 hover:shadow-xl hover:shadow-indigo-950/35 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 text-left border border-indigo-800/40"
+              className="w-full flex items-center justify-between p-3.5 sm:p-4 rounded-xl bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 hover:from-indigo-500 hover:to-blue-500 text-white shadow-lg shadow-indigo-600/30 active:scale-[0.98] transition group text-left border border-indigo-400/30 cursor-pointer"
             >
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center text-2xl border border-indigo-500/30 group-hover:scale-105 transition-transform">
+              <div className="flex items-center space-x-3 min-w-0">
+                <div className="w-10 h-10 rounded-lg bg-white/15 flex items-center justify-center text-xl shrink-0 group-hover:scale-105 transition-transform">
                   ⚙️
                 </div>
-                <span className="text-xs font-bold text-indigo-300 px-2.5 py-1 rounded-full bg-white/10 group-hover:bg-white/20 transition">
-                  Auctioneer Mode →
-                </span>
+                <div className="min-w-0">
+                  <div className="text-sm sm:text-base font-black text-white leading-tight">
+                    Open Auctioneer Panel
+                  </div>
+                  <div className="text-[11px] text-indigo-100 font-medium truncate mt-0.5">
+                    Bid increment, sold hammer & squad assign
+                  </div>
+                </div>
               </div>
-              <h4 className="text-lg sm:text-xl font-black text-white mb-1.5">Open Auctioneer Panel</h4>
-              <p className="text-xs sm:text-sm text-slate-200 font-medium leading-relaxed">
-                Manage real-time bidding, hammer sold/unsold, and assign players to team squads.
-              </p>
+              <span className="text-base text-indigo-200 group-hover:translate-x-1 transition-transform pl-2">
+                →
+              </span>
             </button>
 
             <button
               type="button"
               onClick={() => (activePolicy.canLiveScreen || organizerRole === 'SuperAdmin') ? navigate('/live') : handleUpgradeClick()}
-              className={`group relative flex-1 overflow-hidden rounded-2xl p-5 sm:p-7 bg-gradient-to-br from-purple-950 via-slate-900 to-indigo-950 text-white shadow-lg shadow-purple-950/25 hover:shadow-xl hover:shadow-purple-950/35 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 text-left border border-purple-800/40 ${(!activePolicy.canLiveScreen && organizerRole !== 'SuperAdmin') ? 'opacity-75' : ''}`}
+              className={`hidden sm:flex w-full items-center justify-between p-3.5 sm:p-4 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-white border border-slate-700/80 active:scale-[0.98] transition group text-left cursor-pointer ${(!activePolicy.canLiveScreen && organizerRole !== 'SuperAdmin') ? 'opacity-75' : ''}`}
             >
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 rounded-xl bg-purple-500/20 text-purple-300 flex items-center justify-center text-2xl border border-purple-500/30 group-hover:scale-105 transition-transform">
+              <div className="flex items-center space-x-3 min-w-0">
+                <div className="w-10 h-10 rounded-lg bg-purple-500/20 text-purple-300 flex items-center justify-center text-xl shrink-0 border border-purple-500/30 group-hover:scale-105 transition-transform">
                   {(!activePolicy.canLiveScreen && organizerRole !== 'SuperAdmin') ? '🔒' : '📺'}
                 </div>
-                <span className="text-xs font-bold text-purple-300 px-2.5 py-1 rounded-full bg-white/10 group-hover:bg-white/20 transition">
-                  {(!activePolicy.canLiveScreen && organizerRole !== 'SuperAdmin') ? 'Upgrade Required 🔒' : 'Live Display →'}
-                </span>
+                <div className="min-w-0">
+                  <div className="text-sm sm:text-base font-black text-white leading-tight">
+                    Audience TV Display
+                  </div>
+                  <div className="text-[11px] text-slate-300 font-medium truncate mt-0.5">
+                    Live projector broadcast & sound effects
+                  </div>
+                </div>
               </div>
-              <h4 className="text-lg sm:text-xl font-black text-white mb-1.5">Open Audience Display</h4>
-              <p className="text-xs sm:text-sm text-slate-200 font-medium leading-relaxed">
-                Full-screen TV/projector broadcast with instant animations, sound effects, and team purse ledger.
-              </p>
+              <span className="text-xs text-purple-300 font-bold px-2 py-0.5 rounded bg-white/10 shrink-0">
+                {(!activePolicy.canLiveScreen && organizerRole !== 'SuperAdmin') ? 'Pro 🔒' : 'Live →'}
+              </span>
             </button>
+          </div>
+
+          {/* Integrated Match Summary Stats (Cricbuzz Match Card Style) */}
+          <div className="grid grid-cols-2 gap-2 pt-3 border-t border-white/10 text-center relative z-10">
+            <div className="bg-white/5 rounded-xl p-2 sm:p-2.5">
+              <div className="text-base sm:text-2xl font-black text-white leading-none">
+                {totalTeams}
+                {activePolicy.teamLimit !== -1 && (
+                  <span className="text-xs sm:text-sm font-semibold text-slate-400">/{activePolicy.teamLimit}</span>
+                )}
+              </div>
+              <div className="text-[10px] sm:text-xs font-bold text-indigo-300 uppercase tracking-wider mt-1 truncate">
+                Squads 🛡️
+              </div>
+            </div>
+
+            <div className="bg-white/5 rounded-xl p-2 sm:p-2.5">
+              <div className="text-base sm:text-2xl font-black text-white leading-none">
+                {totalPlayers}
+                {activePolicy.playerLimit !== -1 && (
+                  <span className="text-xs sm:text-sm font-semibold text-slate-400">/{activePolicy.playerLimit}</span>
+                )}
+              </div>
+              <div className="text-[10px] sm:text-xs font-bold text-emerald-300 uppercase tracking-wider mt-1 truncate">
+                In Pool 🏏
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* 🌟 3. Data Management & Settings (Responsive Action Grid) 🌟 */}
-        <div className="bg-white p-5 sm:p-8 rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-6 pb-4 border-b border-slate-100">
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-300">
-                CONFIGURATION
-              </span>
-              <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight mt-2 flex items-center">
-                📂 Data Management & Settings
-              </h3>
-            </div>
-            <p className="text-xs text-slate-600 font-medium">Create and manage tournament entities</p>
+        {/* 🌟 3. Quick Actions Grid (Cricbuzz-Style Touch Tiles) 🌟 */}
+        <div className="bg-white p-3.5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs mb-4 sm:mb-6">
+          <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+            <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-500">
+              ⚡ QUICK MANAGEMENT ACTIONS
+            </span>
+            <span className="text-[10px] text-indigo-600 font-bold hidden sm:inline-block">
+              Tournament Entity Controls
+            </span>
           </div>
 
-          <div className="grid grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-4">
+          <div className="grid grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3.5">
             {/* 1. Tournament Settings */}
             <button
               type="button"
               onClick={() => navigate('/tournament-settings')}
-              className="flex flex-col items-center justify-center text-center p-3 sm:p-5 rounded-xl sm:rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 shadow-xs hover:shadow-md active:scale-95 transition-all duration-200 group"
+              className="flex flex-col items-center justify-center text-center p-2.5 sm:p-4 rounded-xl bg-slate-50/70 hover:bg-slate-100 border border-slate-200/80 active:scale-95 transition group"
             >
-              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg sm:text-xl mb-1.5 sm:mb-2.5 group-hover:scale-110 transition-transform">
+              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg sm:text-xl mb-1 group-hover:scale-110 transition-transform shadow-2xs">
                 ⚙️
               </div>
-              <span className="text-xs sm:text-sm font-bold text-slate-800 group-hover:text-indigo-600 transition truncate w-full">
+              <span className="text-[11px] sm:text-xs font-black text-slate-800 group-hover:text-indigo-600 transition truncate w-full">
                 Settings
               </span>
-              <span className="text-[10px] text-slate-500 font-medium mt-0.5 hidden sm:inline-block">Tournament</span>
+              <span className="text-[9px] text-slate-400 font-medium hidden sm:inline-block">Rules & Info</span>
             </button>
 
             {/* 2. Add Team */}
             <button
               type="button"
               onClick={handleAddTeamClick}
-              className="flex flex-col items-center justify-center text-center p-3 sm:p-5 rounded-xl sm:rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 shadow-xs hover:shadow-md active:scale-95 transition-all duration-200 group"
+              className="flex flex-col items-center justify-center text-center p-2.5 sm:p-4 rounded-xl bg-slate-50/70 hover:bg-slate-100 border border-slate-200/80 active:scale-95 transition group"
             >
-              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg sm:text-xl mb-1.5 sm:mb-2.5 group-hover:scale-110 transition-transform">
+              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg sm:text-xl mb-1 group-hover:scale-110 transition-transform shadow-2xs">
                 🛡️
               </div>
-              <span className="text-xs sm:text-sm font-bold text-slate-800 group-hover:text-blue-600 transition truncate w-full">
+              <span className="text-[11px] sm:text-xs font-black text-slate-800 group-hover:text-blue-600 transition truncate w-full">
                 Add Team
               </span>
-              <span className="text-[10px] text-slate-500 font-medium mt-0.5 hidden sm:inline-block">New Franchise</span>
+              <span className="text-[9px] text-slate-400 font-medium hidden sm:inline-block">New Franchise</span>
             </button>
 
             {/* 3. Add Player */}
             <button
               type="button"
               onClick={() => navigate('/add-player')}
-              className="flex flex-col items-center justify-center text-center p-3 sm:p-5 rounded-xl sm:rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 shadow-xs hover:shadow-md active:scale-95 transition-all duration-200 group"
+              className="flex flex-col items-center justify-center text-center p-2.5 sm:p-4 rounded-xl bg-slate-50/70 hover:bg-slate-100 border border-slate-200/80 active:scale-95 transition group"
             >
-              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg sm:text-xl mb-1.5 sm:mb-2.5 group-hover:scale-110 transition-transform">
+              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg sm:text-xl mb-1 group-hover:scale-110 transition-transform shadow-2xs">
                 ➕
               </div>
-              <span className="text-xs sm:text-sm font-bold text-slate-800 group-hover:text-emerald-600 transition truncate w-full">
+              <span className="text-[11px] sm:text-xs font-black text-slate-800 group-hover:text-emerald-600 transition truncate w-full">
                 Add Player
               </span>
-              <span className="text-[10px] text-slate-500 font-medium mt-0.5 hidden sm:inline-block">Direct Entry</span>
+              <span className="text-[9px] text-slate-400 font-medium hidden sm:inline-block">Direct Entry</span>
             </button>
 
             {/* 4. View Teams */}
             <button
               type="button"
               onClick={() => ((activePolicy.canViewTeams || organizerRole === 'SuperAdmin') ? navigate('/teams') : handleUpgradeClick())}
-              className="flex flex-col items-center justify-center text-center p-3 sm:p-5 rounded-xl sm:rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 shadow-xs hover:shadow-md active:scale-95 transition-all duration-200 group relative"
+              className="flex flex-col items-center justify-center text-center p-2.5 sm:p-4 rounded-xl bg-slate-50/70 hover:bg-slate-100 border border-slate-200/80 active:scale-95 transition group relative"
             >
               {(!activePolicy.canViewTeams && organizerRole !== 'SuperAdmin') && (
-                <span className="absolute top-1.5 right-1.5 text-[9px] bg-amber-100 text-amber-800 px-1 py-0.2 rounded font-black border border-amber-200 shadow-2xs">🔒</span>
+                <span className="absolute top-1 right-1 text-[9px] bg-amber-100 text-amber-800 px-1 rounded font-black border border-amber-200">🔒</span>
               )}
-              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg sm:text-xl mb-1.5 sm:mb-2.5 group-hover:scale-110 transition-transform">
+              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg sm:text-xl mb-1 group-hover:scale-110 transition-transform shadow-2xs">
                 📊
               </div>
-              <span className="text-xs sm:text-sm font-bold text-slate-800 group-hover:text-amber-600 transition truncate w-full">
+              <span className="text-[11px] sm:text-xs font-black text-slate-800 group-hover:text-amber-600 transition truncate w-full">
                 View Teams
               </span>
-              <span className="text-[10px] text-slate-500 font-medium mt-0.5 hidden sm:inline-block">Rosters & Purse</span>
+              <span className="text-[9px] text-slate-400 font-medium hidden sm:inline-block">Rosters & Purse</span>
             </button>
 
             {/* 5. Manage Players */}
             <button
               type="button"
               onClick={() => navigate('/manage-players')}
-              className="flex flex-col items-center justify-center text-center p-3 sm:p-5 rounded-xl sm:rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 shadow-xs hover:shadow-md active:scale-95 transition-all duration-200 group"
+              className="flex flex-col items-center justify-center text-center p-2.5 sm:p-4 rounded-xl bg-slate-50/70 hover:bg-slate-100 border border-slate-200/80 active:scale-95 transition group"
             >
-              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-lg sm:text-xl mb-1.5 sm:mb-2.5 group-hover:scale-110 transition-transform">
+              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-lg sm:text-xl mb-1 group-hover:scale-110 transition-transform shadow-2xs">
                 🛠️
               </div>
-              <span className="text-xs sm:text-sm font-bold text-slate-800 group-hover:text-rose-600 transition truncate w-full">
+              <span className="text-[11px] sm:text-xs font-black text-slate-800 group-hover:text-rose-600 transition truncate w-full">
                 Players
               </span>
-              <span className="text-[10px] text-slate-500 font-medium mt-0.5 hidden sm:inline-block">Pool & CSV</span>
+              <span className="text-[9px] text-slate-400 font-medium hidden sm:inline-block">Pool & CSV</span>
             </button>
 
             {/* 6. Registration Form & Fee */}
             <button
               type="button"
               onClick={() => navigate('/registration-settings')}
-              className="flex flex-col items-center justify-center text-center p-3 sm:p-5 rounded-xl sm:rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 shadow-xs hover:shadow-md active:scale-95 transition-all duration-200 group"
+              className="flex flex-col items-center justify-center text-center p-2.5 sm:p-4 rounded-xl bg-slate-50/70 hover:bg-slate-100 border border-slate-200/80 active:scale-95 transition group"
             >
-              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-lg sm:text-xl mb-1.5 sm:mb-2.5 group-hover:scale-110 transition-transform">
+              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-lg sm:text-xl mb-1 group-hover:scale-110 transition-transform shadow-2xs">
                 📋
               </div>
-              <span className="text-xs sm:text-sm font-bold text-slate-800 group-hover:text-purple-600 transition truncate w-full">
-                Register Form
+              <span className="text-[11px] sm:text-xs font-black text-slate-800 group-hover:text-purple-600 transition truncate w-full">
+                Reg Form
               </span>
-              <span className="text-[10px] text-slate-500 font-medium mt-0.5 hidden sm:inline-block">Form & Fee</span>
+              <span className="text-[9px] text-slate-400 font-medium hidden sm:inline-block">Form & Fee</span>
             </button>
 
             {/* 7. Admin Panel (SuperAdmin only) */}
@@ -576,13 +557,13 @@ function Dashboard() {
               <button
                 type="button"
                 onClick={() => navigate('/super-admin')}
-                className="col-span-3 lg:col-span-6 flex items-center justify-center gap-2 p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-gradient-to-r from-purple-900 to-indigo-900 text-white shadow-md hover:shadow-lg active:scale-98 transition-all duration-200 group"
+                className="col-span-3 lg:col-span-6 flex items-center justify-center gap-2 p-2.5 sm:p-3 rounded-xl bg-gradient-to-r from-purple-900 to-indigo-900 text-white shadow-sm hover:shadow active:scale-98 transition group cursor-pointer"
               >
-                <span className="text-lg">👑</span>
-                <span className="text-xs sm:text-sm font-bold text-white">
+                <span className="text-base">👑</span>
+                <span className="text-xs sm:text-sm font-black text-white">
                   Super Admin Panel
                 </span>
-                <span className="text-[10px] text-purple-200 font-medium hidden sm:inline-block">— System Control & User Management</span>
+                <span className="text-[10px] text-purple-200 font-medium hidden sm:inline-block">— Global User & System Control</span>
               </button>
             )}
           </div>
@@ -641,18 +622,29 @@ function Dashboard() {
                     title="Configure Form & Payment Settings"
                   >
                     <span>⚙️</span>
-                    <span>Form Settings</span>
+                    <span className="hidden sm:inline">Form Settings</span>
+                    <span className="sm:hidden">Form</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleShareRegistrationLink}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold border border-emerald-200 transition"
+                    title="Share Link"
+                  >
+                    <span>📱</span>
+                    <span>Share</span>
                   </button>
                   <button
                     type="button"
                     onClick={handleCopyRegistrationLink}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full bg-slate-900 hover:bg-indigo-600 active:bg-indigo-700 text-white text-xs font-bold shadow-xs hover:shadow transition-all duration-200 border border-slate-800"
+                    className="inline-flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-slate-900 hover:bg-indigo-600 active:bg-indigo-700 text-white text-xs font-bold shadow-xs hover:shadow transition-all duration-200 border border-slate-800"
                     title="Copy Link to Clipboard"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
-                    <span>{registrationLinkMessage === 'Registration link copied!' ? 'Copied! ✓' : 'Copy Link'}</span>
+                    <span className="hidden sm:inline">{registrationLinkMessage === 'Registration link copied!' ? 'Copied! ✓' : 'Copy Link'}</span>
+                    <span className="sm:hidden">{registrationLinkMessage === 'Registration link copied!' ? '✓' : 'Copy'}</span>
                   </button>
                   {registrationLinkMessage && registrationLinkMessage !== 'Registration link copied!' && (
                     <span className="text-xs font-bold text-rose-600">
