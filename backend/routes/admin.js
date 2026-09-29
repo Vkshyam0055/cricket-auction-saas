@@ -145,7 +145,7 @@ router.get('/all-data', fetchOrganizer, requireSuperAdmin, async (req, res) => {
                 plan: user.plan,
                 isActive: user.isActive,
                 isLifetimeFree: user.isLifetimeFree,
-                maxDevicesAllowed: user.maxDevicesAllowed,
+                maxDevicesAllowed: (user.maxDevicesAllowed === 1 || !user.maxDevicesAllowed) ? 15 : user.maxDevicesAllowed,
                 activeDevicesCount: activeSessionMap.get(String(user._id)) || 0
             });
         }

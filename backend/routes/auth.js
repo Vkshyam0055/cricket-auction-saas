@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const User = require('../models/User');
+const UserSession = require('../models/UserSession');
 const { resolveEffectivePlan, getDefaultRegistrationPlan } = require('../utils/planPolicy');
 const { createSessionAndToken, getActiveDeviceIdsForUser, revokeSessionById } = require('../utils/sessionAuth');
 
@@ -68,7 +69,7 @@ router.post('/register', async (req, res) => {
     if (user) return res.status(400).json({ message: 'इस मोबाइल या ईमेल से खाता पहले से मौजूद है!' });
     const hashedPassword = await bcrypt.hash(password, 10);
     const assignedPlan = await getDefaultRegistrationPlan();
-    user = new User({ name, phone, email: normalizedEmail, password: hashedPassword, plan: assignedPlan, role: 'Organizer', maxDevicesAllowed: 1, isActive: true });
+    user = new User({ name, phone, email: normalizedEmail, password: hashedPassword, plan: assignedPlan, role: 'Organizer', maxDevicesAllowed: 15, isActive: true });
     await user.save();
     res.status(201).json({ message: 'रजिस्ट्रेशन सफल रहा!' });
   } catch (err) {
@@ -94,19 +95,40 @@ router.post('/login', async (req, res) => {
       user.password = migratedPassword;
     }
 
-    const activeDeviceIds = await getActiveDeviceIdsForUser(user._id);
-    await User.updateOne({ _id: user._id }, { $set: { activeDevices: activeDeviceIds } });
+    let activeDeviceIds = await getActiveDeviceIdsForUser(user._id);
+
+    const effectiveDeviceLimit = (user.maxDevicesAllowed === 1 || !user.maxDevicesAllowed) ? 15 : user.maxDevicesAllowed;
 
     if (normalizedDeviceId) {
-      if (user.role !== 'SuperAdmin' && !activeDeviceIds.includes(normalizedDeviceId) && activeDeviceIds.length >= user.maxDevicesAllowed) {
-        return res.status(403).json({ message: `लॉगिन लिमिट पूरी हो गई है! आपका प्लान सिर्फ ${user.maxDevicesAllowed} डिवाइस की अनुमति देता है।` });
+      if (user.role !== 'SuperAdmin' && !activeDeviceIds.includes(normalizedDeviceId) && activeDeviceIds.length >= effectiveDeviceLimit) {
+        const numDevicesToRevoke = activeDeviceIds.length - effectiveDeviceLimit + 1;
+        const oldestSessions = await UserSession.aggregate([
+            { $match: { user: user._id, revokedAt: null, expiresAt: { $gt: new Date() }, isImpersonated: { $ne: true }, deviceId: { $ne: 'impersonation_device' } } },
+            { $sort: { lastActivityAt: 1, createdAt: 1 } },
+            { $group: { _id: "$deviceId", oldestTime: { $first: "$lastActivityAt" } } },
+            { $sort: { oldestTime: 1 } },
+            { $limit: numDevicesToRevoke }
+        ]);
+
+        const deviceIdsToRevoke = oldestSessions.map(s => s._id);
+
+        if (deviceIdsToRevoke.length > 0) {
+            await UserSession.updateMany(
+                { user: user._id, deviceId: { $in: deviceIdsToRevoke }, revokedAt: null },
+                { $set: { revokedAt: new Date() } }
+            );
+            activeDeviceIds = await getActiveDeviceIdsForUser(user._id);
+        }
       }
     }
 
     const { token, expiresAt } = await createSessionAndToken({ user, deviceId: normalizedDeviceId, ipAddress: req.ip, userAgent: req.get('user-agent') });
+    
     if (normalizedDeviceId && !activeDeviceIds.includes(normalizedDeviceId)) {
-      await User.updateOne({ _id: user._id }, { $set: { activeDevices: [...activeDeviceIds, normalizedDeviceId] } });
+        activeDeviceIds.push(normalizedDeviceId);
     }
+    await User.updateOne({ _id: user._id }, { $set: { activeDevices: activeDeviceIds } });
+
     const normalizedPlan = resolveEffectivePlan(user);
     const requiresEmailUpdate = !user.email;
 

@@ -12,7 +12,7 @@ function SuperAdmin() {
   // SaaS Control States
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
-  const [editForm, setEditForm] = useState({ plan: 'Basic', isActive: true, isLifetimeFree: false, maxDevicesAllowed: 1 });
+  const [editForm, setEditForm] = useState({ plan: 'Basic', isActive: true, isLifetimeFree: false, maxDevicesAllowed: 15 });
 
   // Plan Edit States
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
@@ -69,7 +69,7 @@ function SuperAdmin() {
       plan: user.plan || 'Basic',
       isActive: user.isActive !== undefined ? user.isActive : true,
       isLifetimeFree: user.isLifetimeFree || false,
-      maxDevicesAllowed: user.maxDevicesAllowed || 1
+      maxDevicesAllowed: user.maxDevicesAllowed || 15
     });
     setIsEditModalOpen(true);
   };

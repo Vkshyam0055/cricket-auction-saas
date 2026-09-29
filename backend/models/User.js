@@ -9,7 +9,7 @@ const userSchema = new mongoose.Schema({
     plan: { type: String, enum: ['Free', 'Basic', 'Pro'], default: 'Free' }, 
     isActive: { type: Boolean, default: true },
     isLifetimeFree: { type: Boolean, default: false },
-    maxDevicesAllowed: { type: Number, default: 1 },
+    maxDevicesAllowed: { type: Number, default: 15 },
     // 🌟 सुरक्षा: अगर डेटाबेस में कुछ न हो, तो इसे खाली लिस्ट मानो
     activeDevices: { type: Array, default: [] },
     overrides: { type: Object, default: {} },
