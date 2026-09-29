@@ -127,12 +127,38 @@ const SessionExpiryWatcher = () => {
   return null;
 };
 
+const Heartbeat = () => {
+  React.useEffect(() => {
+    const ping = async () => {
+      const token = localStorage.getItem('token');
+      const isImpersonated = Boolean(localStorage.getItem('adminToken') || localStorage.getItem('superAdminSession'));
+      if (token && !isImpersonated) {
+        try {
+          await apiRequest({
+            method: 'post',
+            path: '/api/auth/ping',
+            headers: { Authorization: `Bearer ${token}` }
+          });
+        } catch (error) {
+          // apiRequest auto-clears on 401
+        }
+      }
+    };
+
+    ping();
+    const interval = setInterval(ping, 60000);
+    return () => clearInterval(interval);
+  }, []);
+  return null;
+};
+
 function App() {
   return (
     <TournamentProvider>
       <BrowserRouter>
         <ImpersonationBanner />
         <SessionExpiryWatcher />
+        <Heartbeat />
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/auth" element={<Auth />} />

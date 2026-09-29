@@ -248,6 +248,25 @@ router.post('/complete-profile-email', async (req, res) => {
   }
 });
 
+router.post('/ping', async (req, res) => {
+  try {
+    const authHeader = req.header('Authorization');
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ message: 'No token' });
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (!decoded.sid) return res.status(400).json({ message: 'Invalid session' });
+
+    await UserSession.updateOne(
+      { _id: decoded.sid, revokedAt: null },
+      { $set: { lastActivityAt: new Date() } }
+    );
+    res.json({ message: 'Ping successful' });
+  } catch (error) {
+    res.status(401).json({ error: 'Unauthorized or expired' });
+  }
+});
+
 router.post('/logout', async (req, res) => {
   try {
     const { phone, deviceId } = req.body;
