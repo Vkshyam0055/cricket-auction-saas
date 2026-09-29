@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const User = require('../models/User');
 const UserSession = require('../models/UserSession');
+const VisitorLog = require('../models/VisitorLog');
 const { resolveEffectivePlan, getDefaultRegistrationPlan } = require('../utils/planPolicy');
 const { createSessionAndToken, getActiveDeviceIdsForUser, revokeSessionById } = require('../utils/sessionAuth');
 
@@ -291,6 +292,24 @@ router.post('/logout', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'लॉगआउट में एरर!' });
   }
+});
+
+router.post('/track-visitor', async (req, res) => {
+    try {
+        const { visitorId, route } = req.body;
+        if (!visitorId) return res.status(400).json({ error: 'visitorId required' });
+        
+        await VisitorLog.create({
+            visitorId: String(visitorId),
+            route: String(route || '/'),
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent')
+        });
+
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: 'Server error' });
+    }
 });
 
 module.exports = router;

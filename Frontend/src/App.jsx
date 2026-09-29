@@ -152,6 +152,29 @@ const Heartbeat = () => {
   return null;
 };
 
+const VisitorTracker = () => {
+  const location = useLocation();
+
+  React.useEffect(() => {
+    let visitorId = localStorage.getItem('visitorId');
+    if (!visitorId) {
+      visitorId = 'vid_' + Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+      localStorage.setItem('visitorId', visitorId);
+    }
+
+    const isImpersonated = Boolean(localStorage.getItem('adminToken') || localStorage.getItem('superAdminSession'));
+    if (!isImpersonated) {
+      apiRequest({
+        method: 'post',
+        path: '/api/auth/track-visitor',
+        data: { visitorId, route: location.pathname }
+      }).catch(() => {});
+    }
+  }, [location.pathname]);
+
+  return null;
+};
+
 function App() {
   return (
     <TournamentProvider>
@@ -159,6 +182,7 @@ function App() {
         <ImpersonationBanner />
         <SessionExpiryWatcher />
         <Heartbeat />
+        <VisitorTracker />
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/auth" element={<Auth />} />

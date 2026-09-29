@@ -110,6 +110,7 @@ router.get('/all-data', fetchOrganizer, requireSuperAdmin, async (req, res) => {
 
         const users = await User.find({ role: 'Organizer' }).sort({ createdAt: -1 });
         const now = new Date();
+        const threeMinutesAgo = new Date(Date.now() - 3 * 60 * 1000);
         const activeSessionRows = await UserSession.aggregate([
             {
                 $match: {
@@ -121,17 +122,20 @@ router.get('/all-data', fetchOrganizer, requireSuperAdmin, async (req, res) => {
             {
                 $group: {
                     _id: '$user',
-                    count: { $sum: 1 }
+                    uniqueDevices: { $addToSet: '$deviceId' },
+                    lastActivityAt: { $max: '$lastActivityAt' }
                 }
             }
         ]);
-        const activeSessionMap = new Map(activeSessionRows.map((row) => [String(row._id), Number(row.count || 0)]));
+        const activeSessionMap = new Map(activeSessionRows.map((row) => [String(row._id), row]));
         const allData = [];
 
         for (let user of users) {
             const tournament = await Tournament.findOne({ organizer: user._id });
             const teamCount = await Team.countDocuments({ organizer: user._id });
             const playerCount = await Player.countDocuments({ organizer: user._id });
+
+            const sessionInfo = activeSessionMap.get(String(user._id));
 
             allData.push({
                 _id: user._id,
@@ -146,13 +150,42 @@ router.get('/all-data', fetchOrganizer, requireSuperAdmin, async (req, res) => {
                 isActive: user.isActive,
                 isLifetimeFree: user.isLifetimeFree,
                 maxDevicesAllowed: (user.maxDevicesAllowed === 1 || !user.maxDevicesAllowed) ? 15 : user.maxDevicesAllowed,
-                activeDevicesCount: activeSessionMap.get(String(user._id)) || 0
+                activeDevicesCount: sessionInfo ? sessionInfo.uniqueDevices.length : 0,
+                isOnline: sessionInfo ? sessionInfo.lastActivityAt > threeMinutesAgo : false
             });
         }
         
         res.json(allData);
     } catch (error) {
         res.status(500).json({ message: "मास्टर डेटा लाने में सर्वर एरर!" });
+    }
+});
+
+router.get('/analytics', fetchOrganizer, requireSuperAdmin, async (req, res) => {
+    try {
+        const now = new Date();
+        const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const VisitorLog = require('../models/VisitorLog');
+        
+        const totalVisits = await VisitorLog.countDocuments({ createdAt: { $gte: oneDayAgo } });
+        const uniqueVisitorsArray = await VisitorLog.distinct('visitorId', { createdAt: { $gte: oneDayAgo } });
+        
+        // Active sessions right now
+        const threeMinutesAgo = new Date(now.getTime() - 3 * 60 * 1000);
+        const activeSessions = await UserSession.countDocuments({ 
+            revokedAt: null, 
+            expiresAt: { $gt: now },
+            lastActivityAt: { $gt: threeMinutesAgo },
+            isImpersonated: { $ne: true }
+        });
+
+        res.json({
+            visits24h: totalVisits,
+            uniqueVisitors24h: uniqueVisitorsArray.length,
+            activeSessions
+        });
+    } catch (e) {
+        res.status(500).json({ message: "एनालिटिक्स डेटा लाने में एरर!" });
     }
 });
 
