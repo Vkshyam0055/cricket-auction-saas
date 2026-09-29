@@ -4,7 +4,8 @@ import { apiRequest } from '../utils/apiClient';
 
 function SuperAdmin() {
   const [adminData, setAdminData] = useState([]);
-  const [plans, setPlans] = useState([]); // 🌟 प्लान्स के लिए नया स्टेट
+  const [plans, setPlans] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('organizers'); // 🌟 Tabs: 'organizers' or 'plans'
   const navigate = useNavigate();
@@ -36,13 +37,15 @@ function SuperAdmin() {
       if (!token) return navigate('/auth');
       const headers = { Authorization: `Bearer ${token}` };
       
-      const [userRes, planRes] = await Promise.all([
+      const [userRes, planRes, analyticsRes] = await Promise.all([
         apiRequest({ method: 'get', path: '/api/admin/all-data', headers }),
-        apiRequest({ method: 'get', path: '/api/plans' })
+        apiRequest({ method: 'get', path: '/api/plans' }),
+        apiRequest({ method: 'get', path: '/api/admin/analytics', headers })
       ]);
 
       setAdminData(userRes.data);
       setPlans(planRes.data);
+      setAnalytics(analyticsRes.data);
     } catch (error) {
       alert("🔒 Access Denied!");
       navigate('/dashboard');
@@ -245,73 +248,111 @@ function SuperAdmin() {
           <button onClick={() => setActiveTab('plans')} className={`px-6 py-2 rounded-lg font-bold transition ${activeTab === 'plans' ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>💰 Manage Plans & Features</button>
         </div>
 
-        {/* Tab 1: User Management Table */}
-        {activeTab === 'organizers' && (
-          <div className="bg-gray-800 rounded-3xl shadow-2xl border border-gray-700 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-gray-750 border-b border-gray-700 text-gray-400 text-xs uppercase tracking-wider font-extrabold">
-                    <th className="p-4">Organizer</th>
-                    <th className="p-4">Tournament</th>
-                    <th className="p-4 text-center">Teams / Players</th>
-                    <th className="p-4 text-center">Plan</th>
-                    <th className="p-4 text-center">Devices</th>
-                    <th className="p-4 text-center">Status</th>
-                    <th className="p-4 text-center">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-700 text-sm">
-                  {adminData.map((user) => (
-                    <tr key={user._id} className="hover:bg-gray-750/50 transition">
-                      <td className="p-4">
-                        <div className="font-bold text-white text-base">{user.name}</div>
-                        <div className="text-gray-400 text-xs">{user.phone}</div>
-                      </td>
-                      <td className="p-4">
-                        <span className="font-medium text-gray-200">{user.tournamentName}</span>
-                      </td>
-                      <td className="p-4 text-center">
-                        <span className="text-blue-400 font-bold">{user.totalTeams}</span> Teams / <span className="text-green-400 font-bold">{user.totalPlayers}</span> Players
-                      </td>
-                      <td className="p-4 text-center">
-                        <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${user.plan === 'Pro' ? 'bg-purple-900/60 text-purple-300 border border-purple-500' : user.plan === 'Basic' ? 'bg-blue-900/60 text-blue-300 border border-blue-500' : 'bg-gray-700 text-gray-300'}`}>{user.plan}</span>
-                      </td>
-                      <td className="p-4 text-center">
-                        <span className={`font-mono font-bold ${user.activeDevicesCount >= user.maxDevicesAllowed ? 'text-red-400' : 'text-green-400'}`}>{user.activeDevicesCount} / {user.maxDevicesAllowed}</span>
-                      </td>
-                      <td className="p-4 text-center">
-                        {user.isActive ? (
-                          <span className="text-xs bg-green-900/40 text-green-400 border border-green-700 px-2 py-0.5 rounded">Active</span>
-                        ) : (
-                          <span className="text-xs bg-red-900/40 text-red-400 border border-red-700 px-2 py-0.5 rounded">Blocked</span>
-                        )}
-                        {user.isLifetimeFree && <span className="ml-1 text-xs bg-yellow-900/40 text-yellow-400 border border-yellow-700 px-2 py-0.5 rounded">Lifetime</span>}
-                      </td>
-                      <td className="p-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                          <button 
-                            onClick={() => handleImpersonate(user)} 
-                            title={`Act as ${user.name}`} 
-                            className="bg-amber-600/30 hover:bg-amber-600 text-amber-300 hover:text-white border border-amber-500/50 p-2 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                          >
-                            <span>🎭</span>
-                            <span className="hidden sm:inline">Act as User</span>
-                          </button>
-                          <button onClick={() => openEditModal(user)} title="Edit Settings" className="bg-blue-600/30 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/50 p-2 rounded-lg text-xs transition cursor-pointer">✏️</button>
-                          <button onClick={() => handleResetDevices(user._id)} title="Clear Devices" className="bg-yellow-600/30 hover:bg-yellow-600 text-yellow-300 hover:text-white border border-yellow-500/50 p-2 rounded-lg text-xs transition cursor-pointer">📱</button>
-                          <button onClick={() => handleForceLogout(user._id)} title="Force Logout" className="bg-red-600/30 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/50 p-2 rounded-lg text-xs transition cursor-pointer">🚪</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        
+        {/* Top Analytics Dashboard */}
+        {analytics && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div className="bg-gray-800 p-4 rounded-2xl border-2 border-gray-700 shadow-xl flex flex-col items-center justify-center relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-2 opacity-10 text-4xl">👑</div>
+              <span className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-1 z-10">Total Organizers</span>
+              <span className="text-3xl font-black text-white z-10">{adminData.length}</span>
+            </div>
+            <div className="bg-gray-800 p-4 rounded-2xl border-2 border-blue-900/30 shadow-xl flex flex-col items-center justify-center relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-2 opacity-10 text-4xl">👁️</div>
+              <span className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-1 z-10">24h Visitors</span>
+              <span className="text-3xl font-black text-blue-400 z-10">{analytics.visits24h || 0}</span>
+            </div>
+            <div className="bg-gray-800 p-4 rounded-2xl border-2 border-purple-900/30 shadow-xl flex flex-col items-center justify-center relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-2 opacity-10 text-4xl">👥</div>
+              <span className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-1 z-10">Unique Users</span>
+              <span className="text-3xl font-black text-purple-400 z-10">{analytics.uniqueVisitors24h || 0}</span>
+            </div>
+            <div className="bg-gray-800 p-4 rounded-2xl border-2 border-green-900/30 shadow-xl flex flex-col items-center justify-center relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-2 opacity-10 text-4xl">🟢</div>
+              <span className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-1 z-10">Active Sessions</span>
+              <span className="text-3xl font-black text-green-400 z-10">{analytics.activeSessions || 0}</span>
             </div>
           </div>
         )}
 
-        {/* Tab 2: Plan Management */}
+        {/* Tab 1: User Management Cards (Mobile-First) */}
+        {activeTab === 'organizers' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {adminData.map((user) => (
+              <div key={user._id} className="bg-gray-800 rounded-3xl border-2 border-gray-700 shadow-xl overflow-hidden flex flex-col hover:border-gray-600 transition-all">
+                
+                {/* Card Header */}
+                <div className="bg-gray-850 p-5 border-b border-gray-700 flex justify-between items-start">
+                  <div>
+                    <h3 className="font-black text-white text-lg truncate max-w-[160px] sm:max-w-[200px]">{user.name}</h3>
+                    <p className="text-gray-400 text-xs font-medium">{user.phone}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${user.plan === 'Pro' ? 'bg-purple-900/60 text-purple-300 border border-purple-500' : user.plan === 'Basic' ? 'bg-blue-900/60 text-blue-300 border border-blue-500' : 'bg-gray-700 text-gray-300'}`}>
+                      {user.plan}
+                    </span>
+                    {user.isOnline ? (
+                      <span className="flex items-center gap-1.5 text-[10px] font-bold text-green-400 bg-green-900/30 px-2 py-0.5 rounded border border-green-800 shadow-[0_0_10px_rgba(74,222,128,0.2)]">
+                        <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></div> Online
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-gray-500 bg-gray-900 px-2 py-0.5 rounded border border-gray-700 flex items-center gap-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-gray-600"></div> Offline
+                      </span>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Card Body */}
+                <div className="p-5 flex-1 space-y-3.5 text-sm">
+                  <div className="flex justify-between items-center bg-gray-900/50 p-2.5 rounded-xl border border-gray-700/50">
+                    <span className="text-gray-400 font-bold text-xs uppercase tracking-wider">Tournament</span>
+                    <span className="text-gray-200 font-bold truncate max-w-[140px]">{user.tournamentName}</span>
+                  </div>
+                  
+                  <div className="flex justify-between items-center bg-gray-900/50 p-2.5 rounded-xl border border-gray-700/50">
+                    <span className="text-gray-400 font-bold text-xs uppercase tracking-wider">Stats</span>
+                    <span><span className="text-blue-400 font-black">{user.totalTeams}</span> Tms / <span className="text-green-400 font-black">{user.totalPlayers}</span> Plyrs</span>
+                  </div>
+                  
+                  <div className="flex justify-between items-center bg-gray-900/50 p-2.5 rounded-xl border border-gray-700/50">
+                    <span className="text-gray-400 font-bold text-xs uppercase tracking-wider">Active Devices</span>
+                    <span className={`font-mono font-black text-sm ${user.activeDevicesCount >= user.maxDevicesAllowed ? 'text-red-400' : 'text-green-400'}`}>
+                      {user.activeDevicesCount} <span className="text-gray-500 font-bold">/</span> {user.maxDevicesAllowed}
+                    </span>
+                  </div>
+                  
+                  <div className="flex gap-2 pt-1 flex-wrap">
+                    {user.isActive ? (
+                      <span className="text-[10px] bg-green-900/40 text-green-400 border border-green-700 px-2 py-0.5 rounded font-black uppercase">Active Account</span>
+                    ) : (
+                      <span className="text-[10px] bg-red-900/40 text-red-400 border border-red-700 px-2 py-0.5 rounded font-black uppercase">Blocked Account</span>
+                    )}
+                    {user.isLifetimeFree && <span className="text-[10px] bg-yellow-900/40 text-yellow-400 border border-yellow-700 px-2 py-0.5 rounded font-black uppercase">Lifetime Free</span>}
+                  </div>
+                </div>
+                
+                {/* Card Footer (Actions) */}
+                <div className="bg-gray-900 p-4 grid grid-cols-2 sm:grid-cols-4 gap-2.5 border-t border-gray-700">
+                  <button onClick={() => handleImpersonate(user)} className="col-span-2 sm:col-span-1 bg-amber-600/10 hover:bg-amber-600/30 text-amber-500 border border-amber-500/30 p-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md cursor-pointer">
+                    <span className="text-base">🎭</span> Act
+                  </button>
+                  <button onClick={() => openEditModal(user)} className="bg-blue-600/10 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 p-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md cursor-pointer">
+                    <span>✏️</span> Edit
+                  </button>
+                  <button onClick={() => handleResetDevices(user._id)} className="bg-yellow-600/10 hover:bg-yellow-600/30 text-yellow-500 border border-yellow-500/30 p-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md cursor-pointer" title="Reset Devices">
+                    <span>📱</span> Rst
+                  </button>
+                  <button onClick={() => handleForceLogout(user._id)} className="bg-red-600/10 hover:bg-red-600/30 text-red-500 border border-red-500/30 p-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md cursor-pointer" title="Force Kick">
+                    <span>🚪</span> Kick
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+{/* Tab 2: Plan Management */}
         {activeTab === 'plans' && (
           <div className="animate-in slide-in-from-bottom-4 duration-500 grid grid-cols-1 md:grid-cols-3 gap-8">
             {plans.map((plan) => (
