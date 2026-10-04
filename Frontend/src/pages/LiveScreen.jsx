@@ -369,17 +369,22 @@ function LiveScreen() {
                     </thead>
                     <tbody className={`divide-y text-xs ${modeTheme.tableDivider}`}>
                       {teamSquadPlayers.slice(0, 16).map((player, pIdx) => (
-                        <tr key={player._id || pIdx} className={`transition-colors ${modeTheme.tableRowHover}`}>
+                        <tr key={player._id || pIdx} className={`transition-colors ${modeTheme.tableRowHover} ${player.isIcon ? 'bg-gradient-to-r from-yellow-900/20 to-transparent' : ''}`}>
                           <td className="py-1.5 px-2 font-black opacity-50 text-[10px]">{pIdx + 1}</td>
                           <td className="py-1.5 px-2">
                             <div className="flex items-center gap-2 min-w-0">
                               <img
                                 src={player.photoUrl || 'https://via.placeholder.com/80?text=P'}
                                 alt={player.name}
-                                className="w-7 h-7 rounded-md object-cover bg-slate-800 border border-slate-600 shrink-0"
+                                className={`w-7 h-7 rounded-md object-cover bg-slate-800 shrink-0 ${player.isIcon ? 'border-2 border-yellow-400' : 'border border-slate-600'}`}
                                 onError={(e) => { e.target.src = 'https://via.placeholder.com/80?text=P'; }}
                               />
-                              <span className="font-bold text-xs truncate max-w-[140px]" title={player.name}>{player.name}</span>
+                              <div className="flex flex-col">
+                                <span className={`font-bold text-xs truncate max-w-[140px] ${player.isIcon ? 'text-yellow-400' : ''}`} title={player.name}>
+                                  {player.name} {player.isIcon && '⭐'}
+                                </span>
+                                {player.isIcon && <span className="text-[8px] text-yellow-500 font-bold uppercase tracking-widest leading-none mt-0.5">Icon Player</span>}
+                              </div>
                             </div>
                           </td>
                           <td className={`py-1.5 px-2 text-[11px] font-semibold ${modeTheme.mutedText}`}>{player.role || '—'}</td>
@@ -400,19 +405,23 @@ function LiveScreen() {
                 {recentBuys.length > 0 ? (
                   <div className="flex flex-col gap-2">
                     {recentBuys.map((player, idx) => (
-                      <div key={player._id || idx} className={`rounded-lg border p-2 flex items-center gap-2.5 ${modeTheme.panel}`}>
+                      <div key={player._id || idx} className={`rounded-lg border p-2 flex items-center gap-2.5 ${modeTheme.panel} ${player.isIcon ? 'bg-gradient-to-r from-yellow-900/20 to-transparent' : ''}`}>
                         <div className="relative shrink-0">
                           <span className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-indigo-600 text-white text-[8px] font-black flex items-center justify-center border border-indigo-400 z-10">{idx + 1}</span>
                           <img
                             src={player.photoUrl || 'https://via.placeholder.com/80?text=P'}
                             alt={player.name}
-                            className="w-10 h-10 rounded-lg object-cover border border-slate-600 bg-slate-800"
+                            className={`w-10 h-10 rounded-lg object-cover bg-slate-800 ${player.isIcon ? 'border-2 border-yellow-400' : 'border border-slate-600'}`}
                             onError={(e) => { e.target.src = 'https://via.placeholder.com/80?text=P'; }}
                           />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h4 className="font-black text-xs truncate">{player.name}</h4>
-                          <p className={`text-[10px] font-semibold ${modeTheme.mutedText}`}>{player.role || 'Player'}</p>
+                          <h4 className={`font-black text-xs truncate ${player.isIcon ? 'text-yellow-400' : ''}`}>
+                            {player.name} {player.isIcon && '⭐'}
+                          </h4>
+                          <p className={`text-[10px] font-semibold ${modeTheme.mutedText}`}>
+                            {player.isIcon ? <span className="text-yellow-500 uppercase tracking-widest font-bold">Icon Player</span> : player.role || 'Player'}
+                          </p>
                         </div>
                         <span className="font-black text-xs text-emerald-400 shrink-0">₹{Number(player.soldPrice || 0).toLocaleString()}</span>
                       </div>

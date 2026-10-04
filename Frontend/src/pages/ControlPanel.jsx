@@ -416,7 +416,7 @@ function ControlPanel() {
   // 🌟 ENRICHED BREAK DATA SNAPSHOT FOR PROJECTOR/LIVE SCREEN (REQUIREMENTS 8 & 9) 🌟
   const breakDataSnapshot = useMemo(() => {
     const soldPlayers = allPlayers
-      .filter((player) => String(player.auctionStatus || '').toLowerCase() === 'sold')
+      .filter((player) => ['sold', 'icon'].includes(String(player.auctionStatus || '').toLowerCase()))
       .map((player) => {
         const teamMatch = resolveTeam(player.soldTo);
         return {
@@ -425,6 +425,8 @@ function ControlPanel() {
           photoUrl: player.photoUrl,
           role: player.role,
           category: normalizeCategory(player.category),
+          isIcon: Boolean(player.isIcon),
+          auctionStatus: player.auctionStatus,
           soldTo: teamMatch ? {
             _id: teamMatch._id,
             teamName: teamMatch.teamName,
@@ -2028,15 +2030,17 @@ function ControlPanel() {
                             </div>
                           </div>
 
-                          <button
-                            onClick={() => bringBackToAuction(p)}
-                            disabled={isProcessingRecovery}
-                            className="bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/40 hover:border-indigo-500 font-bold px-3 py-1.5 rounded-lg text-xs transition active:scale-95 shrink-0 flex items-center gap-1 cursor-pointer disabled:opacity-40"
-                            title={isSold ? `Refund ₹${soldPrice.toLocaleString()} to ${getTeamLabel(p.soldTo)} & return to pool` : 'Return to live pool'}
-                          >
-                            <span>Bring Back</span>
-                            <span>↩️</span>
-                          </button>
+                          {!p.isIcon && p.auctionStatus !== 'Icon' && (
+                            <button
+                              onClick={() => bringBackToAuction(p)}
+                              disabled={isProcessingRecovery}
+                              className="bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/40 hover:border-indigo-500 font-bold px-3 py-1.5 rounded-lg text-xs transition active:scale-95 shrink-0 flex items-center gap-1 cursor-pointer disabled:opacity-40"
+                              title={isSold ? `Refund ₹${soldPrice.toLocaleString()} to ${getTeamLabel(p.soldTo)} & return to pool` : 'Return to live pool'}
+                            >
+                              <span>Bring Back</span>
+                              <span>↩️</span>
+                            </button>
+                          )}
                         </div>
                       );
                     })}

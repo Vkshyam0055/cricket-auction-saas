@@ -278,6 +278,10 @@ router.put('/undo/:id', async (req, res) => {
         const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
         if (!player) return res.status(404).json({ message: "खिलाड़ी नहीं मिला" });
 
+        if (player.isIcon || player.auctionStatus === 'Icon') {
+            return res.status(400).json({ message: "Icon players must be managed exclusively from the Player Management tab." });
+        }
+
         const wasSold = (player.auctionStatus === 'Sold' || player.auctionStatus === 'Icon') &&
                         Boolean(player.soldTo) && player.soldTo !== 'Unsold';
         const refundAmount = Number(player.soldPrice) || 0;
@@ -333,7 +337,7 @@ router.post('/bring-all-back', async (req, res) => {
         const soldPlayers = await Player.find({
             organizer: req.user.id,
             approvalStatus: 'Approved',
-            auctionStatus: { $in: ['Sold', 'Icon'] },
+            auctionStatus: { $in: ['Sold'] },
             soldTo: { $ne: null },
             soldPrice: { $gt: 0 }
         }).lean();
@@ -362,7 +366,7 @@ router.post('/bring-all-back', async (req, res) => {
             {
                 organizer: req.user.id,
                 approvalStatus: 'Approved',
-                auctionStatus: { $in: ['Sold', 'Unsold', 'Passed', 'Icon'] }
+                auctionStatus: { $in: ['Sold', 'Unsold', 'Passed'] }
             },
             {
                 $set: {
@@ -383,7 +387,7 @@ router.post('/bring-all-back', async (req, res) => {
 router.post('/reset-auction', async (req, res) => {
     try {
         const playerResult = await Player.updateMany(
-            { organizer: req.user.id },
+            { organizer: req.user.id, isIcon: { $ne: true } },
             {
                 $set: {
                     auctionStatus: 'ReadyForAuction',
@@ -394,8 +398,12 @@ router.post('/reset-auction', async (req, res) => {
         );
 
         const teams = await Team.find({ organizer: req.user.id });
+        const iconPlayers = await Player.find({ organizer: req.user.id, isIcon: true, soldTo: { $ne: null } });
+
         await Promise.all(teams.map((t) => {
-            return Team.findByIdAndUpdate(t._id, { remainingPurse: t.totalPurse });
+            const teamIcons = iconPlayers.filter(p => String(p.soldTo) === String(t._id) || String(p.soldTo) === t.teamName);
+            const iconSpent = teamIcons.reduce((sum, p) => sum + (Number(p.soldPrice) || 0), 0);
+            return Team.findByIdAndUpdate(t._id, { remainingPurse: t.totalPurse - iconSpent });
         }));
 
         res.json({
@@ -540,18 +548,19 @@ router.put('/remove-icon/:id', async (req, res) => {
             if (!player.isIcon) throw new Error('PLAYER_NOT_ICON');
 
             const refundAmount = Number(player.soldPrice);
-            if (!Number.isFinite(refundAmount) || refundAmount < 0) throw new Error('INVALID_ICON_PRICE');
+            let team = null;
+            if (player.soldTo && refundAmount > 0) {
+                const teamQuery = mongoose.Types.ObjectId.isValid(player.soldTo)
+                    ? { _id: player.soldTo, organizer: req.user.id }
+                    : { teamName: player.soldTo, organizer: req.user.id };
 
-            const teamQuery = mongoose.Types.ObjectId.isValid(player.soldTo)
-                ? { _id: player.soldTo, organizer: req.user.id }
-                : { teamName: player.soldTo, organizer: req.user.id };
-
-            const team = await Team.findOneAndUpdate(
-                teamQuery,
-                { $inc: { remainingPurse: refundAmount } },
-                { new: true, session }
-            );
-            if (!team) throw new Error('TEAM_NOT_FOUND');
+                team = await Team.findOneAndUpdate(
+                    teamQuery,
+                    { $inc: { remainingPurse: refundAmount } },
+                    { new: true, session }
+                );
+                // We do not throw TEAM_NOT_FOUND if team isn't found just in case of data inconsistency, but ideally team should exist.
+            }
 
             player.isIcon = false;
             player.soldTo = null;
