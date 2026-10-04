@@ -450,6 +450,18 @@ router.put('/update-price/:id', async (req, res) => {
     } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
+router.put('/update-photo/:id', async (req, res) => {
+    try {
+        const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
+        if (!player) return res.status(404).json({ success: false, message: "Player not found" });
+        const photoUrl = req.body.photoUrl;
+        if (!photoUrl || typeof photoUrl !== 'string') return res.status(400).json({ success: false, message: "Invalid photo URL" });
+        player.photoUrl = photoUrl;
+        await player.save();
+        res.json({ success: true, message: "Photo Updated", player });
+    } catch (error) { res.status(500).json({ success: false, message: "Error updating photo" }); }
+});
+
 router.put('/update-category/:id', async (req, res) => {
     try {
         const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });

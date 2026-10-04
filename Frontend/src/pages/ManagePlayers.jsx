@@ -1,11 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../utils/apiClient';
+import ImageCropperModal from '../components/ImageCropperModal';
+import { uploadImageToCloudinary } from '../utils/cloudinaryUpload';
 
 function ManagePlayers() {
   const navigate = useNavigate();
   const [players, setPlayers] = useState([]);
   const [teams, setTeams] = useState([]);
+
+  const [activeTab, setActiveTab] = useState('ALL'); // 'ALL' | 'APPROVED' | 'UNAPPROVED' | 'ICON' | 'SOLD' | 'UNSOLD'
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [isIconModalOpen, setIsIconModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -13,6 +18,13 @@ function ManagePlayers() {
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [iconTeam, setIconTeam] = useState('');
   const [iconPrice, setIconPrice] = useState(0);
+
+  const fileInputRef = useRef(null);
+  const uploadSequenceRef = useRef(0);
+  const [cropperOpen, setCropperOpen] = useState(false);
+  const [rawImageSrc, setRawImageSrc] = useState(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [photoViewMode, setPhotoViewMode] = useState(false);
 
   const getTeamShortName = (teamRef) => {
     if (!teamRef) return '';
@@ -31,6 +43,81 @@ function ManagePlayers() {
     const match = teams.find((team) => String(team._id) === String(teamRef) || team.teamName === teamRef);
     return match?.teamName || teamRef;
   };
+
+  const handleFileSelect = (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const reader = new FileReader();
+      reader.addEventListener('load', () => setRawImageSrc(reader.result?.toString() || ''));
+      reader.readAsDataURL(e.target.files[0]);
+      setCropperOpen(true);
+    }
+    e.target.value = null;
+  };
+
+  const uploadCroppedImage = async (blob) => {
+    const sequenceId = ++uploadSequenceRef.current;
+    setIsUploadingPhoto(true);
+    try {
+      const secureUrl = await uploadImageToCloudinary(blob, 'player-photo.jpg');
+      if (sequenceId === uploadSequenceRef.current) {
+        const token = localStorage.getItem('token');
+        const res = await apiRequest({
+          method: 'put',
+          path: `/api/players/update-photo/${selectedPlayer._id}`,
+          data: { photoUrl: secureUrl },
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.data?.success) {
+          setSelectedPlayer(res.data.player);
+          fetchPlayers();
+          alert('Photo updated successfully!');
+        } else {
+            alert(res.data?.message || 'Error updating photo');
+        }
+      }
+    } catch (err) {
+      console.error('Photo update error:', err);
+      if (sequenceId === uploadSequenceRef.current) {
+        const errorMsg =
+          err?.response?.data?.message ||
+          (err?.response?.status === 404 ? 'Server route not found. Please restart the backend server.' : '') ||
+          err?.message ||
+          'Failed to update photo.';
+        alert(`❌ ${errorMsg}`);
+      }
+    } finally {
+      if (sequenceId === uploadSequenceRef.current) {
+        setIsUploadingPhoto(false);
+      }
+    }
+  };
+
+  const handleCropComplete = (croppedBlob) => {
+    setCropperOpen(false);
+    uploadCroppedImage(croppedBlob);
+  };
+  
+  const handleDownloadPhoto = async () => {
+    if (!selectedPlayer?.photoUrl) return;
+    try {
+      const response = await fetch(selectedPlayer.photoUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const filename = `${selectedPlayer.name.replace(/[^a-zA-Z0-9]/g, '_')}_photo.jpg`;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error downloading photo:", error);
+      alert("Failed to download photo.");
+    }
+  };
+
+
 
   const fetchPlayers = async () => {
     try {
@@ -264,6 +351,152 @@ function ManagePlayers() {
     );
   };
 
+  const statusCounts = useMemo(() => {
+    let approved = 0;
+    let unapproved = 0;
+    let rejected = 0;
+    let icon = 0;
+    let organizerAdded = 0;
+    let publicRegistered = 0;
+
+    players.forEach((p) => {
+      if (p.approvalStatus === 'Approved') {
+        approved++;
+      } else {
+        unapproved++;
+      }
+
+      if (p.approvalStatus === 'Rejected') {
+        rejected++;
+      }
+
+      const isIconPlayer = Boolean(p.isIcon) || p.auctionStatus?.trim().toLowerCase() === 'icon';
+      if (isIconPlayer) {
+        icon++;
+      }
+
+      if (p.source === 'Organizer') {
+        organizerAdded++;
+      } else {
+        publicRegistered++;
+      }
+    });
+
+    return {
+      ALL: players.length,
+      APPROVED: approved,
+      UNAPPROVED: unapproved,
+      REJECTED: rejected,
+      ICON: icon,
+      ORGANIZER: organizerAdded,
+      PUBLIC: publicRegistered,
+    };
+  }, [players]);
+
+  const filteredPlayers = useMemo(() => {
+    return players.filter((player) => {
+      // 1. Status / Source Filter
+      if (activeTab === 'APPROVED') {
+        if (player.approvalStatus !== 'Approved') return false;
+      } else if (activeTab === 'UNAPPROVED') {
+        if (player.approvalStatus === 'Approved') return false;
+      } else if (activeTab === 'REJECTED') {
+        if (player.approvalStatus !== 'Rejected') return false;
+      } else if (activeTab === 'ICON') {
+        const isIconPlayer = Boolean(player.isIcon) || player.auctionStatus?.trim().toLowerCase() === 'icon';
+        if (!isIconPlayer) return false;
+      } else if (activeTab === 'ORGANIZER') {
+        if (player.source !== 'Organizer') return false;
+      } else if (activeTab === 'PUBLIC') {
+        if (player.source === 'Organizer') return false;
+      }
+
+      // 2. Search Query Filter
+      if (searchQuery.trim()) {
+        const query = searchQuery.trim().toLowerCase();
+        const name = (player.name || '').toLowerCase();
+        const city = (player.city || '').toLowerCase();
+        const role = (player.role || '').toLowerCase();
+        const category = (player.category || '').toLowerCase();
+        const mobile = (player.mobile || '').toLowerCase();
+        const fatherName = (player.fatherName || '').toLowerCase();
+        const teamName = getTeamFullName(player.soldTo).toLowerCase();
+
+        const matches =
+          name.includes(query) ||
+          city.includes(query) ||
+          role.includes(query) ||
+          category.includes(query) ||
+          mobile.includes(query) ||
+          fatherName.includes(query) ||
+          teamName.includes(query);
+
+        if (!matches) return false;
+      }
+
+      return true;
+    });
+  }, [players, activeTab, searchQuery, teams]);
+
+  const STATUS_TABS = [
+    {
+      key: 'ALL',
+      label: 'All',
+      count: statusCounts.ALL,
+      activeClass: 'bg-slate-900 text-white border-slate-900',
+      badgeClass: 'bg-white/20 text-white',
+      inactiveBadgeClass: 'bg-slate-100 text-slate-700'
+    },
+    {
+      key: 'APPROVED',
+      label: 'Approved',
+      count: statusCounts.APPROVED,
+      activeClass: 'bg-emerald-600 text-white border-emerald-600',
+      badgeClass: 'bg-emerald-700/60 text-white',
+      inactiveBadgeClass: 'bg-emerald-50 text-emerald-800'
+    },
+    {
+      key: 'UNAPPROVED',
+      label: 'Unapproved',
+      count: statusCounts.UNAPPROVED,
+      activeClass: 'bg-amber-600 text-white border-amber-600',
+      badgeClass: 'bg-amber-700/60 text-white',
+      inactiveBadgeClass: 'bg-amber-50 text-amber-800'
+    },
+    {
+      key: 'REJECTED',
+      label: 'Rejected',
+      count: statusCounts.REJECTED,
+      activeClass: 'bg-rose-600 text-white border-rose-600',
+      badgeClass: 'bg-rose-700/60 text-white',
+      inactiveBadgeClass: 'bg-rose-50 text-rose-800'
+    },
+    {
+      key: 'ICON',
+      label: 'Icon',
+      count: statusCounts.ICON,
+      activeClass: 'bg-amber-400 text-amber-950 font-black border-amber-400',
+      badgeClass: 'bg-amber-500/40 text-amber-950',
+      inactiveBadgeClass: 'bg-amber-100 text-amber-900'
+    },
+    {
+      key: 'ORGANIZER',
+      label: 'Added by Organizer',
+      count: statusCounts.ORGANIZER,
+      activeClass: 'bg-blue-600 text-white border-blue-600',
+      badgeClass: 'bg-blue-700/60 text-white',
+      inactiveBadgeClass: 'bg-blue-50 text-blue-700'
+    },
+    {
+      key: 'PUBLIC',
+      label: 'Public Registration',
+      count: statusCounts.PUBLIC,
+      activeClass: 'bg-purple-600 text-white border-purple-600',
+      badgeClass: 'bg-purple-700/60 text-white',
+      inactiveBadgeClass: 'bg-purple-50 text-purple-700'
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-slate-50/70 font-sans text-slate-900 selection:bg-indigo-500 selection:text-white p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -298,14 +531,105 @@ function ManagePlayers() {
           </div>
         </div>
 
-        {/* 🌟 2. Mobile View: Stacked Player Cards (360px - 480px width) 🌟 */}
+        {/* 🌟 2. Direct Header Status Options (NO filter icon/popup) & Search Bar 🌟 */}
+        <div className="bg-white p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs space-y-3.5">
+          {/* Status Tabs Header */}
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                Filter by Status:
+              </span>
+              <span className="text-xs font-bold text-slate-500">
+                Showing <strong className="text-slate-900 font-black">{filteredPlayers.length}</strong> of {players.length}
+              </span>
+            </div>
+
+            {/* Direct Visible Status Tabs / Chips (Scrollable row on mobile, no page overflow) */}
+            <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1.5 scrollbar-none -mx-1 px-1">
+              {STATUS_TABS.map((tab) => {
+                const isActive = activeTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setActiveTab(tab.key)}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold border shrink-0 transition flex items-center gap-1.5 active:scale-95 cursor-pointer ${
+                      isActive
+                        ? `${tab.activeClass} shadow-xs ring-2 ring-offset-1 ring-slate-400/30`
+                        : 'bg-white text-slate-700 border-slate-200/90 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                        isActive ? tab.badgeClass : tab.inactiveBadgeClass
+                      }`}
+                    >
+                      {tab.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Search Row */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-slate-400 text-sm">
+                🔍
+              </span>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by name, role, city, category, mobile..."
+                className="w-full pl-10 pr-10 py-2.5 bg-slate-50/80 border border-slate-200/90 rounded-xl text-xs sm:text-sm font-semibold text-slate-800 placeholder-slate-400 focus:bg-white focus:border-indigo-600 focus:outline-none transition shadow-2xs"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 font-bold text-sm"
+                  title="Clear search"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {(activeTab !== 'ALL' || searchQuery) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('ALL');
+                  setSearchQuery('');
+                }}
+                className="px-3 py-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 shrink-0 transition"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 🌟 3. Mobile View: Stacked Player Cards (360px - 480px width) 🌟 */}
         <div className="block md:hidden space-y-3">
-          {players.length === 0 ? (
-            <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center text-slate-500 font-semibold text-sm shadow-2xs">
-              No players found in this tournament.
+          {filteredPlayers.length === 0 ? (
+            <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center text-slate-500 font-semibold text-sm shadow-2xs space-y-2">
+              <p>No players found matching current filter ({activeTab}){searchQuery ? ` and search "${searchQuery}"` : ''}.</p>
+              {(activeTab !== 'ALL' || searchQuery) && (
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('ALL'); setSearchQuery(''); }}
+                  className="inline-block mt-2 px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-xs"
+                >
+                  Clear filter & search
+                </button>
+              )}
             </div>
           ) : (
-            players.map((player, index) => (
+            filteredPlayers.map((player, index) => (
               <div
                 key={player._id}
                 className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs space-y-3"
@@ -449,7 +773,7 @@ function ManagePlayers() {
           )}
         </div>
 
-        {/* 🌟 3. Desktop View: Modern Data Table (md and above) 🌟 */}
+        {/* 🌟 4. Desktop View: Modern Data Table (md and above) 🌟 */}
         <div className="hidden md:block bg-white rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -466,14 +790,23 @@ function ManagePlayers() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {players.length === 0 ? (
+                {filteredPlayers.length === 0 ? (
                   <tr>
-                    <td colSpan="8" className="p-8 text-center text-slate-500 font-medium text-sm">
-                      No players registered yet.
+                    <td colSpan="8" className="p-8 text-center text-slate-500 font-medium text-sm space-y-2">
+                      <p>No players found matching current filter ({activeTab}){searchQuery ? ` and search "${searchQuery}"` : ''}.</p>
+                      {(activeTab !== 'ALL' || searchQuery) && (
+                        <button
+                          type="button"
+                          onClick={() => { setActiveTab('ALL'); setSearchQuery(''); }}
+                          className="inline-block mt-2 px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-xs"
+                        >
+                          Clear filter & search
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ) : (
-                  players.map((player, index) => (
+                  filteredPlayers.map((player, index) => (
                     <tr key={player._id} className="hover:bg-slate-50/80 transition-colors group">
                       <td className="p-4 font-bold text-xs text-slate-500">{index + 1}</td>
                       <td className="p-4">
@@ -694,14 +1027,43 @@ function ManagePlayers() {
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white p-6 sm:p-8 rounded-3xl w-full max-w-3xl max-h-[90vh] overflow-y-auto border border-slate-200 shadow-2xl">
             <div className="flex justify-between items-start gap-4 mb-6 pb-4 border-b border-slate-100">
-              <div className="flex items-center gap-4">
-                <img
-                  src={selectedPlayer.photoUrl || 'https://via.placeholder.com/80'}
-                  alt={selectedPlayer.name}
-                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border border-slate-200 shadow-sm"
-                />
-                <div>
-                  <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 w-full">
+                <div className="relative group shrink-0">
+                  <img
+                    src={selectedPlayer.photoUrl || 'https://via.placeholder.com/80'}
+                    alt={selectedPlayer.name}
+                    className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover border border-slate-200 shadow-sm cursor-pointer"
+                    onClick={() => { if(selectedPlayer.photoUrl) setPhotoViewMode(true); }}
+                  />
+                  <div className="flex flex-col gap-1 mt-2">
+                    {selectedPlayer.photoUrl && (
+                      <button 
+                        type="button" 
+                        onClick={handleDownloadPhoto}
+                        className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold py-1 px-2 rounded-lg transition text-center"
+                      >
+                        ⬇️ Download
+                      </button>
+                    )}
+                    <button 
+                      type="button" 
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploadingPhoto}
+                      className="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-bold py-1 px-2 rounded-lg transition text-center disabled:opacity-50"
+                    >
+                      {isUploadingPhoto ? '⏳ Uploading...' : '✏️ Change Photo'}
+                    </button>
+                  </div>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileSelect}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                </div>
+                <div className="flex flex-col text-center sm:text-left mt-2 sm:mt-0">
+                  <div className="flex items-center justify-center sm:justify-start gap-2">
                     <h2 className="text-xl sm:text-2xl font-black text-slate-900">{selectedPlayer.name}</h2>
                     {selectedPlayer.isIcon && (
                       <span className="bg-amber-100 text-amber-900 text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-300">
@@ -785,6 +1147,34 @@ function ManagePlayers() {
           </div>
         </div>
       )}
+
+      {/* Full-size Photo View Modal */}
+      {photoViewMode && selectedPlayer?.photoUrl && (
+        <div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4">
+          <button 
+            type="button"
+            onClick={() => setPhotoViewMode(false)}
+            className="absolute top-4 right-4 text-white hover:text-gray-300 text-4xl"
+          >
+            &times;
+          </button>
+          <img 
+            src={selectedPlayer.photoUrl} 
+            alt={selectedPlayer.name} 
+            className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl border-2 border-white/20" 
+          />
+        </div>
+      )}
+
+      {/* Image Cropper Modal */}
+      <ImageCropperModal
+        isOpen={cropperOpen}
+        imageSrc={rawImageSrc}
+        onCropComplete={handleCropComplete}
+        onCancel={() => setCropperOpen(false)}
+        aspectRatio={1}
+        title="Crop Player Photo"
+      />
     </div>
   );
 }
