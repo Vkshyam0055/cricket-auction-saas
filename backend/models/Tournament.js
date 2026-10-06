@@ -16,6 +16,7 @@ const tournamentSchema = new mongoose.Schema({
     bidButton1: { type: Number, default: 500 },
     bidButton2: { type: Number, default: 1000 },
     bidButton3: { type: Number, default: 5000 },
+    biddingButtonsCount: { type: Number, default: 3 },
     isRegistrationOpen: { type: Boolean, default: true },
     
     customFields: [{

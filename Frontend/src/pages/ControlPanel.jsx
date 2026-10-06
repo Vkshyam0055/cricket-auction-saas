@@ -89,6 +89,7 @@ function ControlPanel() {
   const btn1 = tournament?.bidButton1 || 500;
   const btn2 = tournament?.bidButton2 || 1000;
   const btn3 = tournament?.bidButton3 || 5000;
+  const biddingButtonsCount = tournament?.biddingButtonsCount || 3;
 
   // 🌟 SMART FORMATTING 🌟
   const formatBidButton = (value) => {
@@ -1641,28 +1642,34 @@ function ControlPanel() {
                           <span>₹{team.remainingPurse.toLocaleString()}</span>
                           <span className="text-[9px] text-purple-700 font-semibold">Max {formatCurrency(team.maxBid)}</span>
                         </div>
-                        <div className="grid grid-cols-3 gap-1">
-                          <button
-                            disabled={currentBid + btn1 > Number(team.maxBid || 0) || currentBid + btn1 > Number(team.remainingPurse || 0)}
-                            onClick={() => updateBid(team._id, btn1)}
-                            className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
-                          >
-                            {formatBidButton(btn1)}
-                          </button>
-                          <button
-                            disabled={currentBid + btn2 > Number(team.maxBid || 0) || currentBid + btn2 > Number(team.remainingPurse || 0)}
-                            onClick={() => updateBid(team._id, btn2)}
-                            className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
-                          >
-                            {formatBidButton(btn2)}
-                          </button>
-                          <button
-                            disabled={currentBid + btn3 > Number(team.maxBid || 0) || currentBid + btn3 > Number(team.remainingPurse || 0)}
-                            onClick={() => updateBid(team._id, btn3)}
-                            className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
-                          >
-                            {formatBidButton(btn3)}
-                          </button>
+                        <div className={`grid ${biddingButtonsCount === 1 ? 'grid-cols-1' : biddingButtonsCount === 2 ? 'grid-cols-2' : 'grid-cols-3'} gap-1`}>
+                          {biddingButtonsCount >= 1 && (
+                            <button
+                              disabled={currentBid + btn1 > Number(team.maxBid || 0) || currentBid + btn1 > Number(team.remainingPurse || 0)}
+                              onClick={() => updateBid(team._id, btn1)}
+                              className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                            >
+                              {formatCurrency(currentBid + btn1)}
+                            </button>
+                          )}
+                          {biddingButtonsCount >= 2 && (
+                            <button
+                              disabled={currentBid + btn2 > Number(team.maxBid || 0) || currentBid + btn2 > Number(team.remainingPurse || 0)}
+                              onClick={() => updateBid(team._id, btn2)}
+                              className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                            >
+                              {formatCurrency(currentBid + btn2)}
+                            </button>
+                          )}
+                          {biddingButtonsCount >= 3 && (
+                            <button
+                              disabled={currentBid + btn3 > Number(team.maxBid || 0) || currentBid + btn3 > Number(team.remainingPurse || 0)}
+                              onClick={() => updateBid(team._id, btn3)}
+                              className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                            >
+                              {formatCurrency(currentBid + btn3)}
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -1779,37 +1786,43 @@ function ControlPanel() {
                         </div>
 
                         {/* ROW 3: 3 INCREMENT BUTTONS */}
-                        <div className="grid grid-cols-3 gap-1">
-                          <button
-                            disabled={
-                              currentBid + btn1 > Number(team.maxBid || 0) ||
-                              currentBid + btn1 > Number(team.remainingPurse || 0)
-                            }
-                            onClick={() => updateBid(team._id, btn1)}
-                            className="bg-blue-50 text-blue-800 font-bold rounded py-0.5 text-[10px] hover:bg-blue-100 border border-blue-200 disabled:opacity-30 disabled:cursor-not-allowed transition"
-                          >
-                            {formatBidButton(btn1)}
-                          </button>
-                          <button
-                            disabled={
-                              currentBid + btn2 > Number(team.maxBid || 0) ||
-                              currentBid + btn2 > Number(team.remainingPurse || 0)
-                            }
-                            onClick={() => updateBid(team._id, btn2)}
-                            className="bg-blue-50 text-blue-800 font-bold rounded py-0.5 text-[10px] hover:bg-blue-100 border border-blue-200 disabled:opacity-30 disabled:cursor-not-allowed transition"
-                          >
-                            {formatBidButton(btn2)}
-                          </button>
-                          <button
-                            disabled={
-                              currentBid + btn3 > Number(team.maxBid || 0) ||
-                              currentBid + btn3 > Number(team.remainingPurse || 0)
-                            }
-                            onClick={() => updateBid(team._id, btn3)}
-                            className="bg-blue-50 text-blue-800 font-bold rounded py-0.5 text-[10px] hover:bg-blue-100 border border-blue-200 disabled:opacity-30 disabled:cursor-not-allowed transition"
-                          >
-                            {formatBidButton(btn3)}
-                          </button>
+                        <div className={`grid ${biddingButtonsCount === 1 ? 'grid-cols-1' : biddingButtonsCount === 2 ? 'grid-cols-2' : 'grid-cols-3'} gap-1`}>
+                          {biddingButtonsCount >= 1 && (
+                            <button
+                              disabled={
+                                currentBid + btn1 > Number(team.maxBid || 0) ||
+                                currentBid + btn1 > Number(team.remainingPurse || 0)
+                              }
+                              onClick={() => updateBid(team._id, btn1)}
+                              className="bg-blue-50 text-blue-800 font-bold rounded py-0.5 text-[10px] hover:bg-blue-100 border border-blue-200 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                            >
+                              {formatCurrency(currentBid + btn1)}
+                            </button>
+                          )}
+                          {biddingButtonsCount >= 2 && (
+                            <button
+                              disabled={
+                                currentBid + btn2 > Number(team.maxBid || 0) ||
+                                currentBid + btn2 > Number(team.remainingPurse || 0)
+                              }
+                              onClick={() => updateBid(team._id, btn2)}
+                              className="bg-blue-50 text-blue-800 font-bold rounded py-0.5 text-[10px] hover:bg-blue-100 border border-blue-200 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                            >
+                              {formatCurrency(currentBid + btn2)}
+                            </button>
+                          )}
+                          {biddingButtonsCount >= 3 && (
+                            <button
+                              disabled={
+                                currentBid + btn3 > Number(team.maxBid || 0) ||
+                                currentBid + btn3 > Number(team.remainingPurse || 0)
+                              }
+                              onClick={() => updateBid(team._id, btn3)}
+                              className="bg-blue-50 text-blue-800 font-bold rounded py-0.5 text-[10px] hover:bg-blue-100 border border-blue-200 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                            >
+                              {formatCurrency(currentBid + btn3)}
+                            </button>
+                          )}
                         </div>
                       </div>
                     );

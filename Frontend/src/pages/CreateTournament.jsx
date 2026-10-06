@@ -11,7 +11,7 @@ function CreateTournament() {
   const [formData, setFormData] = useState({
     name: '', logoUrl: '', tournamentPoster: '', venue: '', 
     teamBudget: 50000000, minPlayersPerTeam: 15,
-    bidButton1: 500, bidButton2: 1000, bidButton3: 5000,
+    bidButton1: 500, bidButton2: 1000, bidButton3: 5000, biddingButtonsCount: 3,
     upiQrUrl: '', upiId: '', paymentMessage: '' 
   });
 
@@ -31,7 +31,7 @@ function CreateTournament() {
         venue: tournament.venue || '',
         teamBudget: tournament.teamBudget || 50000000,
         minPlayersPerTeam: tournament.minPlayersPerTeam || 15,
-        bidButton1: tournament.bidButton1 || 500, bidButton2: tournament.bidButton2 || 1000, bidButton3: tournament.bidButton3 || 5000,
+        bidButton1: tournament.bidButton1 || 500, bidButton2: tournament.bidButton2 || 1000, bidButton3: tournament.bidButton3 || 5000, biddingButtonsCount: tournament.biddingButtonsCount || 3,
         upiQrUrl: tournament.upiQrUrl || '', upiId: tournament.upiId || '', paymentMessage: tournament.paymentMessage || ''
       });
       setCustomFields(tournament.customFields || []); 
@@ -164,10 +164,24 @@ function CreateTournament() {
 
             <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100">
               <label className="block text-sm font-black text-indigo-800 uppercase mb-4">Bidding Buttons (₹)</label>
-              <div className="grid grid-cols-3 gap-4">
-                <div><span className="text-xs font-bold text-gray-500">Btn 1</span><input name="bidButton1" type="number" value={formData.bidButton1} onChange={handleChange} className="w-full p-3 mt-1 bg-white border rounded-lg font-bold text-center" /></div>
-                <div><span className="text-xs font-bold text-gray-500">Btn 2</span><input name="bidButton2" type="number" value={formData.bidButton2} onChange={handleChange} className="w-full p-3 mt-1 bg-white border rounded-lg font-bold text-center" /></div>
-                <div><span className="text-xs font-bold text-gray-500">Btn 3</span><input name="bidButton3" type="number" value={formData.bidButton3} onChange={handleChange} className="w-full p-3 mt-1 bg-white border rounded-lg font-bold text-center" /></div>
+              <div className="mb-4">
+                <label className="block text-xs font-bold text-gray-500">Number of Buttons</label>
+                <select name="biddingButtonsCount" value={formData.biddingButtonsCount} onChange={handleChange} className="w-full p-3 mt-1 bg-white border rounded-lg font-bold">
+                  <option value={1}>1 Button</option>
+                  <option value={2}>2 Buttons</option>
+                  <option value={3}>3 Buttons</option>
+                </select>
+              </div>
+              <div className={`grid ${Number(formData.biddingButtonsCount) === 1 ? 'grid-cols-1' : Number(formData.biddingButtonsCount) === 2 ? 'grid-cols-2' : 'grid-cols-3'} gap-4`}>
+                {Number(formData.biddingButtonsCount) >= 1 && (
+                  <div><span className="text-xs font-bold text-gray-500">Btn 1</span><input name="bidButton1" type="number" value={formData.bidButton1} onChange={handleChange} className="w-full p-3 mt-1 bg-white border rounded-lg font-bold text-center" /></div>
+                )}
+                {Number(formData.biddingButtonsCount) >= 2 && (
+                  <div><span className="text-xs font-bold text-gray-500">Btn 2</span><input name="bidButton2" type="number" value={formData.bidButton2} onChange={handleChange} className="w-full p-3 mt-1 bg-white border rounded-lg font-bold text-center" /></div>
+                )}
+                {Number(formData.biddingButtonsCount) >= 3 && (
+                  <div><span className="text-xs font-bold text-gray-500">Btn 3</span><input name="bidButton3" type="number" value={formData.bidButton3} onChange={handleChange} className="w-full p-3 mt-1 bg-white border rounded-lg font-bold text-center" /></div>
+                )}
               </div>
             </div>
 

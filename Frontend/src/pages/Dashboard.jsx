@@ -180,7 +180,7 @@ function Dashboard() {
 
   // 🌟 JIT Prerequisite Check Handlers 🌟
   const isBudgetSet = tournament && (tournament.teamBudget !== 50000000 || tournament.minPlayersPerTeam !== 15);
-  const isBiddingSet = tournament && (tournament.bidButton1 !== 500 || tournament.bidButton2 !== 1000 || tournament.bidButton3 !== 5000);
+  const isBiddingSet = tournament && (tournament.bidButton1 !== 500 || tournament.bidButton2 !== 1000 || tournament.bidButton3 !== 5000 || tournament.biddingButtonsCount !== 3);
 
   const handleAddTeamClick = () => {
     if (!isBudgetSet) {
@@ -213,6 +213,7 @@ function Dashboard() {
         bidButton1: data.bidButton1 !== undefined ? Number(data.bidButton1) : tournament.bidButton1,
         bidButton2: data.bidButton2 !== undefined ? Number(data.bidButton2) : tournament.bidButton2,
         bidButton3: data.bidButton3 !== undefined ? Number(data.bidButton3) : tournament.bidButton3,
+        biddingButtonsCount: data.biddingButtonsCount !== undefined ? Number(data.biddingButtonsCount) : tournament.biddingButtonsCount,
         customFields: tournament.customFields || [],
         upiQrUrl: tournament.upiQrUrl || '',
         upiId: tournament.upiId || '',
@@ -706,9 +707,10 @@ function Dashboard() {
         title="पहले Bidding Buttons सेट करें"
         description="Auctioneer Panel खोलने से पहले bidding increment buttons configure करें।"
         fields={[
-          { name: 'bidButton1', label: 'Button 1 (₹)', type: 'number', defaultValue: tournament?.bidButton1 || 500 },
-          { name: 'bidButton2', label: 'Button 2 (₹)', type: 'number', defaultValue: tournament?.bidButton2 || 1000 },
-          { name: 'bidButton3', label: 'Button 3 (₹)', type: 'number', defaultValue: tournament?.bidButton3 || 5000 },
+          { name: 'biddingButtonsCount', label: 'Number of Bidding Buttons', type: 'select', options: [1, 2, 3], defaultValue: tournament?.biddingButtonsCount || 3 },
+          { name: 'bidButton1', label: 'Button 1 (₹)', type: 'number', defaultValue: tournament?.bidButton1 || 500, visible: (fd) => Number(fd.biddingButtonsCount || tournament?.biddingButtonsCount || 3) >= 1 },
+          { name: 'bidButton2', label: 'Button 2 (₹)', type: 'number', defaultValue: tournament?.bidButton2 || 1000, visible: (fd) => Number(fd.biddingButtonsCount || tournament?.biddingButtonsCount || 3) >= 2 },
+          { name: 'bidButton3', label: 'Button 3 (₹)', type: 'number', defaultValue: tournament?.bidButton3 || 5000, visible: (fd) => Number(fd.biddingButtonsCount || tournament?.biddingButtonsCount || 3) >= 3 },
         ]}
         saveButtonText="Save & Open Panel →"
         saving={jitSaving}

@@ -16,7 +16,7 @@ router.post('/', async (req, res) => {
     try {
         const { 
             name, logoUrl, tournamentPoster, venue, teamBudget, minPlayersPerTeam, 
-            bidButton1, bidButton2, bidButton3, customFields, upiQrUrl, upiId, paymentMessage 
+            bidButton1, bidButton2, bidButton3, biddingButtonsCount, customFields, upiQrUrl, upiId, paymentMessage 
         } = req.body;
 
         let tournament = await Tournament.findOne({ organizer: req.user.id });
@@ -33,6 +33,7 @@ router.post('/', async (req, res) => {
             if (bidButton1) tournament.bidButton1 = Number(bidButton1);
             if (bidButton2) tournament.bidButton2 = Number(bidButton2);
             if (bidButton3) tournament.bidButton3 = Number(bidButton3);
+            if (biddingButtonsCount) tournament.biddingButtonsCount = Number(biddingButtonsCount);
             if (customFields) tournament.customFields = customFields; 
             
             tournament.upiQrUrl = upiQrUrl || '';
@@ -49,6 +50,7 @@ router.post('/', async (req, res) => {
                 bidButton1: bidButton1 ? Number(bidButton1) : 500,
                 bidButton2: bidButton2 ? Number(bidButton2) : 1000,
                 bidButton3: bidButton3 ? Number(bidButton3) : 5000,
+                biddingButtonsCount: biddingButtonsCount ? Number(biddingButtonsCount) : 3,
                 customFields: customFields || [], 
                 upiQrUrl: upiQrUrl || '',
                 upiId: upiId || '',

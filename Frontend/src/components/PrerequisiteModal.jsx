@@ -91,7 +91,9 @@ export default function PrerequisiteModal({
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            {fields.map((field) => (
+            {fields.map((field) => {
+              if (field.visible && !field.visible(formData)) return null;
+              return (
               <div key={field.name} className="space-y-1.5">
                 <label 
                   htmlFor={field.name} 
@@ -99,17 +101,33 @@ export default function PrerequisiteModal({
                 >
                   {field.label}
                 </label>
-                <input
-                  type={field.type || 'text'}
-                  id={field.name}
-                  value={formData[field.name] || ''}
-                  onChange={(e) => handleChange(e, field.name)}
-                  required={field.required !== false}
-                  disabled={saving}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors disabled:opacity-50"
-                />
+                {field.type === 'select' ? (
+                  <select
+                    id={field.name}
+                    value={formData[field.name] || ''}
+                    onChange={(e) => handleChange(e, field.name)}
+                    required={field.required !== false}
+                    disabled={saving}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors disabled:opacity-50"
+                  >
+                    {field.options && field.options.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type={field.type || 'text'}
+                    id={field.name}
+                    value={formData[field.name] || ''}
+                    onChange={(e) => handleChange(e, field.name)}
+                    required={field.required !== false}
+                    disabled={saving}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors disabled:opacity-50"
+                  />
+                )}
               </div>
-            ))}
+              );
+            })}
 
             <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
               <button
