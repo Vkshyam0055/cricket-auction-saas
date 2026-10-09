@@ -129,6 +129,79 @@ router.post('/', async (req, res) => {
     } catch (error) { res.status(500).json({ message: "खिलाड़ी सेव करने में खराबी आ गई है!" }); }
 });
 
+router.post('/bulk', async (req, res) => {
+    const session = await mongoose.startSession();
+    try {
+        let responsePayload = null;
+        await session.withTransaction(async () => {
+            if (req.user.role !== 'SuperAdmin' || req.user.isImpersonated) {
+                const organizer = await User.findById(req.user.id).select('plan role').session(session).lean();
+                const organizerPlan = resolveEffectivePlan(organizer);
+                const policy = await getEffectivePlanPolicy(organizerPlan);
+
+                if (policy.playerLimit !== -1) {
+                    const currentPlayerCount = await Player.countDocuments({ organizer: req.user.id }).session(session);
+                    const incomingCount = req.body.players?.length || 0;
+                    if (currentPlayerCount + incomingCount > policy.playerLimit) {
+                        const err = new Error('LIMIT_REACHED');
+                        err.meta = {
+                            message: `आपके ${organizerPlan} प्लान में अधिकतम ${policy.playerLimit} प्लेयर्स की अनुमति है। वर्तमान में आपके पास ${currentPlayerCount} प्लेयर्स हैं। आप ${incomingCount} नए प्लेयर्स जोड़ रहे हैं। कृपया प्लान अपग्रेड करें या प्लेयर्स कम करें।`
+                        };
+                        throw err;
+                    }
+                }
+            }
+
+            if (!req.body.players || !Array.isArray(req.body.players) || req.body.players.length === 0) {
+                const err = new Error('INVALID_DATA');
+                err.meta = { message: 'No players provided for bulk upload.' };
+                throw err;
+            }
+
+            let tournamentId = req.body.tournament;
+            if (!tournamentId) {
+                const organizerTournament = await Tournament.findOne({ organizer: req.user.id }).select('_id').session(session);
+                tournamentId = organizerTournament?._id;
+            }
+
+            const playersToInsert = req.body.players.map(p => ({
+                name: p.name,
+                fatherName: p.fatherName,
+                age: p.age,
+                mobile: p.mobile,
+                city: p.city,
+                role: p.role,
+                category: p.category,
+                basePrice: p.basePrice || 0,
+                photoUrl: p.photoUrl || 'https://via.placeholder.com/150',
+                customData: p.customData || {},
+                approvalStatus: 'Approved',
+                auctionStatus: 'ReadyForAuction',
+                source: 'Organizer',
+                soldTo: null,
+                organizer: req.user.id,
+                tournament: tournamentId || undefined
+            }));
+
+            const insertedPlayers = await Player.insertMany(playersToInsert, { session });
+            responsePayload = { 
+                message: `${insertedPlayers.length} प्लेयर्स सफलतापूर्वक जोड़े गए!`, 
+                insertedCount: insertedPlayers.length 
+            };
+        });
+        
+        return res.json(responsePayload);
+    } catch (error) {
+        console.error("Bulk upload error:", error);
+        if (error.message === 'LIMIT_REACHED' || error.message === 'INVALID_DATA') {
+            return res.status(400).json(error.meta);
+        }
+        res.status(500).json({ message: "प्लेयर्स सेव करने में खराबी आ गई है!" });
+    } finally {
+        session.endSession();
+    }
+});
+
 router.get('/', async (req, res) => {
     try {
         const players = await Player.find({ organizer: req.user.id }).populate('soldTo', 'teamName shortName logoUrl logo');
