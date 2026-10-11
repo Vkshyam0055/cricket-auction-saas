@@ -61,6 +61,8 @@ function ControlPanel() {
 
   const currentPlayerRef = useRef(currentPlayer);
   const playerStatusRef = useRef(playerStatus);
+  const currentBidRef = useRef(currentBid);
+  const biddingTeamRef = useRef(biddingTeam);
 
   useEffect(() => {
     currentPlayerRef.current = currentPlayer;
@@ -69,6 +71,14 @@ function ControlPanel() {
   useEffect(() => {
     playerStatusRef.current = playerStatus;
   }, [playerStatus]);
+
+  useEffect(() => {
+    currentBidRef.current = currentBid;
+  }, [currentBid]);
+
+  useEffect(() => {
+    biddingTeamRef.current = biddingTeam;
+  }, [biddingTeam]);
 
   const configVersionRef = useRef(0);
   const configDebounceRef = useRef(null);
@@ -339,6 +349,24 @@ function ControlPanel() {
       auth: { token }
     });
     socketRef.current = socket;
+
+    socket.on('remoteBidRequest', async (data, callback) => {
+      // Use refs to avoid stale closures
+      const currentStatus = playerStatusRef.current;
+      const currentP = currentPlayerRef.current;
+      
+      if (currentStatus !== 'bidding') {
+        if (typeof callback === 'function') callback({ success: false, message: 'Bidding is not active' });
+        return;
+      }
+      if (!currentP || String(currentP._id) !== String(data.playerId)) {
+        if (typeof callback === 'function') callback({ success: false, message: 'Player mismatch. Remote view may be stale.' });
+        return;
+      }
+      
+      // We pass the exact payload to updateBid, which will validate purse/maxBid
+      await updateBid(data.teamId, Number(data.amount), false, true, callback);
+    });
 
     socket.on('activeBiddingSync', (data) => {
       if (Array.isArray(data?.lastBidActions)) {
@@ -628,20 +656,48 @@ function ControlPanel() {
   // 1. If team is already in active 4: remains in active 4 (no eviction, update recency)
   // 2. If < 4 teams: add new team
   // 3. If 4 teams and 5th team enters: replace least recently active non-leading team
-  const updateBid = async (teamRef, amount, isJump = false) => {
-    if (playerStatus !== 'bidding') return;
+  const updateBid = async (teamRef, amount, isJump = false, isRemote = false, callback = null) => {
+    if (playerStatus !== 'bidding') {
+      if (isRemote && callback) callback({ success: false, message: 'Bidding is not active' });
+      return;
+    }
 
     const team = resolveTeam(teamRef);
     if (!team) return;
 
-    const newBidAmount = isJump ? amount : currentBid + amount;
+    
+    if (isRemote) {
+      const validIncrements = [];
+      if (biddingButtonsCount >= 1) validIncrements.push(btn1);
+      if (biddingButtonsCount >= 2) validIncrements.push(btn2);
+      if (biddingButtonsCount >= 3) validIncrements.push(btn3);
+      
+      if (!isJump && !validIncrements.includes(amount)) {
+        if (callback) callback({ success: false, message: 'Invalid bid increment' });
+        return;
+      }
+    }
+
+    const exactCurrentBid = currentBidRef.current;
+    const exactBiddingTeam = biddingTeamRef.current;
+
+    if (exactBiddingTeam === team._id) {
+       if (isRemote && callback) callback({ success: false, message: 'You are already the highest bidder' });
+       return;
+    }
+
+    const newBidAmount = isJump ? amount : exactCurrentBid + amount;
 
     if (newBidAmount > team.remainingPurse) {
+      if (isRemote && callback) return callback({ success: false, message: "Insufficient purse" });
+
       alert(`⚠️ ${team.teamName} के पास इतने पैसे नहीं हैं!`);
       return;
     }
 
     if (newBidAmount > Number(team.maxBid || 0)) {
+      if (isRemote && callback) return callback({ success: false, message: "Exceeds max bid" });
+
       alert(`🚫 ${team.teamName} का Max Bid ${formatCurrency(team.maxBid)} है। इस लिमिट से ऊपर bid नहीं कर सकते।`);
       return;
     }
@@ -651,6 +707,10 @@ function ControlPanel() {
     setCurrentBid(newBidAmount);
     setBiddingTeam(team._id);
     setHasBiddingStarted(true);
+
+    if (isRemote && callback) {
+      callback({ success: true, message: 'Bid accepted', newBidAmount, teamId: team._id });
+    }
 
     const now = Date.now();
     const nextActivity = { ...teamBidActivity, [String(team._id)]: now, [team.teamName]: now };

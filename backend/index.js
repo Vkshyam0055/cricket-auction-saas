@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const Tournament = require('./models/Tournament');
+const Team = require('./models/Team');
 const { validateSessionById, revokeSessionById } = require('./utils/sessionAuth');
 
 const http = require('http');
@@ -29,8 +30,25 @@ io.use((socket, next) => {
     try {
         const token = socket.handshake.auth?.token;
         if (!token) return next(new Error('Unauthorized'));
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+        
+        if (decoded.role === 'TeamOwner') {
+            if (!decoded.teamId || !decoded.organizerId || !decoded.tournamentId) {
+                return next(new Error('Unauthorized'));
+            }
+            socket.role = 'TeamOwner';
+            socket.teamOwner = {
+                teamId: decoded.teamId,
+                organizerId: decoded.organizerId,
+                tournamentId: decoded.tournamentId
+            };
+            socket.organizerId = decoded.organizerId; // Map to organizerId for room joining
+            socket.tokenExp = decoded.exp;
+            return next();
+        }
+
         if (!decoded?.id || !decoded?.sid) return next(new Error('Unauthorized'));
+        socket.role = 'Organizer';
         socket.organizerId = decoded.id;
         socket.sessionId = decoded.sid;
         socket.tokenExp = decoded.exp;        
@@ -41,10 +59,21 @@ io.use((socket, next) => {
 });
 
 io.on('connection', async (socket) => {
-    const validation = await validateSessionById({ sessionId: socket.sessionId, userId: socket.organizerId });
-    if (!validation.ok) {
-        socket.emit('sessionExpired', { message: 'Session expired' });
-        return socket.disconnect(true);
+    // 1. Initial Connection Validation
+    if (socket.role === 'TeamOwner') {
+        const team = await Team.findById(socket.teamOwner.teamId).lean();
+        if (!team || !team.remoteAccessEnabled || 
+            String(team.organizer) !== String(socket.teamOwner.organizerId) || 
+            String(team.tournament) !== String(socket.teamOwner.tournamentId)) {
+            socket.emit('sessionExpired', { message: 'Remote access disabled or invalid team scope' });
+            return socket.disconnect(true);
+        }
+    } else {
+        const validation = await validateSessionById({ sessionId: socket.sessionId, userId: socket.organizerId });
+        if (!validation.ok) {
+            socket.emit('sessionExpired', { message: 'Session expired' });
+            return socket.disconnect(true);
+        }
     }
 
     const expiryMs = (Number(socket.tokenExp || 0) * 1000) - Date.now();
@@ -54,7 +83,9 @@ io.on('connection', async (socket) => {
     }
 
     const expiryTimer = setTimeout(async () => {
-        await revokeSessionById(socket.sessionId);
+        if (socket.role !== 'TeamOwner') {
+            await revokeSessionById(socket.sessionId);
+        }
         socket.emit('sessionExpired', { message: 'Session expired' });
         socket.disconnect(true);
     }, expiryMs);
@@ -64,12 +95,25 @@ io.on('connection', async (socket) => {
         if (socket._lastSessionCheck && (now - socket._lastSessionCheck < 5000)) {
             return next();
         }
-        const packetValidation = await validateSessionById({ sessionId: socket.sessionId, userId: socket.organizerId });
-        if (!packetValidation.ok) {
-            socket.emit('sessionExpired', { message: 'Session expired' });
-            socket.disconnect(true);
-            return next(new Error('Unauthorized'));
+
+        if (socket.role === 'TeamOwner') {
+            const team = await Team.findById(socket.teamOwner.teamId).select('remoteAccessEnabled organizer tournament').lean();
+            if (!team || !team.remoteAccessEnabled || 
+                String(team.organizer) !== String(socket.teamOwner.organizerId) || 
+                String(team.tournament) !== String(socket.teamOwner.tournamentId)) {
+                socket.emit('sessionExpired', { message: 'Remote access disabled' });
+                socket.disconnect(true);
+                return next(new Error('Unauthorized'));
+            }
+        } else {
+            const packetValidation = await validateSessionById({ sessionId: socket.sessionId, userId: socket.organizerId });
+            if (!packetValidation.ok) {
+                socket.emit('sessionExpired', { message: 'Session expired' });
+                socket.disconnect(true);
+                return next(new Error('Unauthorized'));
+            }
         }
+        
         socket._lastSessionCheck = now;
         return next();
     });
@@ -107,11 +151,59 @@ io.on('connection', async (socket) => {
             console.error('Failed to load liveScreenConfig:', error.message);
         });
 
+    socket.on('requestRemoteBid', async (payload, callback) => {
+        if (socket.role !== 'TeamOwner') {
+            if (typeof callback === 'function') callback({ success: false, message: 'Only Team Owners can request remote bids' });
+            return;
+        }
+
+        const requestData = {
+            teamId: socket.teamOwner.teamId,
+            playerId: String(payload?.playerId || ''),
+            amount: Number(payload?.amount || 0)
+        };
+
+        if (!requestData.playerId || !requestData.amount || requestData.amount <= 0) {
+            if (typeof callback === 'function') callback({ success: false, message: 'Invalid bid payload' });
+            return;
+        }
+
+        try {
+            const responses = await io.to(room).timeout(2000).emitWithAck('remoteBidRequest', requestData);
+            
+            let successRes = null;
+            let failRes = null;
+
+            for (const res of responses) {
+                if (res && res.success) {
+                    successRes = res;
+                    break;
+                }
+                if (res && !res.success && !failRes) {
+                    failRes = res;
+                }
+            }
+
+            if (typeof callback === 'function') {
+                if (successRes) callback(successRes);
+                else if (failRes) callback(failRes);
+                else callback({ success: false, message: 'Organizer control panel not active' });
+            }
+        } catch (error) {
+            if (typeof callback === 'function') {
+                callback({ success: false, message: 'Timeout reaching organizer' });
+            }
+        }
+    });
+
     socket.on('newLiveBid', (data) => {
+        if (socket.role === 'TeamOwner') return; // Only organizers can broadcast bids currently
         io.to(room).emit('updateAudienceScreen', data); 
     });
 
     socket.on('activeBiddingUpdate', (payload = {}) => {
+        if (socket.role === 'TeamOwner') return;
+
         const current = organizerActiveBids.get(organizerKey) || [];
         let next = current;
 
@@ -132,6 +224,8 @@ io.on('connection', async (socket) => {
     });
 
     socket.on('liveScreenConfigUpdate', async (payload = {}) => {
+        if (socket.role === 'TeamOwner') return;
+
         const currentConfig = organizerScreenConfigs.get(organizerKey) || defaultScreenConfig;
         const incomingVersion = Number(payload.version || 0);
         if (incomingVersion < Number(currentConfig.version || 0)) {
@@ -161,6 +255,8 @@ io.on('connection', async (socket) => {
     });
 
     socket.on('breakDataSnapshotUpdate', (payload = null) => {
+        if (socket.role === 'TeamOwner') return;
+
         if (!payload || typeof payload !== 'object') return;
         organizerBreakSnapshots.set(organizerKey, payload);
         io.to(room).emit('breakDataSnapshotUpdate', payload);

@@ -6,6 +6,9 @@ const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const User = require('../models/User');
 const UserSession = require('../models/UserSession');
+const fetchTeamOwner = require('../middleware/fetchTeamOwner');
+const Tournament = require('../models/Tournament');
+const Team = require('../models/Team');
 const VisitorLog = require('../models/VisitorLog');
 const { resolveEffectivePlan, getDefaultRegistrationPlan } = require('../utils/planPolicy');
 const { createSessionAndToken, getActiveDeviceIdsForUser, revokeSessionById } = require('../utils/sessionAuth');
@@ -137,6 +140,62 @@ router.post('/login', async (req, res) => {
   } catch (err) {
     console.error('Login Error:', err);
     res.status(500).json({ error: 'सर्वर क्रैश प्रोटेक्शन: डेटा फॉर्मेट सही नहीं है!' });
+  }
+});
+
+// Remote Bidding Phase 2.1: Team Owner Login
+router.post('/team-login', async (req, res) => {
+  try {
+    const { username, password, tournamentId } = req.body;
+    if (!username || !password || !tournamentId) {
+      return res.status(400).json({ message: 'Tournament ID, username, and password are required' });
+    }
+
+    const team = await Team.findOne({ 
+        remoteUsername: username, 
+        $or: [
+          { tournament: tournamentId },
+          { tournament: { $exists: false } },
+          { tournament: null }
+        ]
+      });
+    if (!team) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+
+    if (!team.remoteAccessEnabled) {
+      return res.status(403).json({ message: 'Remote access is disabled for this team' });
+    }
+
+    const isMatch = await bcrypt.compare(password, team.remotePasswordHash || '');
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+
+    // Stateless JWT for Team Owner
+    const token = jwt.sign(
+      { 
+        role: 'TeamOwner', 
+        teamId: team._id, 
+        organizerId: team.organizer,
+        tournamentId: team.tournament 
+      },
+      process.env.JWT_SECRET || 'fallback_secret',
+      { expiresIn: '12h' } // Short-lived token, invalidated at API boundary if remoteAccessEnabled=false
+    );
+
+    res.json({ 
+      message: 'Team Login Successful', 
+      token, 
+      team: { 
+        teamName: team.teamName, 
+        shortName: team.shortName, 
+        role: 'TeamOwner' 
+      } 
+    });
+  } catch (err) {
+    console.error('Team Login Error:', err);
+    res.status(500).json({ error: 'Server error during team login' });
   }
 });
 
@@ -310,6 +369,35 @@ router.post('/track-visitor', async (req, res) => {
     } catch (e) {
         res.status(500).json({ error: 'Server error' });
     }
+});
+
+
+// Phase 2.4: Fetch live team state for Remote Bidding Public Screen
+router.get('/team-info', fetchTeamOwner, async (req, res) => {
+  try {
+    const team = await Team.findById(req.teamOwner.teamId).lean();
+    if (!team) return res.status(404).json({ message: 'Team not found' });
+    
+    const tournament = await Tournament.findById(req.teamOwner.tournamentId).lean();
+    if (!tournament) return res.status(404).json({ message: 'Tournament not found' });
+
+    res.json({
+      team: {
+        _id: team._id,
+        teamName: team.teamName,
+        remainingPurse: team.remainingPurse,
+        maxBid: team.maxBid || 0
+      },
+      tournament: {
+        biddingButtonsCount: tournament.biddingButtonsCount || 3,
+        bidButton1: tournament.bidButton1 || 500,
+        bidButton2: tournament.bidButton2 || 1000,
+        bidButton3: tournament.bidButton3 || 5000
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error fetching team info' });
+  }
 });
 
 module.exports = router;

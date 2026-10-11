@@ -13,7 +13,18 @@ const teamSchema = new mongoose.Schema({
     // backward compatibility
     logo: { type: String, default: '' }, 
     totalPurse: { type: Number, required: true },
-    remainingPurse: { type: Number, required: true } 
+    remainingPurse: { type: Number, required: true },
+    
+    // Remote Bidding Fields
+    remoteAccessEnabled: { type: Boolean, default: false },
+    remoteUsername: { type: String, default: '', trim: true },
+    remotePasswordHash: { type: String, default: '' }
 }, { timestamps: true });
+
+// Scoped index to ensure username uniqueness per tournament, if a username is provided
+teamSchema.index(
+    { tournament: 1, remoteUsername: 1 }, 
+    { unique: true, partialFilterExpression: { remoteUsername: { $type: "string", $gt: "" } } }
+);
 
 module.exports = mongoose.model('Team', teamSchema);

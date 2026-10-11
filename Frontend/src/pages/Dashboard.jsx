@@ -263,6 +263,7 @@ function Dashboard() {
             case 'teams': navigate('/teams'); break;
             case 'players': navigate('/manage-players'); break;
             case 'registration-form': navigate('/registration-settings'); break;
+              case 'remote-bidding': navigate('/remote-bidding-management'); break;
             case 'change-password': navigate('/forgot-password'); break;
             case 'pricing': setInfoModalType('pricing'); break;
             case 'tutorial-videos': setInfoModalType('tutorial-videos'); break;

@@ -7,6 +7,8 @@ import AddTeam from './pages/AddTeam';
 import ManagePlayers from './pages/ManagePlayers';
 import ControlPanel from './pages/ControlPanel';
 import LiveScreen from './pages/LiveScreen';
+import RemoteBiddingManagement from './pages/RemoteBiddingManagement';
+import RemoteBiddingPublic from './pages/RemoteBiddingPublic';
 import CreateTournament from './pages/CreateTournament';
 import WelcomeSetup from './pages/WelcomeSetup';
 import TournamentSettings from './pages/TournamentSettings';
@@ -202,6 +204,8 @@ function App() {
           <Route path="/setup" element={<ProtectedRoute><WelcomeSetup /></ProtectedRoute>} />
           <Route path="/tournament-settings" element={<ProtectedRoute><TournamentSettings /></ProtectedRoute>} />
           <Route path="/registration-settings" element={<ProtectedRoute><RegistrationSettings /></ProtectedRoute>} />
+          <Route path="/remote-bidding-management" element={<ProtectedRoute><RemoteBiddingManagement /></ProtectedRoute>} />
+          <Route path="/remote-bidding" element={<RemoteBiddingPublic />} />
           <Route path="/add-player" element={<ProtectedRoute><AddPlayer /></ProtectedRoute>} />
           <Route path="/teams" element={<ProtectedRoute><Teams /></ProtectedRoute>} />
           <Route path="/live" element={<LiveScreen />} />

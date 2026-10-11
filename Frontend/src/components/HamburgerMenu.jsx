@@ -16,6 +16,7 @@ export default function HamburgerMenu({ open, onClose, profile, onNavigate, onLo
         { key: 'teams', icon: '🛡️', text: 'Teams' },
         { key: 'players', icon: '🏏', text: 'Players' },
         { key: 'registration-form', icon: '📝', text: 'Registration Form' },
+        { key: 'remote-bidding', icon: '📱', text: 'Remote Bidding' },
       ],
     },
     {

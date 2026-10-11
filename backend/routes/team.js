@@ -84,6 +84,23 @@ router.post('/', async (req, res) => {
   }
 });
 
+// Phase 2.4: Get teams by tournament ID safely
+router.get('/tournament/:tournamentId', async (req, res) => {
+  try {
+    const teams = await Team.find({ 
+      organizer: req.user.id,
+      $or: [
+        { tournament: req.params.tournamentId },
+        { tournament: { $exists: false } },
+        { tournament: null }
+      ]
+    }).lean();
+    res.json(teams);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 router.get('/', async (req, res) => {
   try {
     if (req.headers['x-view-mode'] === 'teams-dashboard') {
@@ -113,6 +130,40 @@ router.get('/', async (req, res) => {
   } catch (error) {
     console.error('Team fetch error:', error.message);
     return res.status(500).json({ message: 'टीमें लाने में खराबी आ गई है!' });
+  }
+});
+
+// Phase 2.4: Manage Remote Access
+router.put('/:id/remote-access', async (req, res) => {
+  try {
+    const { remoteAccessEnabled, remoteUsername, remotePassword } = req.body;
+    
+    const team = await Team.findById(req.params.id);
+    if (!team) return res.status(404).json({ message: 'Team not found' });
+    
+    // Authorization check
+    if (String(team.organizer) !== String(req.user.id)) {
+      return res.status(403).json({ message: 'Unauthorized to modify this team' });
+    }
+
+    team.remoteAccessEnabled = Boolean(remoteAccessEnabled);
+    if (remoteUsername !== undefined) {
+      team.remoteUsername = remoteUsername;
+    }
+    
+    if (remotePassword) {
+      const bcrypt = require('bcryptjs');
+      team.remotePasswordHash = await bcrypt.hash(remotePassword, 10);
+    }
+
+    await team.save();
+    res.json({ message: 'Remote access updated successfully', team });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'Username already taken in this tournament' });
+    }
+    console.error('Update remote access error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
