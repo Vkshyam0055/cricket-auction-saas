@@ -3,14 +3,18 @@ const Team = require('../models/Team');
 const Player = require('../models/Player');
 const User = require('../models/User');
 const fetchOrganizer = require('../middleware/fetchOrganizer');
+const fetchTournamentScope = require('../middleware/fetchTournamentScope');
 const { getPolicyByPlanName, getEffectivePlanPolicy, resolveEffectivePlan } = require('../utils/planPolicy');
 const { getAuctionStateForOrganizer, decorateTeamsWithMaxBid } = require('../utils/maxBid');
+const { getOrganizerTournamentScope, mergeWithTournamentScope } = require('../utils/tournamentScope');
+const { revokeTeamOwnerSessions } = require('../utils/sessionAuth');
 
 const router = express.Router();
 
 router.use(fetchOrganizer);
+router.use(fetchTournamentScope);
 
-const buildTeamPayload = ({ teamName, shortName, totalPurse, ownerName, mobile, logoUrl, organizerId }) => ({
+const buildTeamPayload = ({ teamName, shortName, totalPurse, ownerName, mobile, logoUrl, organizerId, tournamentId }) => ({
   teamName,
   shortName,
   totalPurse,
@@ -19,7 +23,8 @@ const buildTeamPayload = ({ teamName, shortName, totalPurse, ownerName, mobile, 
   mobile,
   logoUrl,
   logo: logoUrl,
-  organizer: organizerId
+  organizer: organizerId,
+  tournament: tournamentId
 });
 
 router.post('/', async (req, res) => {
@@ -54,7 +59,8 @@ router.post('/', async (req, res) => {
       ownerName,
       mobile,
       logoUrl,
-      organizerId: req.user.id
+      organizerId: req.user.id,
+      tournamentId: req.tournamentScope.tournamentId
     });
 
     if (req.user.role === 'SuperAdmin' && !req.user.isImpersonated) {
@@ -84,20 +90,21 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Phase 2.4: Get teams by tournament ID safely
+// Remote management uses an explicit tournament ID. Legacy records are included
+// only when the organizer has exactly one tournament.
 router.get('/tournament/:tournamentId', async (req, res) => {
   try {
-    const teams = await Team.find({ 
-      organizer: req.user.id,
-      $or: [
-        { tournament: req.params.tournamentId },
-        { tournament: { $exists: false } },
-        { tournament: null }
-      ]
-    }).lean();
+    const tournamentScope = await getOrganizerTournamentScope({
+      organizerId: req.user.id,
+      requestedTournamentId: req.params.tournamentId
+    });
+    const teams = await Team.find(mergeWithTournamentScope(
+      { organizer: req.user.id },
+      tournamentScope
+    )).lean();
     res.json(teams);
   } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(error.statusCode || 500).json({ message: 'Unable to resolve tournament teams.' });
   }
 });
 
@@ -119,8 +126,14 @@ router.get('/', async (req, res) => {
     const currentBasePrice = Number.isFinite(queryBasePrice) && queryBasePrice >= 0
       ? queryBasePrice
       : undefined;
-    const teams = await Team.find({ organizer: req.user.id }).lean();
-    const auctionState = await getAuctionStateForOrganizer({ organizerId: req.user.id });
+    const teams = await Team.find(mergeWithTournamentScope(
+      { organizer: req.user.id },
+      req.tournamentScope
+    )).lean();
+    const auctionState = await getAuctionStateForOrganizer({
+      organizerId: req.user.id,
+      tournamentScope: req.tournamentScope
+    });
     const teamsWithMaxBid = decorateTeamsWithMaxBid({
       teams,
       auctionState,
@@ -138,13 +151,11 @@ router.put('/:id/remote-access', async (req, res) => {
   try {
     const { remoteAccessEnabled, remoteUsername, remotePassword } = req.body;
     
-    const team = await Team.findById(req.params.id);
+    const team = await Team.findOne(mergeWithTournamentScope(
+      { _id: req.params.id, organizer: req.user.id },
+      req.tournamentScope
+    ));
     if (!team) return res.status(404).json({ message: 'Team not found' });
-    
-    // Authorization check
-    if (String(team.organizer) !== String(req.user.id)) {
-      return res.status(403).json({ message: 'Unauthorized to modify this team' });
-    }
 
     team.remoteAccessEnabled = Boolean(remoteAccessEnabled);
     if (remoteUsername !== undefined) {
@@ -157,6 +168,7 @@ router.put('/:id/remote-access', async (req, res) => {
     }
 
     await team.save();
+    if (!team.remoteAccessEnabled || remotePassword) await revokeTeamOwnerSessions(team._id);
     res.json({ message: 'Remote access updated successfully', team });
   } catch (error) {
     if (error.code === 11000) {
@@ -202,7 +214,7 @@ router.put('/:id', async (req, res) => {
     }
 
     const updatedTeam = await Team.findOneAndUpdate(
-      { _id: req.params.id, organizer: req.user.id },
+      mergeWithTournamentScope({ _id: req.params.id, organizer: req.user.id }, req.tournamentScope),
       { teamName: trimmedTeamName, shortName: normalizedShortName, totalPurse, remainingPurse, ownerName, mobile, logoUrl, logo: logoUrl || '' },
       { new: true }
     );
@@ -220,21 +232,21 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    const teamToDelete = await Team.findOne({
+    const teamToDelete = await Team.findOne(mergeWithTournamentScope({
       _id: req.params.id,
       organizer: req.user.id
-    });
+    }, req.tournamentScope));
 
     if (!teamToDelete) {
       return res.status(404).json({ message: 'टीम नहीं मिली।' });
     }
 
     // Safety guard: check if any players reference this team
-    const soldPlayerCount = await Player.countDocuments({
+    const soldPlayerCount = await Player.countDocuments(mergeWithTournamentScope({
       organizer: req.user.id,
       auctionStatus: { $in: ['Sold', 'Icon'] },
       soldTo: req.params.id
-    });
+    }, req.tournamentScope));
 
     if (soldPlayerCount > 0) {
       return res.status(400).json({
@@ -242,7 +254,7 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
-    await Team.deleteOne({ _id: req.params.id, organizer: req.user.id });
+    await Team.deleteOne(mergeWithTournamentScope({ _id: req.params.id, organizer: req.user.id }, req.tournamentScope));
 
     return res.json({ message: 'टीम डिलीट हो गई।', team: teamToDelete });
   } catch (error) {

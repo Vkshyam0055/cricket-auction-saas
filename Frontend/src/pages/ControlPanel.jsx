@@ -12,19 +12,16 @@ function ControlPanel() {
   const [players, setPlayers] = useState([]);
   const [teams, setTeams] = useState([]);
   const [allPlayers, setAllPlayers] = useState([]);
+  const [auctionVersion, setAuctionVersion] = useState(null);
 
-  const [currentPlayer, setCurrentPlayer] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('currentPlayer')) || null;
-    } catch {
-      return null;
-    }
-  });
-  const [currentBid, setCurrentBid] = useState(() => Number(localStorage.getItem('currentBid')) || 0);
-  const [biddingTeam, setBiddingTeam] = useState(() => localStorage.getItem('biddingTeam') || '');
-  const [playerStatus, setPlayerStatus] = useState(() => localStorage.getItem('playerStatus') || 'bidding');
+  // Auction progress is restored only from /api/auction/state. Browser storage
+  // may retain display preferences, but never selects an active player or bid.
+  const [currentPlayer, setCurrentPlayer] = useState(null);
+  const [currentBid, setCurrentBid] = useState(0);
+  const [biddingTeam, setBiddingTeam] = useState('');
+  const [playerStatus, setPlayerStatus] = useState('bidding');
   const [customBid, setCustomBid] = useState('');
-  const [hasBiddingStarted, setHasBiddingStarted] = useState(() => localStorage.getItem('hasBiddingStarted') === 'true');
+  const [hasBiddingStarted, setHasBiddingStarted] = useState(false);
   const [playerOrderMode, setPlayerOrderMode] = useState(() => localStorage.getItem('playerOrderMode') || 'all-random');
   const [categoryOrder, setCategoryOrder] = useState(() => {
     try {
@@ -35,22 +32,9 @@ function ControlPanel() {
   });
 
   // 🌟 DETERMINISTIC ACTIVE BIDDING ZONE (MAX 4 TEAMS) (REQUIREMENT 3) 🌟
-  const [activeBiddingList, setActiveBiddingList] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('activeBiddingList') || localStorage.getItem('lastBidActions') || '[]');
-      return Array.isArray(saved) ? saved.slice(0, 4) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [activeBiddingList, setActiveBiddingList] = useState([]);
 
-  const [teamBidActivity, setTeamBidActivity] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('teamBidActivity') || '{}');
-    } catch {
-      return {};
-    }
-  });
+  const [teamBidActivity, setTeamBidActivity] = useState({});
 
   const [displayMode, setDisplayMode] = useState('night');
   const [layout, setLayout] = useState('classic');
@@ -219,6 +203,20 @@ function ControlPanel() {
       const allPlayersPayload = Array.isArray(playersRes.data) ? playersRes.data : [];
       setAllPlayers(allPlayersPayload);
 
+      const auctionRes = await apiRequest({ method: 'get', path: '/api/auction/state', headers });
+      const authoritativeState = auctionRes.data;
+      if (authoritativeState?.status === 'bidding' && authoritativeState?.activePlayer) {
+        const activePlayer = allPlayersPayload.find((player) => String(player._id) === String(authoritativeState.activePlayer._id)) || authoritativeState.activePlayer;
+        setCurrentPlayer(activePlayer);
+        currentPlayerRef.current = activePlayer;
+        setCurrentBid(Number(authoritativeState.currentBid || activePlayer.basePrice || 0));
+        setBiddingTeam(authoritativeState.highestBidder?._id || authoritativeState.highestBidder || '');
+        setHasBiddingStarted(Boolean(authoritativeState.highestBidder));
+        setPlayerStatus('bidding');
+        playerStatusRef.current = 'bidding';
+        setAuctionVersion(Number(authoritativeState.version));
+      }
+
       const availablePlayers = allPlayersPayload.filter(
         (player) =>
           player.approvalStatus?.trim().toLowerCase() === 'approved' &&
@@ -235,7 +233,9 @@ function ControlPanel() {
 
       // 🌟 SYNCHRONIZE CURRENT PLAYER WITH DATABASE STATE 🌟
       const curr = currentPlayerRef.current;
-      if (curr) {
+      // The persisted auction state is the source of truth after a refresh.  Only
+      // use the legacy browser snapshot when the server has no active auction.
+      if (curr && !(authoritativeState?.status === 'bidding' && authoritativeState?.activePlayer)) {
         const dbPlayer = allPlayersPayload.find((p) => p._id === curr._id);
         const currStatus = playerStatusRef.current;
 
@@ -583,7 +583,7 @@ function ControlPanel() {
     ]);
   };
 
-  const pickRandomPlayer = () => {
+  const pickRandomPlayer = async () => {
     if (currentPlayer && playerStatus === 'bidding' && hasBiddingStarted) {
       alert('बिडिंग शुरू होने के बाद खिलाड़ी बदला नहीं जा सकता। पहले SOLD करें।');
       return;
@@ -614,6 +614,15 @@ function ControlPanel() {
     const randomIndex = Math.floor(Math.random() * selectionPool.length);
     const selected = selectionPool[randomIndex];
 
+    try {
+      const token = localStorage.getItem('token');
+      const result = await apiRequest({ method: 'post', path: '/api/auction/start', data: { playerId: selected._id }, headers: { Authorization: `Bearer ${token}` } });
+      setAuctionVersion(Number(result.data.state.version));
+    } catch (error) {
+      alert(`🚫 ${error.response?.data?.message || 'Auction could not be started.'}`);
+      return;
+    }
+
     setCurrentPlayer(selected);
     currentPlayerRef.current = selected;
     setCurrentBid(selected.basePrice);
@@ -635,8 +644,16 @@ function ControlPanel() {
     });
   };
 
-  const handleResetBid = () => {
+  const handleResetBid = async () => {
     if (!currentPlayer || playerStatus !== 'bidding') return;
+    try {
+      const token = localStorage.getItem('token');
+      const result = await apiRequest({ method: 'post', path: '/api/auction/reset-bid', data: { playerId: currentPlayer._id, expectedVersion: auctionVersion }, headers: { Authorization: `Bearer ${token}` } });
+      setAuctionVersion(Number(result.data.state.version));
+    } catch (error) {
+      alert(`🚫 ${error.response?.data?.message || 'Bid reset was rejected.'}`);
+      return;
+    }
     saveStateToHistory('RESET_BID');
 
     setCurrentBid(currentPlayer.basePrice);
@@ -650,13 +667,14 @@ function ControlPanel() {
       player: currentPlayer,
       status: playerStatus
     });
+    return true;
   };
 
   // 🌟 DETERMINISTIC ACTIVE BIDDING RETENTION ALGORITHM (REQUIREMENT 3) 🌟
   // 1. If team is already in active 4: remains in active 4 (no eviction, update recency)
   // 2. If < 4 teams: add new team
   // 3. If 4 teams and 5th team enters: replace least recently active non-leading team
-  const updateBid = async (teamRef, amount, isJump = false, isRemote = false, callback = null) => {
+  const updateBid = async (teamRef, amount, isJump = false, isRemote = false, callback = null, bidTypeOverride = null) => {
     if (playerStatus !== 'bidding') {
       if (isRemote && callback) callback({ success: false, message: 'Bidding is not active' });
       return;
@@ -686,7 +704,9 @@ function ControlPanel() {
        return;
     }
 
-    const newBidAmount = isJump ? amount : exactCurrentBid + amount;
+    const newBidAmount = bidTypeOverride === 'base'
+      ? exactCurrentBid
+      : (isJump ? amount : exactCurrentBid + amount);
 
     if (newBidAmount > team.remainingPurse) {
       if (isRemote && callback) return callback({ success: false, message: "Insufficient purse" });
@@ -702,14 +722,38 @@ function ControlPanel() {
       return;
     }
 
+    let authoritativeBid;
+    try {
+      const token = localStorage.getItem('token');
+      authoritativeBid = await apiRequest({
+        method: 'post',
+        path: '/api/auction/bid',
+        data: {
+          teamId: team._id,
+          playerId: currentPlayerRef.current?._id,
+          amount,
+          bidType: bidTypeOverride || (isJump ? 'custom' : 'increment'),
+          expectedVersion: auctionVersion
+        },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch (error) {
+      const message = error.response?.data?.message || 'Bid was rejected.';
+      if (isRemote && callback) callback({ success: false, message });
+      else alert(`🚫 ${message}`);
+      return;
+    }
+
+    const acceptedBid = Number(authoritativeBid.data.state.currentBid);
+    setAuctionVersion(Number(authoritativeBid.data.state.version));
     saveStateToHistory('BID');
 
-    setCurrentBid(newBidAmount);
+    setCurrentBid(acceptedBid);
     setBiddingTeam(team._id);
     setHasBiddingStarted(true);
 
     if (isRemote && callback) {
-      callback({ success: true, message: 'Bid accepted', newBidAmount, teamId: team._id });
+      callback({ success: true, message: 'Bid accepted', newBidAmount: acceptedBid, teamId: team._id });
     }
 
     const now = Date.now();
@@ -745,7 +789,7 @@ function ControlPanel() {
     syncActiveBiddingState('replace', { lastBidActions: nextList });
 
     socketRef.current?.emit('newLiveBid', {
-      bidAmount: newBidAmount,
+      bidAmount: acceptedBid,
       teamId: team._id,
       teamName: team.teamName,
       shortName: team.shortName,
@@ -753,6 +797,7 @@ function ControlPanel() {
       player: currentPlayer,
       status: playerStatus
     });
+    return true;
   };
 
   const handleCustomBidSubmit = async () => {
@@ -787,8 +832,8 @@ function ControlPanel() {
       return;
     }
 
-    setBiddingTeam(selectedTeam._id);
-    setCurrentBid(basePrice);
+    const accepted = await updateBid(selectedTeam._id, basePrice, false, false, null, 'base');
+    if (!accepted) return;
     await finalizePlayer('Sold', {
       soldTeamId: selectedTeam._id,
       soldTeamName: selectedTeam.teamName,

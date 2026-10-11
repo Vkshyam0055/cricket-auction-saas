@@ -5,7 +5,7 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const Tournament = require('./models/Tournament');
 const Team = require('./models/Team');
-const { validateSessionById, revokeSessionById } = require('./utils/sessionAuth');
+const { validateSessionById, validateTeamOwnerSession, revokeSessionById, getJwtSecret } = require('./utils/sessionAuth');
 
 const http = require('http');
 const { Server } = require('socket.io');
@@ -30,10 +30,10 @@ io.use((socket, next) => {
     try {
         const token = socket.handshake.auth?.token;
         if (!token) return next(new Error('Unauthorized'));
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+        const decoded = jwt.verify(token, getJwtSecret());
         
         if (decoded.role === 'TeamOwner') {
-            if (!decoded.teamId || !decoded.organizerId || !decoded.tournamentId) {
+            if (!decoded.teamId || !decoded.organizerId || !decoded.tournamentId || !decoded.sid) {
                 return next(new Error('Unauthorized'));
             }
             socket.role = 'TeamOwner';
@@ -43,6 +43,7 @@ io.use((socket, next) => {
                 tournamentId: decoded.tournamentId
             };
             socket.organizerId = decoded.organizerId; // Map to organizerId for room joining
+            socket.sessionId = decoded.sid;
             socket.tokenExp = decoded.exp;
             return next();
         }
@@ -61,8 +62,9 @@ io.use((socket, next) => {
 io.on('connection', async (socket) => {
     // 1. Initial Connection Validation
     if (socket.role === 'TeamOwner') {
+        const sessionValidation = await validateTeamOwnerSession({ sessionId: socket.sessionId, ...socket.teamOwner });
         const team = await Team.findById(socket.teamOwner.teamId).lean();
-        if (!team || !team.remoteAccessEnabled || 
+        if (!sessionValidation.ok || !team || !team.remoteAccessEnabled ||
             String(team.organizer) !== String(socket.teamOwner.organizerId) || 
             String(team.tournament) !== String(socket.teamOwner.tournamentId)) {
             socket.emit('sessionExpired', { message: 'Remote access disabled or invalid team scope' });
@@ -97,8 +99,9 @@ io.on('connection', async (socket) => {
         }
 
         if (socket.role === 'TeamOwner') {
+            const sessionValidation = await validateTeamOwnerSession({ sessionId: socket.sessionId, ...socket.teamOwner });
             const team = await Team.findById(socket.teamOwner.teamId).select('remoteAccessEnabled organizer tournament').lean();
-            if (!team || !team.remoteAccessEnabled || 
+            if (!sessionValidation.ok || !team || !team.remoteAccessEnabled ||
                 String(team.organizer) !== String(socket.teamOwner.organizerId) || 
                 String(team.tournament) !== String(socket.teamOwner.tournamentId)) {
                 socket.emit('sessionExpired', { message: 'Remote access disabled' });
@@ -272,6 +275,7 @@ io.on('connection', async (socket) => {
 app.use('/api/auth', require('./routes/auth')); 
 app.use('/api/teams', require('./routes/team'));
 app.use('/api/players', require('./routes/player'));
+app.use('/api/auction', require('./routes/auction'));
 app.use('/api/tournament', require('./routes/tournament'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/plans', require('./routes/plan'));

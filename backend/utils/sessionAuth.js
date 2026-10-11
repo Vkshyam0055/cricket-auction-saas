@@ -7,6 +7,10 @@ const IMPERSONATION_SESSION_TTL_HOURS = 2;
 const IMPERSONATION_SESSION_TTL_MS = IMPERSONATION_SESSION_TTL_HOURS * 60 * 60 * 1000;
 
 const addHours = (date, hours) => new Date(date.getTime() + (hours * 60 * 60 * 1000));
+const getJwtSecret = () => {
+    if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET is required');
+    return process.env.JWT_SECRET;
+};
 
 const getActiveDeviceIdsForUser = async (userId) => {
     if (!userId) return [];
@@ -40,11 +44,36 @@ const createSessionAndToken = async ({ user, deviceId = '', ipAddress = '', user
 
     const token = jwt.sign(
         { id: user._id, role: user.role, sid: String(session._id) },
-        process.env.JWT_SECRET,
+        getJwtSecret(),
         { expiresIn: `${SESSION_TTL_HOURS}h` }
     );
 
     return { session, token, expiresAt };
+};
+
+const createTeamOwnerSessionAndToken = async ({ team, deviceId = '', ipAddress = '', userAgent = '' }) => {
+    const now = new Date();
+    const expiresAt = addHours(now, SESSION_TTL_HOURS);
+    const session = await UserSession.create({
+        team: team._id, tournament: team.tournament, organizer: team.organizer,
+        sessionRole: 'TeamOwner', deviceId: String(deviceId || ''), expiresAt,
+        ipAddress: String(ipAddress || ''), userAgent: String(userAgent || '')
+    });
+    const token = jwt.sign({ role: 'TeamOwner', teamId: team._id, organizerId: team.organizer, tournamentId: team.tournament, sid: String(session._id) }, getJwtSecret(), { expiresIn: `${SESSION_TTL_HOURS}h` });
+    return { session, token, expiresAt };
+};
+
+const validateTeamOwnerSession = async ({ sessionId, teamId, organizerId, tournamentId }) => {
+    if (!sessionId || !teamId || !organizerId || !tournamentId) return { ok: false, reason: 'SESSION_MISSING' };
+    const session = await UserSession.findOne({ _id: sessionId, team: teamId, organizer: organizerId, tournament: tournamentId, sessionRole: 'TeamOwner', revokedAt: null }).lean();
+    if (!session) return { ok: false, reason: 'SESSION_REVOKED_OR_NOT_FOUND' };
+    if (new Date(session.expiresAt) <= new Date()) return { ok: false, reason: 'SESSION_EXPIRED' };
+    return { ok: true, session };
+};
+
+const revokeTeamOwnerSessions = async (teamId) => {
+    if (!teamId) return;
+    await UserSession.updateMany({ team: teamId, sessionRole: 'TeamOwner', revokedAt: null }, { $set: { revokedAt: new Date() } });
 };
 
 const revokeSessionById = async (sessionId) => {
@@ -142,5 +171,9 @@ module.exports = {
     validateSessionById,
     revokeSessionById,
     revokeAllSessionsForUser,
-    revokeImpersonationSessionsForTarget
+    revokeImpersonationSessionsForTarget,
+    createTeamOwnerSessionAndToken,
+    validateTeamOwnerSession,
+    revokeTeamOwnerSessions,
+    getJwtSecret
 };

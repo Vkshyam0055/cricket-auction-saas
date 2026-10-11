@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Tournament = require('../models/Tournament');
 const Player = require('../models/Player');
+const { mergeWithTournamentScope } = require('./tournamentScope');
 
 const SOLD_LIKE_STATUSES = ['Sold', 'Icon'];
 
@@ -26,16 +27,16 @@ const buildSquadCountMap = (squadCounts) => new Map(
     .map((row) => [String(row._id), safeNumber(row.count, 0)])
 );
 
-const getAuctionStateForOrganizer = async ({ organizerId, session = null }) => {
+const getAuctionStateForOrganizer = async ({ organizerId, tournamentScope, session = null }) => {
   const organizerObjectId = new mongoose.Types.ObjectId(String(organizerId));
 
   const [tournament, squadCounts, readyPlayers] = await Promise.all([
-    Tournament.findOne({ organizer: organizerId }).select('minPlayersPerTeam').session(session).lean(),
+    Tournament.findOne({ _id: tournamentScope?.tournamentId, organizer: organizerId }).select('minPlayersPerTeam').session(session).lean(),
     Player.aggregate([
-      { $match: { organizer: organizerObjectId, auctionStatus: { $in: SOLD_LIKE_STATUSES } } },
+      { $match: mergeWithTournamentScope({ organizer: organizerObjectId, auctionStatus: { $in: SOLD_LIKE_STATUSES } }, tournamentScope) },
       { $group: { _id: '$soldTo', count: { $sum: 1 } } }
     ]).session(session),
-    Player.find({ organizer: organizerId, approvalStatus: 'Approved', auctionStatus: 'ReadyForAuction' })
+    Player.find(mergeWithTournamentScope({ organizer: organizerId, approvalStatus: 'Approved', auctionStatus: 'ReadyForAuction' }, tournamentScope))
       .select('basePrice')
       .session(session)
       .lean()

@@ -180,4 +180,20 @@ describe('Team Owner Authentication Test Suite', () => {
         // Re-enable for cleanup
         await Team.updateOne({ _id: team._id }, { $set: { remoteAccessEnabled: true } });
     });
+
+    test('8. Revoked Team Owner session is rejected even with a valid JWT', async () => {
+        const loginRes = await request('POST', '/api/auth/team-login', { username: 'mi_owner', password: rawPassword, tournamentId: tournament._id });
+        const decoded = jwt.verify(loginRes.data.token, process.env.JWT_SECRET);
+        await UserSession.updateOne({ _id: decoded.sid }, { $set: { revokedAt: new Date() } });
+        const protectedRes = await request('GET', '/api/protected/team', null, loginRes.data.token);
+        assert.equal(protectedRes.status, 401);
+    });
+
+    test('9. Expired Team Owner session is rejected before team access', async () => {
+        const loginRes = await request('POST', '/api/auth/team-login', { username: 'mi_owner', password: rawPassword, tournamentId: tournament._id });
+        const decoded = jwt.verify(loginRes.data.token, process.env.JWT_SECRET);
+        await UserSession.updateOne({ _id: decoded.sid }, { $set: { expiresAt: new Date(Date.now() - 1000) } });
+        const protectedRes = await request('GET', '/api/protected/team', null, loginRes.data.token);
+        assert.equal(protectedRes.status, 401);
+    });
 });

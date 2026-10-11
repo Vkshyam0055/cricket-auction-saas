@@ -11,7 +11,7 @@ const Tournament = require('../models/Tournament');
 const Team = require('../models/Team');
 const VisitorLog = require('../models/VisitorLog');
 const { resolveEffectivePlan, getDefaultRegistrationPlan } = require('../utils/planPolicy');
-const { createSessionAndToken, getActiveDeviceIdsForUser, revokeSessionById } = require('../utils/sessionAuth');
+const { createSessionAndToken, createTeamOwnerSessionAndToken, getActiveDeviceIdsForUser, revokeSessionById } = require('../utils/sessionAuth');
 
 const createResetToken = () => crypto.randomBytes(32).toString('hex');
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
@@ -146,19 +146,12 @@ router.post('/login', async (req, res) => {
 // Remote Bidding Phase 2.1: Team Owner Login
 router.post('/team-login', async (req, res) => {
   try {
-    const { username, password, tournamentId } = req.body;
+    const { username, password, tournamentId, deviceId } = req.body;
     if (!username || !password || !tournamentId) {
       return res.status(400).json({ message: 'Tournament ID, username, and password are required' });
     }
 
-    const team = await Team.findOne({ 
-        remoteUsername: username, 
-        $or: [
-          { tournament: tournamentId },
-          { tournament: { $exists: false } },
-          { tournament: null }
-        ]
-      });
+    const team = await Team.findOne({ remoteUsername: String(username).trim(), tournament: tournamentId });
     if (!team) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
@@ -172,21 +165,11 @@ router.post('/team-login', async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    // Stateless JWT for Team Owner
-    const token = jwt.sign(
-      { 
-        role: 'TeamOwner', 
-        teamId: team._id, 
-        organizerId: team.organizer,
-        tournamentId: team.tournament 
-      },
-      process.env.JWT_SECRET || 'fallback_secret',
-      { expiresIn: '12h' } // Short-lived token, invalidated at API boundary if remoteAccessEnabled=false
-    );
+    const { token, expiresAt } = await createTeamOwnerSessionAndToken({ team, deviceId, ipAddress: req.ip, userAgent: req.get('user-agent') });
 
     res.json({ 
       message: 'Team Login Successful', 
-      token, 
+      token, sessionExpiresAt: expiresAt,
       team: { 
         teamName: team.teamName, 
         shortName: team.shortName, 

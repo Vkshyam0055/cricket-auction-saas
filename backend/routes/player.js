@@ -6,8 +6,11 @@ const Team = require('../models/Team');
 const Tournament = require('../models/Tournament');
 const User = require('../models/User');
 const fetchOrganizer = require('../middleware/fetchOrganizer');
+const fetchTournamentScope = require('../middleware/fetchTournamentScope');
 const { getPolicyByPlanName, getEffectivePlanPolicy, resolveEffectivePlan } = require('../utils/planPolicy');
 const { getAuctionStateForOrganizer, decorateTeamsWithMaxBid } = require('../utils/maxBid');
+const { mergeWithTournamentScope } = require('../utils/tournamentScope');
+const AuctionState = require('../models/AuctionState');
 
 // === PUBLIC ROUTES ===
 router.get('/public/:tournamentId', async (req, res) => {
@@ -71,18 +74,19 @@ router.post('/public/:tournamentId/register', async (req, res) => {
 
 // === PRIVATE ROUTES ===
 router.use(fetchOrganizer);
+router.use(fetchTournamentScope);
 
-const getTeamWithDynamicMaxBid = async ({ organizerId, teamId, teamName, currentBasePrice, session = null }) => {
+const getTeamWithDynamicMaxBid = async ({ organizerId, tournamentScope, teamId, teamName, currentBasePrice, session = null }) => {
     let teamDoc = null;
     if (teamId && mongoose.Types.ObjectId.isValid(teamId)) {
-        teamDoc = await Team.findOne({ _id: teamId, organizer: organizerId }).session(session).lean();
+        teamDoc = await Team.findOne(mergeWithTournamentScope({ _id: teamId, organizer: organizerId }, tournamentScope)).session(session).lean();
     }
     if (!teamDoc && teamName) {
-        teamDoc = await Team.findOne({ teamName, organizer: organizerId }).session(session).lean();
+        teamDoc = await Team.findOne(mergeWithTournamentScope({ teamName, organizer: organizerId }, tournamentScope)).session(session).lean();
     }
     if (!teamDoc) return null;
 
-    const auctionState = await getAuctionStateForOrganizer({ organizerId, session });
+    const auctionState = await getAuctionStateForOrganizer({ organizerId, tournamentScope, session });
     const [decoratedTeam] = decorateTeamsWithMaxBid({
         teams: [teamDoc],
         auctionState,
@@ -111,10 +115,8 @@ router.post('/', async (req, res) => {
         }
 
         const { name, fatherName, age, mobile, city, role, category, basePrice, photoUrl, customData } = req.body;
-        let tournamentId = req.body.tournament;
-        if (!tournamentId) {
-            const organizerTournament = await Tournament.findOne({ organizer: req.user.id }).select('_id');
-            tournamentId = organizerTournament?._id;
+        if (req.body.tournament && String(req.body.tournament) !== String(req.tournamentScope.tournamentId)) {
+            return res.status(403).json({ message: 'Players must belong to the active organizer tournament.' });
         }
         const newPlayer = new Player({ 
             name, fatherName, age, mobile, city, role, category, basePrice, photoUrl, customData: customData || {},
@@ -122,7 +124,7 @@ router.post('/', async (req, res) => {
             auctionStatus: 'ReadyForAuction',
             source: 'Organizer',
             soldTo: null,
-            organizer: req.user.id, tournament: tournamentId || undefined
+            organizer: req.user.id, tournament: req.tournamentScope.tournamentId
         });
         const savedPlayer = await newPlayer.save();
         res.json(savedPlayer);
@@ -158,10 +160,10 @@ router.post('/bulk', async (req, res) => {
                 throw err;
             }
 
-            let tournamentId = req.body.tournament;
-            if (!tournamentId) {
-                const organizerTournament = await Tournament.findOne({ organizer: req.user.id }).select('_id').session(session);
-                tournamentId = organizerTournament?._id;
+            if (req.body.tournament && String(req.body.tournament) !== String(req.tournamentScope.tournamentId)) {
+                const err = new Error('TOURNAMENT_SCOPE_MISMATCH');
+                err.meta = { message: 'Players must belong to the active organizer tournament.' };
+                throw err;
             }
 
             const playersToInsert = req.body.players.map(p => ({
@@ -180,7 +182,7 @@ router.post('/bulk', async (req, res) => {
                 source: 'Organizer',
                 soldTo: null,
                 organizer: req.user.id,
-                tournament: tournamentId || undefined
+                tournament: req.tournamentScope.tournamentId
             }));
 
             const insertedPlayers = await Player.insertMany(playersToInsert, { session });
@@ -193,7 +195,7 @@ router.post('/bulk', async (req, res) => {
         return res.json(responsePayload);
     } catch (error) {
         console.error("Bulk upload error:", error);
-        if (error.message === 'LIMIT_REACHED' || error.message === 'INVALID_DATA') {
+        if (error.message === 'LIMIT_REACHED' || error.message === 'INVALID_DATA' || error.message === 'TOURNAMENT_SCOPE_MISMATCH') {
             return res.status(400).json(error.meta);
         }
         res.status(500).json({ message: "प्लेयर्स सेव करने में खराबी आ गई है!" });
@@ -204,7 +206,7 @@ router.post('/bulk', async (req, res) => {
 
 router.get('/', async (req, res) => {
     try {
-        const players = await Player.find({ organizer: req.user.id }).populate('soldTo', 'teamName shortName logoUrl logo');
+        const players = await Player.find(mergeWithTournamentScope({ organizer: req.user.id }, req.tournamentScope)).populate('soldTo', 'teamName shortName logoUrl logo');
         res.json(players);
     } catch (error) { res.status(500).json({ message: "एरर!" }); }
 });
@@ -222,13 +224,14 @@ router.post('/validate-bid', async (req, res) => {
 
         let currentBasePrice = 0;
         if (playerId) {
-            const player = await Player.findOne({ _id: playerId, organizer: req.user.id }).select('basePrice').lean();
+            const player = await Player.findOne(mergeWithTournamentScope({ _id: playerId, organizer: req.user.id }, req.tournamentScope)).select('basePrice').lean();
             if (!player) return res.status(404).json({ message: 'Player not found' });
             currentBasePrice = Number(player.basePrice || 0);
         }
 
         const team = await getTeamWithDynamicMaxBid({
             organizerId: req.user.id,
+            tournamentScope: req.tournamentScope,
             teamId,
             teamName,
             currentBasePrice
@@ -264,14 +267,14 @@ router.put('/sell/:id', async (req, res) => {
         const { teamId, teamName, soldPrice } = req.body;
         const numericSoldPrice = Number(soldPrice);
 
-        if (!Number.isFinite(numericSoldPrice) || numericSoldPrice <= 0) {
+        if (!Number.isFinite(numericSoldPrice) || numericSoldPrice < 0) {
             return res.status(400).json({ message: 'Invalid sold price' });
         }
 
         let responsePayload = null;
 
         await session.withTransaction(async () => {
-            const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id }).session(session);
+            const player = await Player.findOne(mergeWithTournamentScope({ _id: req.params.id, organizer: req.user.id }, req.tournamentScope)).session(session);
             if (!player) throw new Error('PLAYER_NOT_FOUND');
 
             if (player.approvalStatus !== 'Approved' || player.auctionStatus !== 'ReadyForAuction' || player.isIcon) {
@@ -280,6 +283,7 @@ router.put('/sell/:id', async (req, res) => {
 
             const teamWithMaxBid = await getTeamWithDynamicMaxBid({
                 organizerId: req.user.id,
+                tournamentScope: req.tournamentScope,
                 teamId,
                 teamName,
                 currentBasePrice: player.basePrice,
@@ -299,11 +303,11 @@ router.put('/sell/:id', async (req, res) => {
             }
 
             const teamUpdate = await Team.findOneAndUpdate(
-                {
+                mergeWithTournamentScope({
                     _id: teamWithMaxBid._id,
                     organizer: req.user.id,
                     remainingPurse: { $gte: numericSoldPrice }
-                },
+                }, req.tournamentScope),
                 { $inc: { remainingPurse: -numericSoldPrice } },
                 { new: true, session }
             );
@@ -314,6 +318,19 @@ router.put('/sell/:id', async (req, res) => {
             player.soldPrice = numericSoldPrice;
             player.auctionStatus = 'Sold';
             await player.save({ session });
+            const finalizedState = await AuctionState.findOneAndUpdate(
+                {
+                    organizer: req.user.id,
+                    tournament: req.tournamentScope.tournamentId,
+                    activePlayer: player._id,
+                    highestBidder: teamWithMaxBid._id,
+                    currentBid: numericSoldPrice,
+                    status: 'bidding'
+                },
+                { $set: { status: 'sold' }, $inc: { version: 1 } },
+                { new: true, session }
+            );
+            if (!finalizedState) throw new Error('AUCTION_STATE_CONFLICT');
 
             responsePayload = { message: 'खिलाड़ी बिक गया!', player, team: teamUpdate };
         });
@@ -323,7 +340,7 @@ router.put('/sell/:id', async (req, res) => {
         if (error.message === 'PLAYER_NOT_FOUND') return res.status(404).json({ message: 'Player not found' });
         if (error.message === 'TEAM_NOT_FOUND') return res.status(404).json({ message: 'Team not found' });
         if (error.message === 'PLAYER_NOT_ELIGIBLE') return res.status(409).json({ message: 'Player is not eligible to be sold right now' });
-        if (error.message === 'PURSE_CONFLICT') return res.status(409).json({ message: 'Bid conflict detected. Team purse changed, please retry.' });
+        if (error.message === 'PURSE_CONFLICT' || error.message === 'AUCTION_STATE_CONFLICT') return res.status(409).json({ message: 'Auction state changed, please refresh and retry.' });
         if (error.message === 'MAX_BID_BLOCK') return res.status(400).json(error.meta);
         return res.status(500).json({ message: 'एरर!' });
     } finally {
@@ -332,23 +349,40 @@ router.put('/sell/:id', async (req, res) => {
 });
 
 router.put('/unsold/:id', async (req, res) => {
+    const session = await mongoose.startSession();
     try {
-        const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
-        if(!player) return res.status(404).json({ message: "Player not found" });
-        if (player.approvalStatus !== 'Approved' || player.auctionStatus !== 'ReadyForAuction' || player.isIcon) {
-            return res.status(409).json({ message: 'Player is not eligible to be marked unsold right now' });
-        }
-        player.auctionStatus = 'Unsold';
-        player.soldTo = null;
-        player.soldPrice = 0;
-        await player.save();
-        res.json({ message: "खिलाड़ी अनसोल्ड हो गया!", player });
-    } catch (error) { res.status(500).json({ message: "एरर!" }); }
+        let responsePayload;
+        await session.withTransaction(async () => {
+            const player = await Player.findOne(mergeWithTournamentScope({ _id: req.params.id, organizer: req.user.id }, req.tournamentScope)).session(session);
+            if (!player) throw new Error('PLAYER_NOT_FOUND');
+            if (player.approvalStatus !== 'Approved' || player.auctionStatus !== 'ReadyForAuction' || player.isIcon) throw new Error('PLAYER_NOT_ELIGIBLE');
+
+            const finalizedState = await AuctionState.findOneAndUpdate(
+                { organizer: req.user.id, tournament: req.tournamentScope.tournamentId, activePlayer: player._id, highestBidder: null, status: 'bidding' },
+                { $set: { status: 'unsold' }, $inc: { version: 1 } },
+                { new: true, session }
+            );
+            if (!finalizedState) throw new Error('AUCTION_STATE_CONFLICT');
+
+            player.auctionStatus = 'Unsold';
+            player.soldTo = null;
+            player.soldPrice = 0;
+            await player.save({ session });
+            responsePayload = { message: "खिलाड़ी अनसोल्ड हो गया!", player };
+        });
+        res.json(responsePayload);
+    } catch (error) {
+        if (error.message === 'PLAYER_NOT_FOUND') return res.status(404).json({ message: 'Player not found' });
+        if (error.message === 'PLAYER_NOT_ELIGIBLE' || error.message === 'AUCTION_STATE_CONFLICT') return res.status(409).json({ message: 'Auction state changed, please refresh and retry.' });
+        res.status(500).json({ message: "एरर!" });
+    } finally {
+        session.endSession();
+    }
 });
 
 router.put('/undo/:id', async (req, res) => {
     try {
-        const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
+        const player = await Player.findOne(mergeWithTournamentScope({ _id: req.params.id, organizer: req.user.id }, req.tournamentScope));
         if (!player) return res.status(404).json({ message: "खिलाड़ी नहीं मिला" });
 
         if (player.isIcon || player.auctionStatus === 'Icon') {
@@ -365,7 +399,7 @@ router.put('/undo/:id', async (req, res) => {
                 : { teamName: player.soldTo, organizer: req.user.id };
 
             await Team.findOneAndUpdate(
-                teamQuery,
+                mergeWithTournamentScope(teamQuery, req.tournamentScope),
                 { $inc: { remainingPurse: refundAmount } }
             );
         }
@@ -374,6 +408,13 @@ router.put('/undo/:id', async (req, res) => {
         player.soldTo = null;
         player.soldPrice = 0;
         await player.save();
+
+        // A reverted result must not leave a stale active auction in the
+        // server-authoritative state. The operator can explicitly start it again.
+        await AuctionState.findOneAndUpdate(
+            { organizer: req.user.id, tournament: req.tournamentScope.tournamentId, activePlayer: player._id },
+            { $set: { status: 'idle', activePlayer: null, currentBid: 0, highestBidder: null }, $inc: { version: 1 } }
+        );
 
         res.json({ message: "Undo Successful!", player });
     } catch (error) {
@@ -385,11 +426,11 @@ router.put('/undo/:id', async (req, res) => {
 router.post('/restore-unsold', async (req, res) => {
     try {
         const result = await Player.updateMany(
-            {
+            mergeWithTournamentScope({
                 organizer: req.user.id,
                 approvalStatus: 'Approved',
                 auctionStatus: { $in: ['Unsold', 'Passed'] }
-            },
+            }, req.tournamentScope),
             {
                 $set: {
                     auctionStatus: 'ReadyForAuction',
@@ -407,13 +448,13 @@ router.post('/restore-unsold', async (req, res) => {
 
 router.post('/bring-all-back', async (req, res) => {
     try {
-        const soldPlayers = await Player.find({
+        const soldPlayers = await Player.find(mergeWithTournamentScope({
             organizer: req.user.id,
             approvalStatus: 'Approved',
             auctionStatus: { $in: ['Sold'] },
             soldTo: { $ne: null },
             soldPrice: { $gt: 0 }
-        }).lean();
+        }, req.tournamentScope)).lean();
 
         const refundByTeam = {};
         for (const p of soldPlayers) {
@@ -429,18 +470,18 @@ router.post('/bring-all-back', async (req, res) => {
                 : { teamName: teamKey, organizer: req.user.id };
 
             return Team.findOneAndUpdate(
-                query,
+                mergeWithTournamentScope(query, req.tournamentScope),
                 { $inc: { remainingPurse: amount } }
             );
         });
         await Promise.all(teamUpdates);
 
         const result = await Player.updateMany(
-            {
+            mergeWithTournamentScope({
                 organizer: req.user.id,
                 approvalStatus: 'Approved',
                 auctionStatus: { $in: ['Sold', 'Unsold', 'Passed'] }
-            },
+            }, req.tournamentScope),
             {
                 $set: {
                     auctionStatus: 'ReadyForAuction',
@@ -460,7 +501,7 @@ router.post('/bring-all-back', async (req, res) => {
 router.post('/reset-auction', async (req, res) => {
     try {
         const playerResult = await Player.updateMany(
-            { organizer: req.user.id, isIcon: { $ne: true } },
+            mergeWithTournamentScope({ organizer: req.user.id, isIcon: { $ne: true } }, req.tournamentScope),
             {
                 $set: {
                     auctionStatus: 'ReadyForAuction',
@@ -470,14 +511,22 @@ router.post('/reset-auction', async (req, res) => {
             }
         );
 
-        const teams = await Team.find({ organizer: req.user.id });
-        const iconPlayers = await Player.find({ organizer: req.user.id, isIcon: true, soldTo: { $ne: null } });
+        const teams = await Team.find(mergeWithTournamentScope({ organizer: req.user.id }, req.tournamentScope));
+        const iconPlayers = await Player.find(mergeWithTournamentScope({ organizer: req.user.id, isIcon: true, soldTo: { $ne: null } }, req.tournamentScope));
 
         await Promise.all(teams.map((t) => {
             const teamIcons = iconPlayers.filter(p => String(p.soldTo) === String(t._id) || String(p.soldTo) === t.teamName);
             const iconSpent = teamIcons.reduce((sum, p) => sum + (Number(p.soldPrice) || 0), 0);
-            return Team.findByIdAndUpdate(t._id, { remainingPurse: t.totalPurse - iconSpent });
+            return Team.findOneAndUpdate(
+                mergeWithTournamentScope({ _id: t._id, organizer: req.user.id }, req.tournamentScope),
+                { remainingPurse: t.totalPurse - iconSpent }
+            );
         }));
+
+        await AuctionState.findOneAndUpdate(
+            { organizer: req.user.id, tournament: req.tournamentScope.tournamentId },
+            { $set: { status: 'idle', activePlayer: null, currentBid: 0, highestBidder: null }, $inc: { version: 1 } }
+        );
 
         res.json({
             message: "ऑक्शन 100% सफलतापूर्वक रीसेट हो गया है!",
@@ -492,14 +541,14 @@ router.post('/reset-auction', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
     try {
-        await Player.findOneAndDelete({ _id: req.params.id, organizer: req.user.id });
+        await Player.findOneAndDelete(mergeWithTournamentScope({ _id: req.params.id, organizer: req.user.id }, req.tournamentScope));
         res.json({ message: "डिलीट हो गया!" });
     } catch (error) { res.status(500).json({ message: "एरर!" }); }
 });
 
 router.put('/approval/:id', async (req, res) => {
     try {
-        const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
+        const player = await Player.findOne(mergeWithTournamentScope({ _id: req.params.id, organizer: req.user.id }, req.tournamentScope));
         if (!player) return res.status(404).json({ message: "Player not found" });
         player.approvalStatus = req.body.status;
         if (req.body.status === 'Approved') {
@@ -514,7 +563,7 @@ router.put('/approval/:id', async (req, res) => {
 
 router.put('/update-price/:id', async (req, res) => {
     try {
-        const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
+        const player = await Player.findOne(mergeWithTournamentScope({ _id: req.params.id, organizer: req.user.id }, req.tournamentScope));
         if (!player) return res.status(404).json({ message: "Player not found" });
         const basePrice = Number(req.body.basePrice);
         if (!Number.isFinite(basePrice) || basePrice < 0) return res.status(400).json({ message: "Invalid base price" });
@@ -525,7 +574,7 @@ router.put('/update-price/:id', async (req, res) => {
 
 router.put('/update-photo/:id', async (req, res) => {
     try {
-        const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
+        const player = await Player.findOne(mergeWithTournamentScope({ _id: req.params.id, organizer: req.user.id }, req.tournamentScope));
         if (!player) return res.status(404).json({ success: false, message: "Player not found" });
         const photoUrl = req.body.photoUrl;
         if (!photoUrl || typeof photoUrl !== 'string') return res.status(400).json({ success: false, message: "Invalid photo URL" });
@@ -537,7 +586,7 @@ router.put('/update-photo/:id', async (req, res) => {
 
 router.put('/update-category/:id', async (req, res) => {
     try {
-        const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id });
+        const player = await Player.findOne(mergeWithTournamentScope({ _id: req.params.id, organizer: req.user.id }, req.tournamentScope));
         if (!player) return res.status(404).json({ message: "Player not found" });
 
         const category = typeof req.body.category === 'string' ? req.body.category.trim() : '';
@@ -562,12 +611,13 @@ router.put('/make-icon/:id', async (req, res) => {
         let responsePayload = null;
 
         await session.withTransaction(async () => {
-            const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id }).session(session);
+            const player = await Player.findOne(mergeWithTournamentScope({ _id: req.params.id, organizer: req.user.id }, req.tournamentScope)).session(session);
             if (!player) throw new Error('PLAYER_NOT_FOUND');
             if (player.auctionStatus === 'Sold' || player.isIcon) throw new Error('PLAYER_NOT_ELIGIBLE');
 
             const teamWithMaxBid = await getTeamWithDynamicMaxBid({
                 organizerId: req.user.id,
+                tournamentScope: req.tournamentScope,
                 teamId,
                 teamName,
                 currentBasePrice: player.basePrice,
@@ -587,11 +637,11 @@ router.put('/make-icon/:id', async (req, res) => {
             }
 
             const teamUpdate = await Team.findOneAndUpdate(
-                {
+                mergeWithTournamentScope({
                     _id: teamWithMaxBid._id,
                     organizer: req.user.id,
                     remainingPurse: { $gte: numericIconPrice }
-                },
+                }, req.tournamentScope),
                 { $inc: { remainingPurse: -numericIconPrice } },
                 { new: true, session }
             );
@@ -628,7 +678,7 @@ router.put('/remove-icon/:id', async (req, res) => {
         let responsePayload = null;
 
         await session.withTransaction(async () => {
-            const player = await Player.findOne({ _id: req.params.id, organizer: req.user.id }).session(session);
+            const player = await Player.findOne(mergeWithTournamentScope({ _id: req.params.id, organizer: req.user.id }, req.tournamentScope)).session(session);
             if (!player) throw new Error('PLAYER_NOT_FOUND');
             if (!player.isIcon) throw new Error('PLAYER_NOT_ICON');
 
@@ -640,7 +690,7 @@ router.put('/remove-icon/:id', async (req, res) => {
                     : { teamName: player.soldTo, organizer: req.user.id };
 
                 team = await Team.findOneAndUpdate(
-                    teamQuery,
+                    mergeWithTournamentScope(teamQuery, req.tournamentScope),
                     { $inc: { remainingPurse: refundAmount } },
                     { new: true, session }
                 );

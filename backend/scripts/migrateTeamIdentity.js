@@ -4,16 +4,22 @@
  * 1. Converts Player.soldTo from legacy team name strings to Team._id (ObjectId).
  * 2. Sanitizes unsold / empty player soldTo values to null.
  * 3. Converts Tournament.liveScreenConfig.selectedSquadTeam to Team._id.
+ * 4. Reports missing/inconsistent Team.tournament and Player.tournament links.
+ *    Tournament backfill is opt-in and only applies unambiguous one-tournament
+ *    organizer records.
  * 
  * Usage:
  *   node scripts/migrateTeamIdentity.js --dry-run
  *   node scripts/migrateTeamIdentity.js --execute
+ *   node scripts/migrateTeamIdentity.js --dry-run --report-tournament-scopes
+ *   node scripts/migrateTeamIdentity.js --execute --backfill-tournament-scopes
  */
 
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const mongoose = require('mongoose');
 
 const isExecute = process.argv.includes('--execute');
+const shouldBackfillTournamentScopes = process.argv.includes('--backfill-tournament-scopes');
 
 async function runMigration() {
     console.log(`\n========================================`);
@@ -40,6 +46,70 @@ async function runMigration() {
     // 2. Fetch all players
     const allPlayers = await playersCol.find({}).toArray();
     console.log(` Found ${allPlayers.length} total players.`);
+
+    const allTournaments = await tournamentsCol.find({}).toArray();
+    const tournamentsByOrganizer = new Map();
+    for (const tournament of allTournaments) {
+        const organizerKey = String(tournament.organizer || '');
+        const organizerTournaments = tournamentsByOrganizer.get(organizerKey) || [];
+        organizerTournaments.push(tournament);
+        tournamentsByOrganizer.set(organizerKey, organizerTournaments);
+    }
+
+    const analyzeTournamentReferences = (records, label) => {
+        const planned = [];
+        const inconsistent = [];
+        const ambiguous = [];
+
+        for (const record of records) {
+            const organizerKey = String(record.organizer || '');
+            const linkedTournament = record.tournament
+                ? allTournaments.find((tournament) => String(tournament._id) === String(record.tournament))
+                : null;
+
+            if (record.tournament) {
+                if (!linkedTournament || String(linkedTournament.organizer) !== organizerKey) {
+                    inconsistent.push({
+                        id: record._id,
+                        name: record.teamName || record.name,
+                        organizer: record.organizer || null,
+                        tournament: record.tournament,
+                        reason: linkedTournament ? 'Tournament belongs to a different organizer' : 'Tournament does not exist'
+                    });
+                }
+                continue;
+            }
+
+            const organizerTournaments = tournamentsByOrganizer.get(organizerKey) || [];
+            if (organizerTournaments.length === 1) {
+                planned.push({
+                    id: record._id,
+                    name: record.teamName || record.name,
+                    tournamentId: organizerTournaments[0]._id
+                });
+            } else {
+                ambiguous.push({
+                    id: record._id,
+                    name: record.teamName || record.name,
+                    organizer: record.organizer || null,
+                    tournamentCount: organizerTournaments.length
+                });
+            }
+        }
+
+        console.log(`\n--- ${label} Tournament Scope Analysis ---`);
+        console.log(`  Safe backfill candidates: ${planned.length}`);
+        console.log(`  Inconsistent references:  ${inconsistent.length}`);
+        console.log(`  Ambiguous/missing scope:  ${ambiguous.length}`);
+        [...inconsistent, ...ambiguous].forEach((entry) => {
+            console.warn(`  - [${label} ${entry.id}] "${entry.name}": ${entry.reason || `organizer has ${entry.tournamentCount} tournaments`}`);
+        });
+
+        return { planned, inconsistent, ambiguous };
+    };
+
+    const teamTournamentAnalysis = analyzeTournamentReferences(allTeams, 'Team');
+    const playerTournamentAnalysis = analyzeTournamentReferences(allPlayers, 'Player');
 
     // 3. Analyze players
     const plannedPlayerUpdates = [];
@@ -114,7 +184,6 @@ async function runMigration() {
     }
 
     // 4. Analyze tournaments
-    const allTournaments = await tournamentsCol.find({}).toArray();
     const plannedTournamentUpdates = [];
 
     for (const tourney of allTournaments) {
@@ -182,10 +251,29 @@ async function runMigration() {
         }
         console.log(`✅ Updated ${tourneySuccessCount} tournaments.`);
 
+        if (shouldBackfillTournamentScopes) {
+            const recordsToBackfill = [
+                ...teamTournamentAnalysis.planned.map((entry) => ({ collection: teamsCol, ...entry })),
+                ...playerTournamentAnalysis.planned.map((entry) => ({ collection: playersCol, ...entry }))
+            ];
+            let scopeBackfillCount = 0;
+            for (const entry of recordsToBackfill) {
+                await entry.collection.updateOne(
+                    { _id: entry.id, $or: [{ tournament: null }, { tournament: { $exists: false } }] },
+                    { $set: { tournament: entry.tournamentId } }
+                );
+                scopeBackfillCount++;
+            }
+            console.log(`✅ Backfilled ${scopeBackfillCount} unambiguous tournament references.`);
+        } else {
+            console.log('ℹ️ Tournament reference backfill was not requested; report-only mode retained.');
+        }
+
         console.log(`\n🎉 MIGRATION COMPLETED SUCCESSFULLY!`);
     } else {
         console.log(`\nℹ️ Dry run completed. No data was modified.`);
-        console.log(`To apply changes, run with: --execute`);
+        console.log(`To apply identity changes, run with: --execute`);
+        console.log(`To also backfill only unambiguous tournament references, run with: --execute --backfill-tournament-scopes`);
     }
 
     await mongoose.disconnect();

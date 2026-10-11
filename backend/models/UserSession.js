@@ -1,7 +1,12 @@
 const mongoose = require('mongoose');
 
 const userSessionSchema = new mongoose.Schema({
-    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    // Organizer sessions use user. Team Owner sessions are scoped to a team instead.
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false, index: true },
+    team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: null, index: true },
+    tournament: { type: mongoose.Schema.Types.ObjectId, ref: 'Tournament', default: null, index: true },
+    organizer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+    sessionRole: { type: String, enum: ['User', 'TeamOwner'], default: 'User', index: true },
     deviceId: { type: String, default: '' },
     expiresAt: { type: Date, required: true },
     revokedAt: { type: Date, default: null, index: true },

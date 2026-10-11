@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const Team = require('../models/Team');
+const { validateTeamOwnerSession, getJwtSecret } = require('../utils/sessionAuth');
 
 /**
  * Middleware to verify a Team Owner's remote access token.
@@ -18,14 +19,16 @@ const fetchTeamOwner = async (req, res, next) => {
     }
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+        const decoded = jwt.verify(token, getJwtSecret());
         
         if (decoded.role !== 'TeamOwner' || !decoded.teamId) {
             return res.status(403).json({ message: "Invalid token role or scope." });
         }
 
         // Live check against the database to ensure remote access wasn't revoked
-        const team = await Team.findById(decoded.teamId);
+        const validation = await validateTeamOwnerSession({ sessionId: decoded.sid, teamId: decoded.teamId, organizerId: decoded.organizerId, tournamentId: decoded.tournamentId });
+        if (!validation.ok) return res.status(401).json({ message: 'Session expired or revoked.' });
+        const team = await Team.findOne({ _id: decoded.teamId, organizer: decoded.organizerId, tournament: decoded.tournamentId });
         
         if (!team) {
             return res.status(401).json({ message: "Team no longer exists." });
