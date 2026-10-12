@@ -3,9 +3,19 @@ const { getOrganizerTournamentScope } = require('../utils/tournamentScope');
 const fetchTournamentScope = async (req, res, next) => {
   try {
     const routeTournamentMatch = String(req.path || '').match(/^\/tournament\/([^/]+)$/);
+    const requestedTournamentId =
+      req.query?.tournament ||
+      req.query?.tournamentId ||
+      req.headers?.['x-tournament-id'] ||
+      req.headers?.['tournament-id'] ||
+      req.body?.tournamentId ||
+      req.body?.tournament ||
+      routeTournamentMatch?.[1] ||
+      null;
+
     req.tournamentScope = await getOrganizerTournamentScope({
       organizerId: req.user?.id,
-      requestedTournamentId: req.query?.tournament || routeTournamentMatch?.[1] || null
+      requestedTournamentId
     });
     next();
   } catch (error) {

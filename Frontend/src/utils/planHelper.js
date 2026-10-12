@@ -9,6 +9,7 @@ export const DEFAULT_PLAN_POLICIES = {
     canPublicRegistration: false,
     canLiveScreen: true,
     canCustomFields: false,
+    canRemoteBidding: false,
   },
   Basic: {
     name: 'Basic',
@@ -18,6 +19,7 @@ export const DEFAULT_PLAN_POLICIES = {
     canPublicRegistration: false,
     canLiveScreen: true,
     canCustomFields: false,
+    canRemoteBidding: false,
   },
   Pro: {
     name: 'Pro',
@@ -27,6 +29,7 @@ export const DEFAULT_PLAN_POLICIES = {
     canPublicRegistration: true,
     canLiveScreen: true,
     canCustomFields: true,
+    canRemoteBidding: true,
   }
 };
 
@@ -73,6 +76,7 @@ export const getEffectivePlanPolicy = (planName = 'Free', role = 'Organizer') =>
       canPublicRegistration: true,
       canLiveScreen: true,
       canCustomFields: true,
+      canRemoteBidding: true,
     };
   }
 
@@ -91,6 +95,7 @@ export const getEffectivePlanPolicy = (planName = 'Free', role = 'Organizer') =>
         canPublicRegistration: found.canPublicRegistration !== undefined ? Boolean(found.canPublicRegistration) : fallback.canPublicRegistration,
         canLiveScreen: found.canLiveScreen !== undefined ? Boolean(found.canLiveScreen) : fallback.canLiveScreen,
         canCustomFields: found.canCustomFields !== undefined ? Boolean(found.canCustomFields) : fallback.canCustomFields,
+        canRemoteBidding: found.canRemoteBidding !== undefined ? Boolean(found.canRemoteBidding) : fallback.canRemoteBidding,
       };
     }
   }

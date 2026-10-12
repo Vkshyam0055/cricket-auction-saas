@@ -15,13 +15,22 @@ function ControlPanel() {
   const [auctionVersion, setAuctionVersion] = useState(null);
 
   // Auction progress is restored only from /api/auction/state. Browser storage
-  // may retain display preferences, but never selects an active player or bid.
   const [currentPlayer, setCurrentPlayer] = useState(null);
   const [currentBid, setCurrentBid] = useState(0);
   const [biddingTeam, setBiddingTeam] = useState('');
+  const [lastBidSource, setLastBidSource] = useState('onsite'); // 'onsite' | 'remote'
+  const [latestRemoteToast, setLatestRemoteToast] = useState(null);
   const [playerStatus, setPlayerStatus] = useState('bidding');
   const [customBid, setCustomBid] = useState('');
   const [hasBiddingStarted, setHasBiddingStarted] = useState(false);
+
+  useEffect(() => {
+    if (!latestRemoteToast) return;
+    const timer = setTimeout(() => {
+      setLatestRemoteToast(null);
+    }, 4500);
+    return () => clearTimeout(timer);
+  }, [latestRemoteToast]);
   const [playerOrderMode, setPlayerOrderMode] = useState(() => localStorage.getItem('playerOrderMode') || 'all-random');
   const [categoryOrder, setCategoryOrder] = useState(() => {
     try {
@@ -350,22 +359,24 @@ function ControlPanel() {
     });
     socketRef.current = socket;
 
-    socket.on('remoteBidRequest', async (data, callback) => {
-      // Use refs to avoid stale closures
-      const currentStatus = playerStatusRef.current;
-      const currentP = currentPlayerRef.current;
-      
-      if (currentStatus !== 'bidding') {
-        if (typeof callback === 'function') callback({ success: false, message: 'Bidding is not active' });
-        return;
+    socket.on('updateAudienceScreen', (data) => {
+      if (data && data.bidAmount !== undefined) {
+        setCurrentBid(Number(data.bidAmount));
+        if (data.teamId) setBiddingTeam(data.teamId);
+        if (data.version !== undefined) setAuctionVersion(Number(data.version));
+        setHasBiddingStarted(true);
+        const source = data.bidSource || (data.isRemote ? 'remote' : 'onsite');
+        setLastBidSource(source);
+        if (source === 'remote') {
+          const tName = data.teamName || data.biddingTeamName || 'Remote Bidder';
+          setLatestRemoteToast({
+            teamName: tName,
+            shortName: data.shortName || '',
+            amount: Number(data.bidAmount),
+            time: Date.now()
+          });
+        }
       }
-      if (!currentP || String(currentP._id) !== String(data.playerId)) {
-        if (typeof callback === 'function') callback({ success: false, message: 'Player mismatch. Remote view may be stale.' });
-        return;
-      }
-      
-      // We pass the exact payload to updateBid, which will validate purse/maxBid
-      await updateBid(data.teamId, Number(data.amount), false, true, callback);
     });
 
     socket.on('activeBiddingSync', (data) => {
@@ -407,6 +418,7 @@ function ControlPanel() {
     });
 
     return () => {
+      socket.off('updateAudienceScreen');
       socket.off('activeBiddingSync');
       socket.off('activeBiddingUpdate');
       socket.off('liveScreenConfigSync');
@@ -556,12 +568,13 @@ function ControlPanel() {
           shortName: winningTeamObj?.shortName || '',
           logoUrl: winningTeamObj?.logoUrl || winningTeamObj?.logo || '',
           player: currentPlayer,
-          status: playerStatus
+          status: playerStatus,
+          version: auctionVersion
         });
       }
     }, 2000);
     return () => clearInterval(syncInterval);
-  }, [currentPlayer, currentBid, biddingTeam, playerStatus, teams]);
+  }, [currentPlayer, currentBid, biddingTeam, playerStatus, teams, auctionVersion]);
 
   const saveStateToHistory = (actionType, affectedPlayer = null) => {
     setActionHistory((prev) => [
@@ -640,16 +653,19 @@ function ControlPanel() {
       bidAmount: selected.basePrice,
       teamName: '',
       player: selected,
-      status: 'bidding'
+      status: 'bidding',
+      version: Number(result.data.state.version)
     });
   };
 
   const handleResetBid = async () => {
     if (!currentPlayer || playerStatus !== 'bidding') return;
+    let newResetVersion;
     try {
       const token = localStorage.getItem('token');
       const result = await apiRequest({ method: 'post', path: '/api/auction/reset-bid', data: { playerId: currentPlayer._id, expectedVersion: auctionVersion }, headers: { Authorization: `Bearer ${token}` } });
-      setAuctionVersion(Number(result.data.state.version));
+      newResetVersion = Number(result.data.state.version);
+      setAuctionVersion(newResetVersion);
     } catch (error) {
       alert(`🚫 ${error.response?.data?.message || 'Bid reset was rejected.'}`);
       return;
@@ -665,7 +681,8 @@ function ControlPanel() {
       bidAmount: currentPlayer.basePrice,
       teamName: '',
       player: currentPlayer,
-      status: playerStatus
+      status: playerStatus,
+      version: newResetVersion
     });
     return true;
   };
@@ -750,6 +767,7 @@ function ControlPanel() {
 
     setCurrentBid(acceptedBid);
     setBiddingTeam(team._id);
+    setLastBidSource('onsite');
     setHasBiddingStarted(true);
 
     if (isRemote && callback) {
@@ -795,7 +813,10 @@ function ControlPanel() {
       shortName: team.shortName,
       logoUrl: team.logoUrl || team.logo || '',
       player: currentPlayer,
-      status: playerStatus
+      status: playerStatus,
+      version: Number(authoritativeBid.data.state.version),
+      isRemote: false,
+      bidSource: 'onsite'
     });
     return true;
   };
@@ -1225,14 +1246,17 @@ function ControlPanel() {
     players.some((player) => normalizeCategory(player.category) === category)
   );
 
-  const activeBiddingTeamData = teams.find((team) => team.teamName === biddingTeam);
+  const activeBiddingTeamData = useMemo(() => {
+    return resolveTeam(biddingTeam);
+  }, [biddingTeam, resolveTeam]);
 
   const filteredTeams = useMemo(() => {
     const query = teamSearch.trim().toLowerCase();
     return teams.filter((team) => {
       const name = String(team.teamName || '').toLowerCase();
       const shortName = String(team.shortName || '').toLowerCase();
-      const matchesSearch = !query || name.includes(query) || shortName.includes(query);
+      const owner = String(team.ownerName || team.owner || '').toLowerCase();
+      const matchesSearch = !query || name.includes(query) || shortName.includes(query) || owner.includes(query);
       if (!matchesSearch) return false;
 
       if (teamFilter === 'can-bid') {
@@ -1242,11 +1266,14 @@ function ControlPanel() {
         return Number(team.remainingPurse || 0) < 100000;
       }
       if (teamFilter === 'active-zone') {
-        return activeBiddingList.includes(team.teamName);
+        return activeBiddingList.some((item) => {
+          const resolved = resolveTeam(item);
+          return resolved && String(resolved._id) === String(team._id);
+        });
       }
       return true;
     });
-  }, [teams, teamSearch, teamFilter, currentBid, btn1, activeBiddingList]);
+  }, [teams, teamSearch, teamFilter, currentBid, btn1, activeBiddingList, resolveTeam]);
 
   return (
     <div className="h-screen bg-slate-100 flex flex-col overflow-hidden text-slate-900 select-none">
@@ -1608,42 +1635,97 @@ function ControlPanel() {
                 !currentPlayer || playerStatus !== 'bidding' ? 'opacity-60 pointer-events-none' : ''
               }`}
             >
-              {/* TOP STATUS BAR: CURRENT BID & HIGHEST BIDDER */}
-              <div className="flex items-center justify-between pb-2 border-b border-slate-200 shrink-0">
-                <div className="flex items-center gap-2.5">
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block leading-none">
-                      Current Bid
-                    </span>
-                    <span className="text-2xl lg:text-3xl font-black text-emerald-600 leading-tight">
-                      ₹{currentBid.toLocaleString()}
-                    </span>
-                  </div>
-                  <button
-                    onClick={handleResetBid}
-                    className="bg-slate-100 hover:bg-slate-200 p-1.5 rounded-lg border border-slate-300 transition text-xs shadow-xs"
-                    title="Reset to Base Price"
-                  >
-                    🔄
-                  </button>
-                </div>
-
-                <div className="text-right">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block leading-none">
-                    Highest Bidder
-                  </span>
-                  <div className="flex items-center justify-end gap-1.5 mt-0.5">
-                    <span className="text-base lg:text-lg font-black text-amber-600 truncate max-w-[180px]">
-                      {biddingTeam ? getTeamLabel(biddingTeam) : 'Waiting...'}
-                    </span>
-                    {activeBiddingTeamData && (
-                      <span className="text-[10px] bg-amber-50 border border-amber-200 text-amber-800 font-bold px-1.5 py-0.5 rounded">
-                        Max: {formatCurrency(activeBiddingTeamData.maxBid)}
+              {/* 🌟 PROMINENT LEADING BIDDER & LIVE STATUS (PHASE 5) 🌟 */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 pb-2 shrink-0 mb-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  {/* CURRENT BID AMOUNT */}
+                  <div className="flex items-center gap-2">
+                    <div>
+                      <span className="text-[10px] uppercase font-extrabold text-slate-500 tracking-wider block leading-none">
+                        Current Highest Bid
                       </span>
+                      <span className="text-2xl lg:text-3xl font-black text-emerald-600 leading-tight">
+                        ₹{currentBid.toLocaleString()}
+                      </span>
+                    </div>
+                    <button
+                      onClick={handleResetBid}
+                      className="bg-white hover:bg-slate-100 p-1.5 rounded-lg border border-slate-300 transition text-xs shadow-xs"
+                      title="Reset to Base Price"
+                    >
+                      🔄
+                    </button>
+                  </div>
+
+                  {/* PROMINENT LEADING BIDDER BADGE & DETAILS */}
+                  <div className="flex items-center gap-2 max-w-full">
+                    {activeBiddingTeamData ? (
+                      <div className="flex items-center gap-2 bg-white border border-amber-300 rounded-lg p-1.5 shadow-xs">
+                        {activeBiddingTeamData.logoUrl || activeBiddingTeamData.logo ? (
+                          <img
+                            src={activeBiddingTeamData.logoUrl || activeBiddingTeamData.logo}
+                            alt=""
+                            className="w-8 h-8 rounded-md object-contain bg-slate-50 border border-slate-200 shrink-0"
+                          />
+                        ) : (
+                          <div className="w-8 h-8 rounded-md bg-amber-500 text-amber-950 font-black text-xs flex items-center justify-center shrink-0 uppercase">
+                            {activeBiddingTeamData.shortName || activeBiddingTeamData.teamName.slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="min-w-0 pr-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-sm font-black text-slate-900 truncate max-w-[200px]" title={activeBiddingTeamData.teamName}>
+                              {activeBiddingTeamData.teamName}
+                            </span>
+                            {activeBiddingTeamData.shortName && (
+                              <span className="text-[10px] font-extrabold bg-slate-100 text-slate-600 px-1 py-0.2 rounded border border-slate-200">
+                                {activeBiddingTeamData.shortName}
+                              </span>
+                            )}
+                            {lastBidSource === 'remote' ? (
+                              <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-300 flex items-center gap-0.5 shadow-2xs">
+                                📱 Remote
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-0.5 shadow-2xs">
+                                🏢 Onsite
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-600 font-semibold mt-0.5">
+                            <span>Purse: <b className="text-emerald-700">₹{Number(activeBiddingTeamData.remainingPurse || 0).toLocaleString()}</b></span>
+                            <span>Max Bid: <b className="text-amber-700">{formatCurrency(activeBiddingTeamData.maxBid)}</b></span>
+                            <span>Need: <b>{activeBiddingTeamData.remainingRequiredPlayers}</b></span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="px-3 py-1.5 rounded-lg border border-dashed border-slate-300 bg-white text-slate-400 font-bold text-xs flex items-center gap-1.5">
+                        <span>⏳ Waiting for opening bid...</span>
+                        <span className="text-[10px] text-slate-500 font-normal">(Base: ₹{Number(currentPlayer?.basePrice || 0).toLocaleString()})</span>
+                      </div>
                     )}
                   </div>
                 </div>
               </div>
+
+              {/* 🌟 NON-BLOCKING REMOTE BID FEEDBACK TOAST 🌟 */}
+              {latestRemoteToast && (
+                <div className="bg-sky-50 border border-sky-300 text-sky-950 px-3 py-1.5 rounded-xl text-xs flex items-center justify-between shadow-xs mb-1 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">📱</span>
+                    <span className="font-semibold">
+                      Remote Bid Placed: <span className="font-black text-sky-900">{latestRemoteToast.teamName} {latestRemoteToast.shortName ? `(${latestRemoteToast.shortName})` : ''}</span> bid <span className="font-black text-emerald-700">₹{latestRemoteToast.amount.toLocaleString()}</span>
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setLatestRemoteToast(null)}
+                    className="text-sky-500 hover:text-sky-900 font-bold ml-2 text-xs"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
 
               {/* QUICK BIDS: JUMP BID & BASE SELL ROW */}
               <div className="flex flex-wrap items-center justify-between gap-2 py-2 border-b border-slate-200 shrink-0">
@@ -1735,7 +1817,7 @@ function ControlPanel() {
                           </div>
                           {isHighestBidder ? (
                             <span className="text-[9px] px-1 rounded bg-amber-400 text-amber-950 font-black shrink-0">
-                              Leader
+                              {lastBidSource === 'remote' ? 'Leader 📱' : 'Leader 🏢'}
                             </span>
                           ) : (
                             <span className="text-[9px] px-1 rounded bg-purple-700 text-white font-black shrink-0">
@@ -1782,15 +1864,15 @@ function ControlPanel() {
                 </div>
               </div>
 
-              {/* FILTER & SEARCH TOOLBAR */}
+              {/* FILTER & SEARCH TOOLBAR (FOR 20–50+ TEAMS) */}
               <div className="flex items-center justify-between gap-2 py-1.5 shrink-0">
                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
                   <input
                     type="text"
                     value={teamSearch}
                     onChange={(e) => setTeamSearch(e.target.value)}
-                    placeholder="Search teams..."
-                    className="p-1 border border-slate-300 rounded-lg text-xs font-semibold w-36 outline-none focus:border-blue-500"
+                    placeholder="Search by name, code, owner..."
+                    className="p-1 border border-slate-300 rounded-lg text-xs font-semibold w-48 outline-none focus:border-blue-500"
                   />
                   <div className="flex items-center gap-1 text-[10px] font-bold">
                     <button
@@ -1802,6 +1884,16 @@ function ControlPanel() {
                       }`}
                     >
                       All
+                    </button>
+                    <button
+                      onClick={() => setTeamFilter('active-zone')}
+                      className={`px-2 py-0.5 rounded-md border ${
+                        teamFilter === 'active-zone'
+                          ? 'bg-purple-700 text-white border-purple-700'
+                          : 'bg-white text-purple-700 border-purple-300 hover:bg-purple-50'
+                      }`}
+                    >
+                      Active ({activeBiddingTeams.length})
                     </button>
                     <button
                       onClick={() => setTeamFilter('can-bid')}
@@ -1842,7 +1934,7 @@ function ControlPanel() {
                 </span>
               </div>
 
-              {/* 🌟 UP TO 16 TEAMS COMPACT GRID (REQUIREMENTS 2 & 4) 🌟 */}
+              {/* 🌟 20–50+ TEAMS COMPACT GRID (REQUIREMENTS 2 & 4, PHASE 5) 🌟 */}
               <div className="flex-1 min-h-0 overflow-y-auto pr-1">
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1.5 auto-rows-fr">
                   {filteredTeams.map((team) => {
@@ -1869,8 +1961,8 @@ function ControlPanel() {
                             <h4 className="font-bold text-xs text-slate-900 truncate" title={team.teamName}>
                               {team.shortName || team.teamName}
                               {isHighestBidder && (
-                                <span className="ml-1 text-[9px] text-amber-800 bg-amber-200/80 px-1 py-0.2 rounded font-black">
-                                  ★ Leader
+                                <span className="ml-1 text-[9px] text-amber-900 bg-amber-200/90 px-1 py-0.2 rounded font-black shrink-0">
+                                  {lastBidSource === 'remote' ? '★ Leader (📱 Remote)' : '★ Leader (🏢 Onsite)'}
                                 </span>
                               )}
                             </h4>

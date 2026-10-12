@@ -16,6 +16,7 @@ const DEFAULT_PLAN_POLICIES = {
     canViewTeams: false,
     canLiveScreen: false,
     canCustomFields: false,
+    canRemoteBidding: false,
     price: 0
   },
   Basic: {
@@ -25,6 +26,7 @@ const DEFAULT_PLAN_POLICIES = {
     canViewTeams: true,
     canLiveScreen: true,
     canCustomFields: false,
+    canRemoteBidding: false,
     price: 2999
   },
   Pro: {
@@ -34,6 +36,7 @@ const DEFAULT_PLAN_POLICIES = {
     canViewTeams: true,
     canLiveScreen: true,
     canCustomFields: true,
+    canRemoteBidding: true,
     price: 7999
   }
 };
@@ -70,6 +73,7 @@ const getEffectivePlanPolicy = async (planNameOrUser) => {
         canViewTeams: true,
         canLiveScreen: true,
         canCustomFields: true,
+        canRemoteBidding: true,
         price: 0
       };
     }
@@ -80,25 +84,29 @@ const getEffectivePlanPolicy = async (planNameOrUser) => {
 
   const isCacheFresh = policyCache.size > 0 && (Date.now() - lastCacheTimestamp < CACHE_TTL_MS);
   if (!isCacheFresh || !policyCache.has(planName)) {
-    try {
-      const Plan = require('../models/Plan');
-      const docs = await Plan.find({ name: { $in: CANONICAL_PLAN_NAMES } }).lean();
-      for (const doc of docs) {
-        const canonical = normalizePlanName(doc.name);
-        const fallback = DEFAULT_PLAN_POLICIES[canonical] || DEFAULT_PLAN_POLICIES.Free;
-        policyCache.set(canonical, {
-          teamLimit: typeof doc.teamLimit === 'number' ? doc.teamLimit : fallback.teamLimit,
-          playerLimit: typeof doc.playerLimit === 'number' ? doc.playerLimit : fallback.playerLimit,
-          canPublicRegistration: typeof doc.canPublicRegistration === 'boolean' ? doc.canPublicRegistration : fallback.canPublicRegistration,
-          canViewTeams: typeof doc.canViewTeams === 'boolean' ? doc.canViewTeams : fallback.canViewTeams,
-          canLiveScreen: typeof doc.canLiveScreen === 'boolean' ? doc.canLiveScreen : fallback.canLiveScreen,
-          canCustomFields: typeof doc.canCustomFields === 'boolean' ? doc.canCustomFields : fallback.canCustomFields,
-          price: typeof doc.price === 'number' ? doc.price : fallback.price
-        });
+    const mongoose = require('mongoose');
+    if (mongoose.connection && mongoose.connection.readyState === 1) {
+      try {
+        const Plan = require('../models/Plan');
+        const docs = await Plan.find({ name: { $in: CANONICAL_PLAN_NAMES } }).lean();
+        for (const doc of docs) {
+          const canonical = normalizePlanName(doc.name);
+          const fallback = DEFAULT_PLAN_POLICIES[canonical] || DEFAULT_PLAN_POLICIES.Free;
+          policyCache.set(canonical, {
+            teamLimit: typeof doc.teamLimit === 'number' ? doc.teamLimit : fallback.teamLimit,
+            playerLimit: typeof doc.playerLimit === 'number' ? doc.playerLimit : fallback.playerLimit,
+            canPublicRegistration: typeof doc.canPublicRegistration === 'boolean' ? doc.canPublicRegistration : fallback.canPublicRegistration,
+            canViewTeams: typeof doc.canViewTeams === 'boolean' ? doc.canViewTeams : fallback.canViewTeams,
+            canLiveScreen: typeof doc.canLiveScreen === 'boolean' ? doc.canLiveScreen : fallback.canLiveScreen,
+            canCustomFields: typeof doc.canCustomFields === 'boolean' ? doc.canCustomFields : fallback.canCustomFields,
+            canRemoteBidding: typeof doc.canRemoteBidding === 'boolean' ? doc.canRemoteBidding : fallback.canRemoteBidding,
+            price: typeof doc.price === 'number' ? doc.price : fallback.price
+          });
+        }
+        lastCacheTimestamp = Date.now();
+      } catch (err) {
+        // In case of DB disconnection, rely on defaults
       }
-      lastCacheTimestamp = Date.now();
-    } catch (err) {
-      // In case of DB disconnection, rely on defaults
     }
   }
 
@@ -124,14 +132,17 @@ const resolveEffectivePlan = (user) => {
 const DEFAULT_REGISTRATION_PLAN = 'Free';
 
 const getDefaultRegistrationPlan = async () => {
-  try {
-    const Plan = require('../models/Plan');
-    const freePlan = await Plan.findOne({ name: 'Free' }).lean();
-    if (freePlan && CANONICAL_PLAN_NAMES.includes(freePlan.name)) {
-      return freePlan.name;
+  const mongoose = require('mongoose');
+  if (mongoose.connection && mongoose.connection.readyState === 1) {
+    try {
+      const Plan = require('../models/Plan');
+      const freePlan = await Plan.findOne({ name: 'Free' }).lean();
+      if (freePlan && CANONICAL_PLAN_NAMES.includes(freePlan.name)) {
+        return freePlan.name;
+      }
+    } catch (err) {
+      // Fallback if Plan collection is temporarily unreachable or in mock tests
     }
-  } catch (err) {
-    // Fallback if Plan collection is temporarily unreachable or in mock tests
   }
   return DEFAULT_REGISTRATION_PLAN;
 };

@@ -12,6 +12,7 @@ const Team = require('../models/Team');
 const VisitorLog = require('../models/VisitorLog');
 const { resolveEffectivePlan, getDefaultRegistrationPlan } = require('../utils/planPolicy');
 const { createSessionAndToken, createTeamOwnerSessionAndToken, getActiveDeviceIdsForUser, revokeSessionById } = require('../utils/sessionAuth');
+const { getAuctionStateForOrganizer, decorateTeamsWithMaxBid } = require('../utils/maxBid');
 
 const createResetToken = () => crypto.randomBytes(32).toString('hex');
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
@@ -147,11 +148,36 @@ router.post('/login', async (req, res) => {
 router.post('/team-login', async (req, res) => {
   try {
     const { username, password, tournamentId, deviceId } = req.body;
-    if (!username || !password || !tournamentId) {
-      return res.status(400).json({ message: 'Tournament ID, username, and password are required' });
+    if (!username || !password) {
+      return res.status(400).json({ message: 'Username and password are required' });
     }
 
-    const team = await Team.findOne({ remoteUsername: String(username).trim(), tournament: tournamentId });
+    const trimmedUsername = String(username).trim();
+    let team = null;
+
+    if (tournamentId) {
+      team = await Team.findOne({ remoteUsername: trimmedUsername, tournament: tournamentId });
+    } else {
+      const candidates = await Team.find({ remoteUsername: trimmedUsername });
+      if (candidates.length === 1) {
+        team = candidates[0];
+      } else if (candidates.length > 1) {
+        const matchingCandidates = [];
+        for (const cand of candidates) {
+          if (cand.remotePasswordHash && await bcrypt.compare(password, cand.remotePasswordHash)) {
+            matchingCandidates.push(cand);
+          }
+        }
+        if (matchingCandidates.length === 1) {
+          team = matchingCandidates[0];
+        } else if (matchingCandidates.length > 1) {
+          return res.status(409).json({ message: 'Tournament ID is required to identify your team' });
+        } else {
+          return res.status(400).json({ message: 'Invalid credentials' });
+        }
+      }
+    }
+
     if (!team) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
@@ -364,14 +390,42 @@ router.get('/team-info', fetchTeamOwner, async (req, res) => {
     const tournament = await Tournament.findById(req.teamOwner.tournamentId).lean();
     if (!tournament) return res.status(404).json({ message: 'Tournament not found' });
 
+    let dynamicMaxBid = Number(team.remainingPurse || 0);
+    try {
+      const tournamentScope = {
+        tournamentId: req.teamOwner.tournamentId,
+        filter: { tournament: req.teamOwner.tournamentId }
+      };
+      const auctionState = await getAuctionStateForOrganizer({
+        organizerId: req.teamOwner.organizerId,
+        tournamentScope
+      });
+      const [decoratedTeam] = decorateTeamsWithMaxBid({
+        teams: [team],
+        auctionState
+      });
+      if (decoratedTeam && typeof decoratedTeam.maxBid === 'number') {
+        dynamicMaxBid = decoratedTeam.maxBid;
+      }
+    } catch (e) {
+      console.warn('Failed to calculate dynamic maxBid for team-info:', e.message);
+    }
+
     res.json({
       team: {
         _id: team._id,
         teamName: team.teamName,
+        shortName: team.shortName,
+        logoUrl: team.logoUrl || team.logo || '',
+        ownerName: team.ownerName,
+        remoteUsername: team.remoteUsername,
+        totalPurse: team.totalPurse,
         remainingPurse: team.remainingPurse,
-        maxBid: team.maxBid || 0
+        maxBid: dynamicMaxBid
       },
       tournament: {
+        name: tournament.name,
+        logoUrl: tournament.logoUrl || '',
         biddingButtonsCount: tournament.biddingButtonsCount || 3,
         bidButton1: tournament.bidButton1 || 500,
         bidButton2: tournament.bidButton2 || 1000,

@@ -5,7 +5,11 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const Tournament = require('./models/Tournament');
 const Team = require('./models/Team');
+const User = require('./models/User');
+const AuctionState = require('./models/AuctionState');
+const { getEffectivePlanPolicy, resolveEffectivePlan } = require('./utils/planPolicy');
 const { validateSessionById, validateTeamOwnerSession, revokeSessionById, getJwtSecret } = require('./utils/sessionAuth');
+const auctionService = require('./services/auctionService');
 
 const http = require('http');
 const { Server } = require('socket.io');
@@ -43,6 +47,7 @@ io.use((socket, next) => {
                 tournamentId: decoded.tournamentId
             };
             socket.organizerId = decoded.organizerId; // Map to organizerId for room joining
+            socket.tournamentId = decoded.tournamentId; // Ensure tournament room is joined immediately
             socket.sessionId = decoded.sid;
             socket.tokenExp = decoded.exp;
             return next();
@@ -124,6 +129,19 @@ io.on('connection', async (socket) => {
     const room = `organizer:${socket.organizerId}`;
     const organizerKey = String(socket.organizerId);
     socket.join(room);
+
+    let tournamentRoom = socket.tournamentId ? `tournament:${socket.tournamentId}` : null;
+    if (tournamentRoom) {
+        socket.join(tournamentRoom);
+    }
+
+    const broadcastToTournament = (event, data) => {
+        io.to(room).emit(event, data);
+        if (tournamentRoom) {
+            io.to(tournamentRoom).emit(event, data);
+        }
+    };
+
     console.log(`⚡ organizer ${socket.organizerId} connected to live socket`);
     socket.emit('activeBiddingSync', {
         lastBidActions: organizerActiveBids.get(organizerKey) || []
@@ -142,13 +160,20 @@ io.on('connection', async (socket) => {
     socket.emit('breakDataSnapshotSync', organizerBreakSnapshots.get(organizerKey) || null);
 
     Tournament.findOne({ organizer: socket.organizerId })
-        .select('liveScreenConfig')
+        .select('_id liveScreenConfig')
         .lean()
         .then((tournament) => {
-            if (!tournament?.liveScreenConfig) return;
-            const persistedConfig = { ...defaultScreenConfig, ...tournament.liveScreenConfig };
-            organizerScreenConfigs.set(organizerKey, persistedConfig);
-            io.to(room).emit('liveScreenConfigSync', persistedConfig);
+            if (!tournament) return;
+            if (!tournamentRoom) {
+                socket.tournamentId = String(tournament._id);
+                tournamentRoom = `tournament:${tournament._id}`;
+                socket.join(tournamentRoom);
+            }
+            if (tournament.liveScreenConfig) {
+                const persistedConfig = { ...defaultScreenConfig, ...tournament.liveScreenConfig };
+                organizerScreenConfigs.set(organizerKey, persistedConfig);
+                broadcastToTournament('liveScreenConfigSync', persistedConfig);
+            }
         })
         .catch((error) => {
             console.error('Failed to load liveScreenConfig:', error.message);
@@ -160,48 +185,115 @@ io.on('connection', async (socket) => {
             return;
         }
 
-        const requestData = {
-            teamId: socket.teamOwner.teamId,
-            playerId: String(payload?.playerId || ''),
-            amount: Number(payload?.amount || 0)
-        };
+        const playerId = String(payload?.playerId || '');
+        const amount = Number(payload?.amount || 0);
 
-        if (!requestData.playerId || !requestData.amount || requestData.amount <= 0) {
+        if (!playerId || !amount || amount <= 0) {
             if (typeof callback === 'function') callback({ success: false, message: 'Invalid bid payload' });
             return;
         }
 
-        try {
-            const responses = await io.to(room).timeout(2000).emitWithAck('remoteBidRequest', requestData);
-            
-            let successRes = null;
-            let failRes = null;
-
-            for (const res of responses) {
-                if (res && res.success) {
-                    successRes = res;
-                    break;
+        if (socket.teamOwner?.organizerId) {
+            try {
+                const organizer = await User.findById(socket.teamOwner.organizerId).select('plan role').lean();
+                if (organizer) {
+                    const organizerPlan = resolveEffectivePlan(organizer);
+                    const policy = await getEffectivePlanPolicy(organizerPlan);
+                    if (!policy.canRemoteBidding && organizer.role !== 'SuperAdmin') {
+                        if (typeof callback === 'function') {
+                            callback({ success: false, message: 'Remote bidding is disabled for this tournament.' });
+                        }
+                        return;
+                    }
                 }
-                if (res && !res.success && !failRes) {
-                    failRes = res;
-                }
+            } catch (err) {
+                // Ignore DB error and let auctionService placeBid handle state
             }
+        }
+
+        try {
+            // Direct server-authoritative bid execution (no browser relay)
+            const result = await auctionService.placeBid({
+                organizerId: socket.teamOwner.organizerId,
+                tournamentScope: { tournamentId: socket.teamOwner.tournamentId },
+                teamId: socket.teamOwner.teamId,
+                playerId,
+                amount,
+                bidType: 'increment',
+                expectedVersion: payload?.expectedVersion,
+                allowCustomBid: false
+            });
+
+            const acceptedBid = Number(result.state.currentBid);
+            const liveBidPayload = {
+                bidAmount: acceptedBid,
+                currentBid: acceptedBid,
+                teamId: result.team._id,
+                biddingTeamId: result.team._id,
+                teamName: result.team.teamName,
+                biddingTeamName: result.team.teamName,
+                shortName: result.team.shortName,
+                logoUrl: result.team.logoUrl || result.team.logo || '',
+                player: result.player,
+                currentPlayer: result.player,
+                status: 'bidding',
+                playerStatus: 'bidding',
+                version: result.state.version,
+                isRemote: true,
+                bidSource: 'remote'
+            };
+
+            const current = organizerActiveBids.get(organizerKey) || [];
+            const filteredCurrent = current.filter((id) => String(id) !== String(result.team._id) && String(id) !== String(result.team.teamName));
+            const nextList = [...filteredCurrent, String(result.team._id)].slice(-4);
+            organizerActiveBids.set(organizerKey, nextList);
+
+            broadcastToTournament('updateAudienceScreen', liveBidPayload);
+            broadcastToTournament('activeBiddingUpdate', { lastBidActions: nextList });
 
             if (typeof callback === 'function') {
-                if (successRes) callback(successRes);
-                else if (failRes) callback(failRes);
-                else callback({ success: false, message: 'Organizer control panel not active' });
+                callback({
+                    success: true,
+                    message: 'Bid accepted',
+                    newBidAmount: acceptedBid,
+                    teamId: result.team._id,
+                    version: result.state.version,
+                    isRemote: true,
+                    bidSource: 'remote'
+                });
             }
         } catch (error) {
+            const message = error.publicMessage || error.message || 'Bid rejected';
             if (typeof callback === 'function') {
-                callback({ success: false, message: 'Timeout reaching organizer' });
+                callback({ success: false, message });
             }
         }
     });
 
-    socket.on('newLiveBid', (data) => {
-        if (socket.role === 'TeamOwner') return; // Only organizers can broadcast bids currently
-        io.to(room).emit('updateAudienceScreen', data); 
+    socket.on('newLiveBid', async (data) => {
+        if (socket.role === 'TeamOwner') return; // Only organizers can broadcast bids
+        let currentVersion = data?.version;
+        if (currentVersion === undefined && data?.player?._id) {
+            try {
+                const liveState = await AuctionState.findOne({
+                    organizer: socket.organizerId,
+                    activePlayer: data.player._id,
+                    status: 'bidding'
+                }).select('version').lean();
+                if (liveState && liveState.version !== undefined) {
+                    currentVersion = liveState.version;
+                }
+            } catch (e) {
+                // Ignore DB lookup error and fallback
+            }
+        }
+        const payload = {
+            ...data,
+            version: currentVersion !== undefined ? currentVersion : data?.version,
+            isRemote: Boolean(data?.isRemote),
+            bidSource: data?.bidSource || (data?.isRemote ? 'remote' : 'onsite')
+        };
+        broadcastToTournament('updateAudienceScreen', payload); 
     });
 
     socket.on('activeBiddingUpdate', (payload = {}) => {
@@ -223,7 +315,7 @@ io.on('connection', async (socket) => {
         }
 
         organizerActiveBids.set(organizerKey, next);
-        io.to(room).emit('activeBiddingUpdate', { lastBidActions: next });
+        broadcastToTournament('activeBiddingUpdate', { lastBidActions: next });
     });
 
     socket.on('liveScreenConfigUpdate', async (payload = {}) => {
@@ -246,7 +338,7 @@ io.on('connection', async (socket) => {
         };
 
         organizerScreenConfigs.set(organizerKey, nextConfig);
-        io.to(room).emit('liveScreenConfigUpdate', nextConfig);
+        broadcastToTournament('liveScreenConfigUpdate', nextConfig);
 
         Tournament.findOneAndUpdate(
             { organizer: socket.organizerId },
@@ -262,7 +354,7 @@ io.on('connection', async (socket) => {
 
         if (!payload || typeof payload !== 'object') return;
         organizerBreakSnapshots.set(organizerKey, payload);
-        io.to(room).emit('breakDataSnapshotUpdate', payload);
+        broadcastToTournament('breakDataSnapshotUpdate', payload);
     });
 
     socket.on('disconnect', () => {

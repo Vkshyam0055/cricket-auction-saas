@@ -53,6 +53,11 @@ const planSchema = new mongoose.Schema(
       required: true,
       default: false
     },
+    canRemoteBidding: {
+      type: Boolean,
+      required: true,
+      default: false
+    },
     features: {
       type: [String],
       default: []

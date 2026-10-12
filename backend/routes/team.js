@@ -43,11 +43,17 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ message: 'Short name must be 1 to 5 alphanumeric characters (A-Z, 0-9).' });
     }
 
-    const duplicateTeam = await Team.findOne({ teamName: trimmedTeamName, organizer: req.user.id });
+    const duplicateTeam = await Team.findOne(mergeWithTournamentScope(
+      { teamName: trimmedTeamName, organizer: req.user.id },
+      req.tournamentScope
+    ));
     if (duplicateTeam) {
       return res.status(400).json({ message: 'यह टीम पहले से मौजूद है!' });
     }
-    const duplicateShortName = await Team.findOne({ shortName: normalizedShortName, organizer: req.user.id });
+    const duplicateShortName = await Team.findOne(mergeWithTournamentScope(
+      { shortName: normalizedShortName, organizer: req.user.id },
+      req.tournamentScope
+    ));
     if (duplicateShortName) {
       return res.status(400).json({ message: 'यह short name पहले से मौजूद है!' });
     }
@@ -101,7 +107,7 @@ router.get('/tournament/:tournamentId', async (req, res) => {
     const teams = await Team.find(mergeWithTournamentScope(
       { organizer: req.user.id },
       tournamentScope
-    )).lean();
+    )).select('-remotePasswordHash').lean();
     res.json(teams);
   } catch (error) {
     res.status(error.statusCode || 500).json({ message: 'Unable to resolve tournament teams.' });
@@ -129,7 +135,7 @@ router.get('/', async (req, res) => {
     const teams = await Team.find(mergeWithTournamentScope(
       { organizer: req.user.id },
       req.tournamentScope
-    )).lean();
+    )).select('-remotePasswordHash').lean();
     const auctionState = await getAuctionStateForOrganizer({
       organizerId: req.user.id,
       tournamentScope: req.tournamentScope
@@ -146,9 +152,20 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Phase 2.4: Manage Remote Access
+// Phase 2.4 / Phase 7: Manage Remote Access with Plan Policy Enforcement
 router.put('/:id/remote-access', async (req, res) => {
   try {
+    const organizer = await User.findById(req.user.id).select('plan role').lean();
+    const organizerPlan = resolveEffectivePlan(organizer);
+    const policy = await getEffectivePlanPolicy(organizerPlan);
+
+    if (!policy.canRemoteBidding && (req.user.role !== 'SuperAdmin' || req.user.isImpersonated)) {
+      return res.status(403).json({
+        message: 'Remote bidding feature is not available in your current plan. Please upgrade to Pro plan to manage remote bidding.',
+        upgradeRequired: true
+      });
+    }
+
     const { remoteAccessEnabled, remoteUsername, remotePassword } = req.body;
     
     const team = await Team.findOne(mergeWithTournamentScope(
@@ -159,17 +176,26 @@ router.put('/:id/remote-access', async (req, res) => {
 
     team.remoteAccessEnabled = Boolean(remoteAccessEnabled);
     if (remoteUsername !== undefined) {
-      team.remoteUsername = remoteUsername;
+      team.remoteUsername = String(remoteUsername).trim();
     }
     
     if (remotePassword) {
+      const trimmedPassword = String(remotePassword).trim();
+      if (trimmedPassword.length < 4) {
+        return res.status(400).json({ message: 'Password must be at least 4 characters.' });
+      }
       const bcrypt = require('bcryptjs');
-      team.remotePasswordHash = await bcrypt.hash(remotePassword, 10);
+      team.remotePasswordHash = await bcrypt.hash(trimmedPassword, 10);
     }
 
     await team.save();
-    if (!team.remoteAccessEnabled || remotePassword) await revokeTeamOwnerSessions(team._id);
-    res.json({ message: 'Remote access updated successfully', team });
+    const shouldRevoke = !team.remoteAccessEnabled || Boolean(remotePassword) || remoteUsername !== undefined;
+    if (shouldRevoke) await revokeTeamOwnerSessions(team._id);
+
+    const sanitizedTeam = team.toObject();
+    delete sanitizedTeam.remotePasswordHash;
+
+    res.json({ message: 'Remote access updated successfully', team: sanitizedTeam });
   } catch (error) {
     if (error.code === 11000) {
       return res.status(400).json({ message: 'Username already taken in this tournament' });
@@ -195,20 +221,20 @@ router.put('/:id', async (req, res) => {
       return res.status(400).json({ message: 'Short name must be 1 to 5 alphanumeric characters (A-Z, 0-9).' });
     }
 
-    const duplicateTeam = await Team.findOne({
+    const duplicateTeam = await Team.findOne(mergeWithTournamentScope({
       _id: { $ne: req.params.id },
       teamName: trimmedTeamName,
       organizer: req.user.id
-    });
+    }, req.tournamentScope));
     if (duplicateTeam) {
       return res.status(400).json({ message: 'यह टीम नाम पहले से मौजूद है!' });
     }
 
-    const duplicateShortName = await Team.findOne({
+    const duplicateShortName = await Team.findOne(mergeWithTournamentScope({
       _id: { $ne: req.params.id },
       shortName: normalizedShortName,
       organizer: req.user.id
-    });
+    }, req.tournamentScope));
     if (duplicateShortName) {
       return res.status(400).json({ message: 'यह short name पहले से मौजूद है!' });
     }
@@ -255,6 +281,7 @@ router.delete('/:id', async (req, res) => {
     }
 
     await Team.deleteOne(mergeWithTournamentScope({ _id: req.params.id, organizer: req.user.id }, req.tournamentScope));
+    await revokeTeamOwnerSessions(teamToDelete._id);
 
     return res.json({ message: 'टीम डिलीट हो गई।', team: teamToDelete });
   } catch (error) {

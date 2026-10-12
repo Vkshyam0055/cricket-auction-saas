@@ -55,18 +55,28 @@ const calculateNextBid = ({ state, tournament, amount, bidType, allowCustomBid }
   throw auctionError('BID_TYPE_NOT_ALLOWED', 403, 'This bid type is not allowed.');
 };
 
-const getStatePayload = async ({ organizerId, tournamentScope }) => AuctionState.findOne(
-  { organizer: organizerId, tournament: tournamentScope.tournamentId }
-).populate('activePlayer').populate('highestBidder', 'teamName shortName logoUrl logo').lean();
+const resolveScope = (tournamentScope) => {
+  if (!tournamentScope) return { filter: {} };
+  if (tournamentScope.filter) return tournamentScope;
+  return { ...tournamentScope, filter: { tournament: tournamentScope.tournamentId } };
+};
+
+const getStatePayload = async ({ organizerId, tournamentScope }) => {
+  const scope = resolveScope(tournamentScope);
+  return AuctionState.findOne(
+    { organizer: organizerId, tournament: scope.tournamentId }
+  ).populate('activePlayer').populate('highestBidder', 'teamName shortName logoUrl logo').lean();
+};
 
 const startAuction = async ({ organizerId, tournamentScope, playerId }) => {
+  const scope = resolveScope(tournamentScope);
   const player = await Player.findOne(mergeWithTournamentScope({
     _id: playerId,
     organizer: organizerId,
     approvalStatus: 'Approved',
     auctionStatus: 'ReadyForAuction',
     isIcon: { $ne: true }
-  }, tournamentScope)).lean();
+  }, scope)).lean();
   if (!player) throw auctionError('PLAYER_NOT_ELIGIBLE', 409, 'Player is not eligible for auction.');
 
   const activeState = await AuctionState.findOne({ organizer: organizerId, tournament: tournamentScope.tournamentId, status: 'bidding' }).lean();
@@ -102,9 +112,10 @@ const placeBid = async ({ organizerId, tournamentScope, teamId, playerId, amount
     throw auctionError('INVALID_AUCTION_REFERENCE', 400, 'Invalid team or player reference.');
   }
 
+  const scope = resolveScope(tournamentScope);
   const state = await AuctionState.findOne({
     organizer: organizerId,
-    tournament: tournamentScope.tournamentId,
+    tournament: scope.tournamentId,
     activePlayer: playerId,
     status: 'bidding'
   }).lean();
@@ -115,10 +126,10 @@ const placeBid = async ({ organizerId, tournamentScope, teamId, playerId, amount
   }
 
   const [tournament, player, team, auctionState] = await Promise.all([
-    Tournament.findOne({ _id: tournamentScope.tournamentId, organizer: organizerId }).lean(),
-    Player.findOne(mergeWithTournamentScope({ _id: playerId, organizer: organizerId, approvalStatus: 'Approved', auctionStatus: 'ReadyForAuction', isIcon: { $ne: true } }, tournamentScope)).lean(),
-    Team.findOne(mergeWithTournamentScope({ _id: teamId, organizer: organizerId }, tournamentScope)).lean(),
-    getAuctionStateForOrganizer({ organizerId, tournamentScope })
+    Tournament.findOne({ _id: scope.tournamentId, organizer: organizerId }).lean(),
+    Player.findOne(mergeWithTournamentScope({ _id: playerId, organizer: organizerId, approvalStatus: 'Approved', auctionStatus: 'ReadyForAuction', isIcon: { $ne: true } }, scope)).lean(),
+    Team.findOne(mergeWithTournamentScope({ _id: teamId, organizer: organizerId }, scope)).lean(),
+    getAuctionStateForOrganizer({ organizerId, tournamentScope: scope })
   ]);
   if (!tournament || !player || !team) throw auctionError('AUCTION_REFERENCE_NOT_FOUND', 404, 'Auction player or team was not found.');
 
@@ -145,10 +156,11 @@ const placeBid = async ({ organizerId, tournamentScope, teamId, playerId, amount
 };
 
 const resetAuctionBid = async ({ organizerId, tournamentScope, playerId, expectedVersion }) => {
-  const state = await AuctionState.findOne({ organizer: organizerId, tournament: tournamentScope.tournamentId, activePlayer: playerId, status: 'bidding' }).lean();
+  const scope = resolveScope(tournamentScope);
+  const state = await AuctionState.findOne({ organizer: organizerId, tournament: scope.tournamentId, activePlayer: playerId, status: 'bidding' }).lean();
   if (!state) throw auctionError('AUCTION_NOT_ACTIVE', 409, 'This player is not the active auction player.');
   assertExpectedVersion(state, expectedVersion);
-  const player = await Player.findOne(mergeWithTournamentScope({ _id: playerId, organizer: organizerId, auctionStatus: 'ReadyForAuction' }, tournamentScope)).lean();
+  const player = await Player.findOne(mergeWithTournamentScope({ _id: playerId, organizer: organizerId, auctionStatus: 'ReadyForAuction' }, scope)).lean();
   if (!player) throw auctionError('PLAYER_NOT_ELIGIBLE', 409, 'Player is not eligible for bid reset.');
   const updated = await AuctionState.findOneAndUpdate(
     { _id: state._id, version: state.version },
