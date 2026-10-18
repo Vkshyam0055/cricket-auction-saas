@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -9,6 +10,7 @@ const UserSession = require('../models/UserSession');
 const fetchTeamOwner = require('../middleware/fetchTeamOwner');
 const Tournament = require('../models/Tournament');
 const Team = require('../models/Team');
+const AuctionState = require('../models/AuctionState');
 const VisitorLog = require('../models/VisitorLog');
 const { resolveEffectivePlan, getDefaultRegistrationPlan } = require('../utils/planPolicy');
 const { createSessionAndToken, createTeamOwnerSessionAndToken, getActiveDeviceIdsForUser, revokeSessionById } = require('../utils/sessionAuth');
@@ -392,17 +394,32 @@ router.get('/team-info', fetchTeamOwner, async (req, res) => {
 
     let dynamicMaxBid = Number(team.remainingPurse || 0);
     try {
+      const tournamentId = req.teamOwner.tournamentId;
+      const tournamentObjectId = mongoose.Types.ObjectId.isValid(tournamentId)
+        ? new mongoose.Types.ObjectId(String(tournamentId))
+        : tournamentId;
       const tournamentScope = {
-        tournamentId: req.teamOwner.tournamentId,
-        filter: { tournament: req.teamOwner.tournamentId }
+        tournamentId: tournamentObjectId,
+        filter: { tournament: tournamentObjectId }
       };
-      const auctionState = await getAuctionStateForOrganizer({
-        organizerId: req.teamOwner.organizerId,
-        tournamentScope
-      });
+      const [auctionState, liveAuctionState] = await Promise.all([
+        getAuctionStateForOrganizer({
+          organizerId: req.teamOwner.organizerId,
+          tournamentScope
+        }),
+        AuctionState.findOne({
+          tournament: tournamentObjectId
+        }).populate('activePlayer', 'basePrice').lean()
+      ]);
+
+      const activeBasePrice = (liveAuctionState?.activePlayer?.basePrice && Number(liveAuctionState.activePlayer.basePrice) > 0)
+        ? Number(liveAuctionState.activePlayer.basePrice)
+        : undefined;
+
       const [decoratedTeam] = decorateTeamsWithMaxBid({
         teams: [team],
-        auctionState
+        auctionState,
+        currentBasePrice: activeBasePrice
       });
       if (decoratedTeam && typeof decoratedTeam.maxBid === 'number') {
         dynamicMaxBid = decoratedTeam.maxBid;

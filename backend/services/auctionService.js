@@ -81,14 +81,19 @@ const startAuction = async ({ organizerId, tournamentScope, playerId }) => {
 
   const activeState = await AuctionState.findOne({ organizer: organizerId, tournament: tournamentScope.tournamentId, status: 'bidding' }).lean();
   if (activeState && String(activeState.activePlayer) !== String(player._id)) {
-    throw auctionError('AUCTION_ALREADY_ACTIVE', 409, 'Another player is already active for bidding.');
+    if (activeState.highestBidder) {
+      throw auctionError('AUCTION_ALREADY_ACTIVE', 409, 'Another player is already active for bidding.');
+    }
   }
 
   const state = await AuctionState.findOneAndUpdate(
     {
       organizer: organizerId,
       tournament: tournamentScope.tournamentId,
-      status: { $ne: 'bidding' }
+      $or: [
+        { status: { $ne: 'bidding' } },
+        { highestBidder: null }
+      ]
     },
     {
       $set: {
@@ -103,6 +108,10 @@ const startAuction = async ({ organizerId, tournamentScope, playerId }) => {
     },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   ).lean();
+
+  if (!state) {
+    throw auctionError('AUCTION_ALREADY_ACTIVE', 409, 'Another player is already active for bidding.');
+  }
 
   return { state, player };
 };
@@ -121,7 +130,7 @@ const placeBid = async ({ organizerId, tournamentScope, teamId, playerId, amount
   }).lean();
   if (!state) throw auctionError('AUCTION_NOT_ACTIVE', 409, 'This player is not the active auction player.');
   assertExpectedVersion(state, expectedVersion);
-  if (state.highestBidder && String(state.highestBidder) === String(teamId)) {
+  if (!allowCustomBid && state.highestBidder && String(state.highestBidder) === String(teamId)) {
     throw auctionError('ALREADY_HIGHEST_BIDDER', 409, 'This team is already the highest bidder.');
   }
 

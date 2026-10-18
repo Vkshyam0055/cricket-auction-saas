@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { validateSessionById, validateTeamOwnerSession, getJwtSecret } = require('../utils/sessionAuth');
@@ -6,6 +7,7 @@ const { getOrganizerTournamentScope } = require('../utils/tournamentScope');
 const Team = require('../models/Team');
 const Player = require('../models/Player');
 const Tournament = require('../models/Tournament');
+const AuctionState = require('../models/AuctionState');
 const auctionService = require('../services/auctionService');
 const { getAuctionStateForOrganizer, decorateTeamsWithMaxBid } = require('../utils/maxBid');
 
@@ -45,6 +47,10 @@ const authenticateAuctionParticipant = async (req, res, next) => {
         return res.status(403).json({ message: 'Remote access is currently disabled for this team.' });
       }
 
+      const tournamentObjectId = mongoose.Types.ObjectId.isValid(decoded.tournamentId)
+        ? new mongoose.Types.ObjectId(String(decoded.tournamentId))
+        : decoded.tournamentId;
+
       req.teamOwner = {
         teamId: decoded.teamId,
         organizerId: decoded.organizerId,
@@ -53,8 +59,8 @@ const authenticateAuctionParticipant = async (req, res, next) => {
       };
       req.team = team;
       req.tournamentScope = {
-        tournamentId: decoded.tournamentId,
-        filter: { tournament: decoded.tournamentId }
+        tournamentId: tournamentObjectId,
+        filter: { tournament: tournamentObjectId }
       };
       return next();
     }
@@ -165,13 +171,23 @@ router.get('/team-squad', async (req, res) => {
 
     let dynamicMaxBid = Number(team.remainingPurse || 0);
     try {
-      const auctionState = await getAuctionStateForOrganizer({
-        organizerId,
-        tournamentScope: req.tournamentScope
-      });
+      const [auctionState, liveAuctionState] = await Promise.all([
+        getAuctionStateForOrganizer({
+          organizerId,
+          tournamentScope: req.tournamentScope
+        }),
+        AuctionState.findOne({
+          tournament: tournamentId
+        }).populate('activePlayer', 'basePrice').lean()
+      ]);
+      const activeBasePrice = (liveAuctionState?.activePlayer?.basePrice && Number(liveAuctionState.activePlayer.basePrice) > 0)
+        ? Number(liveAuctionState.activePlayer.basePrice)
+        : undefined;
+
       const [decoratedTeam] = decorateTeamsWithMaxBid({
         teams: [team],
-        auctionState
+        auctionState,
+        currentBasePrice: activeBasePrice
       });
       if (decoratedTeam && typeof decoratedTeam.maxBid === 'number') {
         dynamicMaxBid = decoratedTeam.maxBid;
@@ -215,13 +231,23 @@ router.get('/other-teams', async (req, res) => {
 
     let decoratedTeams = allTeams;
     try {
-      const auctionState = await getAuctionStateForOrganizer({
-        organizerId,
-        tournamentScope: req.tournamentScope
-      });
+      const [auctionState, liveAuctionState] = await Promise.all([
+        getAuctionStateForOrganizer({
+          organizerId,
+          tournamentScope: req.tournamentScope
+        }),
+        AuctionState.findOne({
+          tournament: tournamentId
+        }).populate('activePlayer', 'basePrice').lean()
+      ]);
+      const activeBasePrice = (liveAuctionState?.activePlayer?.basePrice && Number(liveAuctionState.activePlayer.basePrice) > 0)
+        ? Number(liveAuctionState.activePlayer.basePrice)
+        : undefined;
+
       decoratedTeams = decorateTeamsWithMaxBid({
         teams: allTeams,
-        auctionState
+        auctionState,
+        currentBasePrice: activeBasePrice
       });
     } catch (e) {
       console.warn('Failed to decorate other-teams with maxBid:', e.message);

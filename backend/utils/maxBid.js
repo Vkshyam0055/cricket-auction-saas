@@ -29,11 +29,31 @@ const buildSquadCountMap = (squadCounts) => new Map(
 
 const getAuctionStateForOrganizer = async ({ organizerId, tournamentScope, session = null }) => {
   const organizerObjectId = new mongoose.Types.ObjectId(String(organizerId));
+  const tournamentIdRaw = tournamentScope?.tournamentId;
+  const tournamentObjectId = tournamentIdRaw && mongoose.Types.ObjectId.isValid(tournamentIdRaw)
+    ? new mongoose.Types.ObjectId(String(tournamentIdRaw))
+    : null;
+
+  const aggregateMatch = {
+    organizer: organizerObjectId,
+    auctionStatus: { $in: SOLD_LIKE_STATUSES }
+  };
+  if (tournamentObjectId) {
+    if (tournamentScope?.includeLegacy) {
+      aggregateMatch.$or = [
+        { tournament: tournamentObjectId },
+        { tournament: null },
+        { tournament: { $exists: false } }
+      ];
+    } else {
+      aggregateMatch.tournament = tournamentObjectId;
+    }
+  }
 
   const [tournament, squadCounts, readyPlayers] = await Promise.all([
     Tournament.findOne({ _id: tournamentScope?.tournamentId, organizer: organizerId }).select('minPlayersPerTeam').session(session).lean(),
     Player.aggregate([
-      { $match: mergeWithTournamentScope({ organizer: organizerObjectId, auctionStatus: { $in: SOLD_LIKE_STATUSES } }, tournamentScope) },
+      { $match: aggregateMatch },
       { $group: { _id: '$soldTo', count: { $sum: 1 } } }
     ]).session(session),
     Player.find(mergeWithTournamentScope({ organizer: organizerId, approvalStatus: 'Approved', auctionStatus: 'ReadyForAuction' }, tournamentScope))
@@ -42,22 +62,22 @@ const getAuctionStateForOrganizer = async ({ organizerId, tournamentScope, sessi
       .lean()
   ]);
 
-  const readyBasePrices = (readyPlayers || [])
+  const positiveBasePrices = (readyPlayers || [])
     .map((player) => Math.max(0, safeNumber(player.basePrice, 0)))
-    .filter((price) => Number.isFinite(price));
+    .filter((price) => Number.isFinite(price) && price > 0);
 
   return {
     minPlayersPerTeam: Math.max(0, safeNumber(tournament?.minPlayersPerTeam, 15)),
     squadCountMap: buildSquadCountMap(squadCounts),
-    tournamentMinBasePrice: readyBasePrices.length > 0 ? Math.min(...readyBasePrices) : 0
+    tournamentMinBasePrice: positiveBasePrices.length > 0 ? Math.min(...positiveBasePrices) : 500
   };
 };
 
 const decorateTeamsWithMaxBid = ({ teams, auctionState, currentBasePrice }) => {
-  const effectiveBasePrice = Math.max(
-    0,
-    safeNumber(currentBasePrice, auctionState?.tournamentMinBasePrice || 0)
-  );
+  const parsedPrice = Number(currentBasePrice);
+  const effectiveBasePrice = (Number.isFinite(parsedPrice) && parsedPrice > 0)
+    ? parsedPrice
+    : (safeNumber(auctionState?.tournamentMinBasePrice, 0) > 0 ? auctionState.tournamentMinBasePrice : 500);
 
   return (teams || []).map((team) => {
     const teamIdStr = String(team._id || '');

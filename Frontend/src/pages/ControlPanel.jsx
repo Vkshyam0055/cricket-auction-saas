@@ -85,6 +85,7 @@ function ControlPanel() {
   const [resultsSearchQuery, setResultsSearchQuery] = useState('');
   const [isProcessingRecovery, setIsProcessingRecovery] = useState(false);
   const [directSellTeam, setDirectSellTeam] = useState('');
+  const [jumpBidTeam, setJumpBidTeam] = useState('');
   const [teamSearch, setTeamSearch] = useState('');
   const [teamFilter, setTeamFilter] = useState('all');
 
@@ -362,19 +363,32 @@ function ControlPanel() {
     socket.on('updateAudienceScreen', (data) => {
       if (data && data.bidAmount !== undefined) {
         setCurrentBid(Number(data.bidAmount));
-        if (data.teamId) setBiddingTeam(data.teamId);
+        const activeBasePrice = Number(data.player?.basePrice ?? currentPlayerRef.current?.basePrice ?? 0);
+        const hasTeamBid = Boolean(data.teamId || data.teamName || data.biddingTeam);
+        const isAboveBase = Number(data.bidAmount) > activeBasePrice;
+        const biddingStarted = Boolean(hasTeamBid || isAboveBase);
+
+        if (data.teamId) {
+          setBiddingTeam(data.teamId);
+        } else if (!hasTeamBid) {
+          setBiddingTeam('');
+        }
+
         if (data.version !== undefined) setAuctionVersion(Number(data.version));
-        setHasBiddingStarted(true);
-        const source = data.bidSource || (data.isRemote ? 'remote' : 'onsite');
-        setLastBidSource(source);
-        if (source === 'remote') {
-          const tName = data.teamName || data.biddingTeamName || 'Remote Bidder';
-          setLatestRemoteToast({
-            teamName: tName,
-            shortName: data.shortName || '',
-            amount: Number(data.bidAmount),
-            time: Date.now()
-          });
+        setHasBiddingStarted(biddingStarted);
+
+        if (biddingStarted) {
+          const source = data.bidSource || (data.isRemote ? 'remote' : 'onsite');
+          setLastBidSource(source);
+          if (source === 'remote') {
+            const tName = data.teamName || data.biddingTeamName || 'Remote Bidder';
+            setLatestRemoteToast({
+              teamName: tName,
+              shortName: data.shortName || '',
+              amount: Number(data.bidAmount),
+              time: Date.now()
+            });
+          }
         }
       }
     });
@@ -641,6 +655,7 @@ function ControlPanel() {
     setCurrentBid(selected.basePrice);
     setBiddingTeam('');
     setDirectSellTeam('');
+    setJumpBidTeam('');
     setCustomBid('');
     setHasBiddingStarted(false);
     setPlayerStatus('bidding');
@@ -651,10 +666,15 @@ function ControlPanel() {
 
     socketRef.current?.emit('newLiveBid', {
       bidAmount: selected.basePrice,
+      teamId: '',
       teamName: '',
+      shortName: '',
+      logoUrl: '',
       player: selected,
       status: 'bidding',
-      version: Number(result.data.state.version)
+      version: Number(result.data.state.version),
+      isRemote: false,
+      bidSource: 'onsite'
     });
   };
 
@@ -674,15 +694,23 @@ function ControlPanel() {
 
     setCurrentBid(currentPlayer.basePrice);
     setBiddingTeam('');
+    setJumpBidTeam('');
+    setCustomBid('');
+    setHasBiddingStarted(false);
     setActiveBiddingList([]);
     setTeamBidActivity({});
     syncActiveBiddingState('reset');
     socketRef.current?.emit('newLiveBid', {
       bidAmount: currentPlayer.basePrice,
+      teamId: '',
       teamName: '',
+      shortName: '',
+      logoUrl: '',
       player: currentPlayer,
       status: playerStatus,
-      version: newResetVersion
+      version: newResetVersion,
+      isRemote: false,
+      bidSource: 'onsite'
     });
     return true;
   };
@@ -716,9 +744,9 @@ function ControlPanel() {
     const exactCurrentBid = currentBidRef.current;
     const exactBiddingTeam = biddingTeamRef.current;
 
-    if (exactBiddingTeam === team._id) {
+    if (exactBiddingTeam === team._id && !isJump) {
        if (isRemote && callback) callback({ success: false, message: 'You are already the highest bidder' });
-       return;
+       return false;
     }
 
     const newBidAmount = bidTypeOverride === 'base'
@@ -729,14 +757,14 @@ function ControlPanel() {
       if (isRemote && callback) return callback({ success: false, message: "Insufficient purse" });
 
       alert(`⚠️ ${team.teamName} के पास इतने पैसे नहीं हैं!`);
-      return;
+      return false;
     }
 
     if (newBidAmount > Number(team.maxBid || 0)) {
       if (isRemote && callback) return callback({ success: false, message: "Exceeds max bid" });
 
       alert(`🚫 ${team.teamName} का Max Bid ${formatCurrency(team.maxBid)} है। इस लिमिट से ऊपर bid नहीं कर सकते।`);
-      return;
+      return false;
     }
 
     let authoritativeBid;
@@ -758,7 +786,7 @@ function ControlPanel() {
       const message = error.response?.data?.message || 'Bid was rejected.';
       if (isRemote && callback) callback({ success: false, message });
       else alert(`🚫 ${message}`);
-      return;
+      return false;
     }
 
     const acceptedBid = Number(authoritativeBid.data.state.currentBid);
@@ -808,12 +836,17 @@ function ControlPanel() {
 
     socketRef.current?.emit('newLiveBid', {
       bidAmount: acceptedBid,
+      currentBid: acceptedBid,
       teamId: team._id,
+      biddingTeamId: team._id,
       teamName: team.teamName,
+      biddingTeamName: team.teamName,
       shortName: team.shortName,
       logoUrl: team.logoUrl || team.logo || '',
       player: currentPlayer,
+      currentPlayer: currentPlayer,
       status: playerStatus,
+      playerStatus: playerStatus,
       version: Number(authoritativeBid.data.state.version),
       isRemote: false,
       bidSource: 'onsite'
@@ -823,16 +856,29 @@ function ControlPanel() {
 
   const handleCustomBidSubmit = async () => {
     const amount = Number(customBid);
-    if (!biddingTeam) {
-      alert('पहले ग्रिड से एक टीम सेलेक्ट करें!');
+    const targetTeamRef = jumpBidTeam || biddingTeam;
+    if (!targetTeamRef) {
+      alert('कृपया Jump Bid के लिए पहले एक टीम सेलेक्ट करें!');
+      return;
+    }
+    const team = resolveTeam(targetTeamRef);
+    if (!team) {
+      alert('चुनी गई टीम अमान्य है!');
+      return;
+    }
+    if (!amount || isNaN(amount) || amount <= 0) {
+      alert('कृपया एक मान्य राशि दर्ज करें!');
       return;
     }
     if (amount <= currentBid) {
       alert('Jump Bid करंट बिड से ज़्यादा होनी चाहिए!');
       return;
     }
-    await updateBid(biddingTeam, amount, true);
-    setCustomBid('');
+    const success = await updateBid(team._id, amount, true);
+    if (success) {
+      setCustomBid('');
+      setJumpBidTeam('');
+    }
   };
 
   const handleDirectBaseSell = async () => {
@@ -896,6 +942,8 @@ function ControlPanel() {
       playerStatusRef.current = status.toLowerCase();
       setHasBiddingStarted(false);
       setDirectSellTeam('');
+      setJumpBidTeam('');
+      setCustomBid('');
       setActiveBiddingList([]);
       setTeamBidActivity({});
       syncActiveBiddingState('reset');
@@ -1597,7 +1645,8 @@ function ControlPanel() {
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={() => finalizePlayer('Sold')}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs lg:text-sm py-2.5 rounded-xl shadow-sm active:translate-y-0.5 transition"
+                        disabled={!hasBiddingStarted || !biddingTeam}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs lg:text-sm py-2.5 rounded-xl shadow-sm active:translate-y-0.5 transition disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         SOLD 🔨
                       </button>
@@ -1729,7 +1778,20 @@ function ControlPanel() {
 
               {/* QUICK BIDS: JUMP BID & BASE SELL ROW */}
               <div className="flex flex-wrap items-center justify-between gap-2 py-2 border-b border-slate-200 shrink-0">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <select
+                    value={jumpBidTeam || (biddingTeam ? (resolveTeam(biddingTeam)?._id || '') : '')}
+                    onChange={(e) => setJumpBidTeam(e.target.value)}
+                    className="p-1 border border-slate-300 rounded-lg font-bold text-xs max-w-[150px] sm:max-w-[200px] truncate focus:border-blue-500 outline-none bg-white"
+                    title="Select team for Jump Bid"
+                  >
+                    <option value="">{biddingTeam ? `-- Current: ${resolveTeam(biddingTeam)?.shortName || resolveTeam(biddingTeam)?.teamName} --` : '-- Select Team --'}</option>
+                    {teams.map((team) => (
+                      <option key={`jump-team-${team._id}`} value={team._id}>
+                        {team.shortName ? `${team.shortName} - ` : ''}{team.teamName} (Max: {formatCurrency(team.maxBid || team.remainingPurse)})
+                      </option>
+                    ))}
+                  </select>
                   <input
                     type="number"
                     value={customBid}
@@ -1739,7 +1801,7 @@ function ControlPanel() {
                   />
                   <button
                     onClick={handleCustomBidSubmit}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded-lg shadow-xs text-xs"
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded-lg shadow-xs text-xs shrink-0"
                   >
                     Jump
                   </button>

@@ -185,8 +185,8 @@ export default function RemoteBiddingPublic() {
       // Refresh team purse & stats on any accepted bid
       fetchLiveTeamInfo(authData.token);
       setBidStatus(null);
-      if (activeTabRef.current === 'squad') {
-        loadTabData('squad');
+      if (activeTabRef.current && activeTabRef.current !== 'live' && activeTabRef.current !== 'profile') {
+        loadTabData(activeTabRef.current, { silent: true });
       }
     });
 
@@ -200,11 +200,13 @@ export default function RemoteBiddingPublic() {
   // =========================================================================
   // Tab-Specific Data Fetching
   // =========================================================================
-  const loadTabData = async (tab) => {
+  const loadTabData = async (tab, { silent = false } = {}) => {
     if (!authData?.token) return;
-    setTabLoading(true);
-    setTabError(null);
-    setSearchQuery('');
+    if (!silent) {
+      setTabLoading(true);
+      setTabError(null);
+      setSearchQuery('');
+    }
 
     const headers = { Authorization: `Bearer ${authData.token}` };
 
@@ -229,9 +231,13 @@ export default function RemoteBiddingPublic() {
         setSummaryData(res?.data || res);
       }
     } catch (err) {
-      setTabError(err.response?.data?.message || err.message || 'Failed to load data.');
+      if (!silent) {
+        setTabError(err.response?.data?.message || err.message || 'Failed to load data.');
+      }
     } finally {
-      setTabLoading(false);
+      if (!silent) {
+        setTabLoading(false);
+      }
     }
   };
 
@@ -741,7 +747,7 @@ export default function RemoteBiddingPublic() {
               </div>
             </div>
 
-            {tabLoading ? (
+            {(tabLoading && !squadData) ? (
               <div className="text-center py-8 text-xs font-bold text-slate-500">Loading squad players...</div>
             ) : (!squadData?.squad || squadData.squad.length === 0) ? (
               <div className="text-center py-10 bg-slate-900 border border-slate-800 rounded-2xl text-xs font-bold text-slate-500">
@@ -801,7 +807,7 @@ export default function RemoteBiddingPublic() {
               className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs font-semibold text-white placeholder-slate-500 outline-none focus:border-indigo-500"
             />
 
-            {tabLoading ? (
+            {(tabLoading && (!otherTeamsData || otherTeamsData.length === 0)) ? (
               <div className="text-center py-8 text-xs font-bold text-slate-500">Loading other teams...</div>
             ) : (
               <div className="space-y-2">
@@ -884,7 +890,7 @@ export default function RemoteBiddingPublic() {
               className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs font-semibold text-white placeholder-slate-500 outline-none focus:border-indigo-500"
             />
 
-            {tabLoading ? (
+            {(tabLoading && (!soldPlayersData || soldPlayersData.length === 0)) ? (
               <div className="text-center py-8 text-xs font-bold text-slate-500">Loading sold players...</div>
             ) : soldPlayersData.length === 0 ? (
               <div className="text-center py-10 bg-slate-900 border border-slate-800 rounded-2xl text-xs font-bold text-slate-500">
@@ -947,7 +953,7 @@ export default function RemoteBiddingPublic() {
               className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs font-semibold text-white placeholder-slate-500 outline-none focus:border-indigo-500"
             />
 
-            {tabLoading ? (
+            {(tabLoading && (!unsoldPlayersData || unsoldPlayersData.length === 0)) ? (
               <div className="text-center py-8 text-xs font-bold text-slate-500">Loading unsold players...</div>
             ) : unsoldPlayersData.length === 0 ? (
               <div className="text-center py-10 bg-slate-900 border border-slate-800 rounded-2xl text-xs font-bold text-slate-500">
@@ -999,7 +1005,7 @@ export default function RemoteBiddingPublic() {
               </h2>
             </div>
 
-            {tabLoading ? (
+            {(tabLoading && !summaryData) ? (
               <div className="text-center py-8 text-xs font-bold text-slate-500">Loading auction summary...</div>
             ) : summaryData ? (
               <div className="space-y-3">
