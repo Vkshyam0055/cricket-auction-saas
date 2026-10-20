@@ -13,19 +13,20 @@ const auctionService = require('./services/auctionService');
 
 const http = require('http');
 const { Server } = require('socket.io');
+const { socketCorsOptions } = require('./utils/corsConfig');
 
 const app = express();
 
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: { origin: '*' }
+    cors: socketCorsOptions
 });
 const organizerActiveBids = new Map();
 const organizerScreenConfigs = new Map();
 const organizerBreakSnapshots = new Map();
 
 app.use(cors({
-    origin: true,
+    origin: socketCorsOptions.origin,
     credentials: true
 }));
 app.use(express.json());
@@ -136,9 +137,10 @@ io.on('connection', async (socket) => {
     }
 
     const broadcastToTournament = (event, data) => {
-        io.to(room).emit(event, data);
         if (tournamentRoom) {
-            io.to(tournamentRoom).emit(event, data);
+            io.to(room).to(tournamentRoom).emit(event, data);
+        } else {
+            io.to(room).emit(event, data);
         }
     };
 
@@ -184,6 +186,20 @@ io.on('connection', async (socket) => {
             if (typeof callback === 'function') callback({ success: false, message: 'Only Team Owners can request remote bids' });
             return;
         }
+
+        const sessionValidation = await validateTeamOwnerSession({ sessionId: socket.sessionId, ...socket.teamOwner });
+        const team = await Team.findById(socket.teamOwner.teamId).select('remoteAccessEnabled organizer tournament').lean();
+        if (!sessionValidation.ok || !team || !team.remoteAccessEnabled ||
+            String(team.organizer) !== String(socket.teamOwner.organizerId) || 
+            String(team.tournament) !== String(socket.teamOwner.tournamentId)) {
+            if (typeof callback === 'function') {
+                callback({ success: false, message: 'Session revoked or expired' });
+            }
+            socket.emit('sessionExpired', { message: 'Remote access disabled or session expired' });
+            setImmediate(() => socket.disconnect(true));
+            return;
+        }
+        socket._lastSessionCheck = Date.now();
 
         const playerId = String(payload?.playerId || '');
         const amount = Number(payload?.amount || 0);

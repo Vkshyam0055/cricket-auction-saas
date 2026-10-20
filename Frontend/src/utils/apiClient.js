@@ -20,6 +20,7 @@ export const clearAllAuthSessions = () => {
   localStorage.removeItem('impersonationSessionId');
   localStorage.removeItem('impersonatingRole');
   localStorage.removeItem('impersonatingPlan');
+  localStorage.removeItem('remoteAuth');
 };
 
 export const restoreSuperAdminSession = () => {

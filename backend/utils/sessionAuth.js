@@ -76,6 +76,15 @@ const revokeTeamOwnerSessions = async (teamId) => {
     await UserSession.updateMany({ team: teamId, sessionRole: 'TeamOwner', revokedAt: null }, { $set: { revokedAt: new Date() } });
 };
 
+const revokeOtherTeamOwnerSessions = async (teamId, keepSessionId = null) => {
+    if (!teamId) return;
+    const query = { team: teamId, sessionRole: 'TeamOwner', revokedAt: null };
+    if (keepSessionId) {
+        query._id = { $ne: keepSessionId };
+    }
+    await UserSession.updateMany(query, { $set: { revokedAt: new Date() } });
+};
+
 const revokeSessionById = async (sessionId) => {
     if (!sessionId) return;
     await UserSession.updateOne(
@@ -175,5 +184,6 @@ module.exports = {
     createTeamOwnerSessionAndToken,
     validateTeamOwnerSession,
     revokeTeamOwnerSessions,
+    revokeOtherTeamOwnerSessions,
     getJwtSecret
 };

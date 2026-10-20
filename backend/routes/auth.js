@@ -184,13 +184,13 @@ router.post('/team-login', async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    if (!team.remoteAccessEnabled) {
-      return res.status(403).json({ message: 'Remote access is disabled for this team' });
-    }
-
     const isMatch = await bcrypt.compare(password, team.remotePasswordHash || '');
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid credentials' });
+    }
+
+    if (!team.remoteAccessEnabled) {
+      return res.status(403).json({ message: 'Remote access is disabled for this team' });
     }
 
     const { token, expiresAt } = await createTeamOwnerSessionAndToken({ team, deviceId, ipAddress: req.ip, userAgent: req.get('user-agent') });

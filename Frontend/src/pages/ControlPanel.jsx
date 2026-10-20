@@ -909,6 +909,9 @@ function ControlPanel() {
   };
 
   const finalizePlayer = async (status, options = {}) => {
+    if (!currentPlayer || !currentPlayer._id) {
+      return;
+    }
     const targetTeamRef = options.soldTeamId || options.soldTeamName || biddingTeam;
     const winningTeam = resolveTeam(targetTeamRef);
     const soldPrice = Number(options.soldPrice || currentBid);
@@ -987,6 +990,7 @@ function ControlPanel() {
         finalizePlayer('Sold');
       } else if (key === 'u') {
         event.preventDefault();
+        if (!currentPlayer || !currentPlayer._id) return;
         finalizePlayer('Unsold');
       } else if (key === 'r') {
         event.preventDefault();

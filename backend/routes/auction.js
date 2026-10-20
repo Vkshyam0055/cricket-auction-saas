@@ -2,7 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { validateSessionById, validateTeamOwnerSession, getJwtSecret } = require('../utils/sessionAuth');
+const { validateSessionById, validateTeamOwnerSession, getJwtSecret, revokeOtherTeamOwnerSessions } = require('../utils/sessionAuth');
 const { getOrganizerTournamentScope } = require('../utils/tournamentScope');
 const Team = require('../models/Team');
 const Player = require('../models/Player');
@@ -55,7 +55,8 @@ const authenticateAuctionParticipant = async (req, res, next) => {
         teamId: decoded.teamId,
         organizerId: decoded.organizerId,
         tournamentId: decoded.tournamentId,
-        role: decoded.role
+        role: decoded.role,
+        sessionId: decoded.sid
       };
       req.team = team;
       req.tournamentScope = {
@@ -435,6 +436,9 @@ router.post('/change-password', async (req, res) => {
 
     team.remotePasswordHash = await bcrypt.hash(newPassword, 10);
     await team.save();
+    if (req.teamOwner.sessionId) {
+      await revokeOtherTeamOwnerSessions(team._id, req.teamOwner.sessionId);
+    }
 
     res.json({ message: 'Password changed successfully.' });
   } catch (error) {

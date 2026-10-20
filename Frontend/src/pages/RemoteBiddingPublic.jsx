@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { io } from 'socket.io-client';
-import { apiRequest, getSocketBaseUrl } from '../utils/apiClient';
+import { apiRequest, getSocketBaseUrl, isTokenExpired, onSessionExpired } from '../utils/apiClient';
 
 export default function RemoteBiddingPublic() {
   // Authentication & Login State
@@ -13,8 +13,15 @@ export default function RemoteBiddingPublic() {
   const [authData, setAuthData] = useState(() => {
     try {
       const stored = localStorage.getItem('remoteAuth');
-      return stored ? JSON.parse(stored) : null;
+      if (!stored) return null;
+      const parsed = JSON.parse(stored);
+      if (!parsed?.token || isTokenExpired(parsed.token)) {
+        localStorage.removeItem('remoteAuth');
+        return null;
+      }
+      return parsed;
     } catch {
+      localStorage.removeItem('remoteAuth');
       return null;
     }
   });
@@ -90,7 +97,8 @@ export default function RemoteBiddingPublic() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const tokenToRevoke = authData?.token;
     localStorage.removeItem('remoteAuth');
     setAuthData(null);
     if (socket) socket.disconnect();
@@ -98,7 +106,25 @@ export default function RemoteBiddingPublic() {
     setActiveTab('live');
     setTeamInfo(null);
     setTournamentInfo(null);
+
+    if (tokenToRevoke) {
+      try {
+        await apiRequest({
+          method: 'post',
+          path: '/api/auth/logout',
+          headers: { Authorization: `Bearer ${tokenToRevoke}` }
+        });
+      } catch {
+        // ignore network error on logout
+      }
+    }
   };
+
+  useEffect(() => {
+    return onSessionExpired(() => {
+      handleLogout();
+    });
+  }, []);
 
   // =========================================================================
   // Initial Data Fetch & Socket Connection

@@ -124,6 +124,9 @@ const SessionExpiryWatcher = () => {
       restoreSuperAdminSession();
       return <Navigate to="/super-admin" replace />;
     }
+    if (location.pathname === '/remote-bidding') {
+      return null;
+    }
     return <Navigate to="/auth" replace />;
   }
   return null;
