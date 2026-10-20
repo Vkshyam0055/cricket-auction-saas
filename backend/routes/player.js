@@ -10,6 +10,7 @@ const fetchTournamentScope = require('../middleware/fetchTournamentScope');
 const { getPolicyByPlanName, getEffectivePlanPolicy, resolveEffectivePlan } = require('../utils/planPolicy');
 const { getAuctionStateForOrganizer, decorateTeamsWithMaxBid } = require('../utils/maxBid');
 const { mergeWithTournamentScope } = require('../utils/tournamentScope');
+const { setBiddingActive } = require('../utils/biddingState');
 const AuctionState = require('../models/AuctionState');
 
 // === PUBLIC ROUTES ===
@@ -335,6 +336,23 @@ router.put('/sell/:id', async (req, res) => {
             responsePayload = { message: 'खिलाड़ी बिक गया!', player, team: teamUpdate };
         });
 
+        setBiddingActive(req.user.id, false);
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`organizer:${req.user.id}`).emit('biddingStateUpdate', {
+                biddingActive: false,
+                organizerId: req.user.id,
+                tournamentId: req.tournamentScope?.tournamentId
+            });
+            if (req.tournamentScope?.tournamentId) {
+                io.to(`tournament:${req.tournamentScope.tournamentId}`).emit('biddingStateUpdate', {
+                    biddingActive: false,
+                    organizerId: req.user.id,
+                    tournamentId: req.tournamentScope.tournamentId
+                });
+            }
+        }
+
         return res.json(responsePayload);
     } catch (error) {
         if (error.message === 'PLAYER_NOT_FOUND') return res.status(404).json({ message: 'Player not found' });
@@ -370,6 +388,24 @@ router.put('/unsold/:id', async (req, res) => {
             await player.save({ session });
             responsePayload = { message: "खिलाड़ी अनसोल्ड हो गया!", player };
         });
+
+        setBiddingActive(req.user.id, false);
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`organizer:${req.user.id}`).emit('biddingStateUpdate', {
+                biddingActive: false,
+                organizerId: req.user.id,
+                tournamentId: req.tournamentScope?.tournamentId
+            });
+            if (req.tournamentScope?.tournamentId) {
+                io.to(`tournament:${req.tournamentScope.tournamentId}`).emit('biddingStateUpdate', {
+                    biddingActive: false,
+                    organizerId: req.user.id,
+                    tournamentId: req.tournamentScope.tournamentId
+                });
+            }
+        }
+
         res.json(responsePayload);
     } catch (error) {
         if (error.message === 'PLAYER_NOT_FOUND') return res.status(404).json({ message: 'Player not found' });

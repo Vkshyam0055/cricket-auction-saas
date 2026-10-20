@@ -9,6 +9,7 @@ const User = require('./models/User');
 const AuctionState = require('./models/AuctionState');
 const { getEffectivePlanPolicy, resolveEffectivePlan } = require('./utils/planPolicy');
 const { validateSessionById, validateTeamOwnerSession, revokeSessionById, getJwtSecret } = require('./utils/sessionAuth');
+const { isBiddingActive, setBiddingActive, registerOperatorSocket, removeOperatorSocket, hasActiveOperators } = require('./utils/biddingState');
 const auctionService = require('./services/auctionService');
 
 const http = require('http');
@@ -21,6 +22,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
     cors: socketCorsOptions
 });
+app.set('io', io);
 const organizerActiveBids = new Map();
 const organizerScreenConfigs = new Map();
 const organizerBreakSnapshots = new Map();
@@ -58,7 +60,8 @@ io.use((socket, next) => {
         socket.role = 'Organizer';
         socket.organizerId = decoded.id;
         socket.sessionId = decoded.sid;
-        socket.tokenExp = decoded.exp;        
+        socket.tokenExp = decoded.exp;
+        socket.clientType = socket.handshake.auth?.clientType || null;
         next();
     } catch (error) {
         next(new Error('Unauthorized'));
@@ -125,6 +128,15 @@ io.on('connection', async (socket) => {
         
         socket._lastSessionCheck = now;
         return next();
+    });
+
+    const isOperator = socket.role === 'Organizer' && socket.clientType === 'operator';
+    if (isOperator) {
+        registerOperatorSocket(socket.organizerId, socket.id);
+    }
+
+    socket.emit('biddingStateUpdate', {
+        biddingActive: isBiddingActive(socket.organizerId)
     });
 
     const room = `organizer:${socket.organizerId}`;
@@ -200,6 +212,13 @@ io.on('connection', async (socket) => {
             return;
         }
         socket._lastSessionCheck = Date.now();
+
+        if (!isBiddingActive(socket.teamOwner.organizerId)) {
+            if (typeof callback === 'function') {
+                callback({ success: false, message: 'Bidding is currently paused by the organizer.' });
+            }
+            return;
+        }
 
         const playerId = String(payload?.playerId || '');
         const amount = Number(payload?.amount || 0);
@@ -307,7 +326,8 @@ io.on('connection', async (socket) => {
             ...data,
             version: currentVersion !== undefined ? currentVersion : data?.version,
             isRemote: Boolean(data?.isRemote),
-            bidSource: data?.bidSource || (data?.isRemote ? 'remote' : 'onsite')
+            bidSource: data?.bidSource || (data?.isRemote ? 'remote' : 'onsite'),
+            biddingActive: data?.biddingActive !== undefined ? Boolean(data.biddingActive) : isBiddingActive(socket.organizerId)
         };
         broadcastToTournament('updateAudienceScreen', payload); 
     });
@@ -356,6 +376,15 @@ io.on('connection', async (socket) => {
         organizerScreenConfigs.set(organizerKey, nextConfig);
         broadcastToTournament('liveScreenConfigUpdate', nextConfig);
 
+        if (nextConfig.screenView === 'break') {
+            setBiddingActive(socket.organizerId, false);
+            broadcastToTournament('biddingStateUpdate', {
+                biddingActive: false,
+                organizerId: socket.organizerId,
+                tournamentId: socket.tournamentId
+            });
+        }
+
         Tournament.findOneAndUpdate(
             { organizer: socket.organizerId },
             { $set: { liveScreenConfig: nextConfig } },
@@ -373,8 +402,46 @@ io.on('connection', async (socket) => {
         broadcastToTournament('breakDataSnapshotUpdate', payload);
     });
 
+    socket.on('setBiddingActive', (payload = {}, callback) => {
+        if (socket.role !== 'Organizer') {
+            if (typeof callback === 'function') callback({ success: false, message: 'Unauthorized' });
+            return;
+        }
+
+        const active = Boolean(payload?.active);
+        const currentConfig = organizerScreenConfigs.get(organizerKey);
+        if (active && currentConfig?.screenView === 'break') {
+            if (typeof callback === 'function') {
+                callback({ success: false, message: 'Cannot start bidding while viewing Break Content.' });
+            }
+            return;
+        }
+
+        setBiddingActive(socket.organizerId, active);
+        broadcastToTournament('biddingStateUpdate', {
+            biddingActive: active,
+            organizerId: socket.organizerId,
+            tournamentId: socket.tournamentId
+        });
+
+        if (typeof callback === 'function') {
+            callback({ success: true, biddingActive: active });
+        }
+    });
+
     socket.on('disconnect', () => {
-        clearTimeout(expiryTimer);        
+        clearTimeout(expiryTimer);
+        if (isOperator) {
+            const remaining = removeOperatorSocket(socket.organizerId, socket.id);
+            if (remaining === 0) {
+                setBiddingActive(socket.organizerId, false);
+                broadcastToTournament('biddingStateUpdate', {
+                    biddingActive: false,
+                    organizerId: socket.organizerId,
+                    tournamentId: socket.tournamentId
+                });
+            }
+        }
         console.log(`❌ organizer ${socket.organizerId} disconnected from live socket`);
     });
 });

@@ -10,6 +10,7 @@ const Tournament = require('../models/Tournament');
 const AuctionState = require('../models/AuctionState');
 const auctionService = require('../services/auctionService');
 const { getAuctionStateForOrganizer, decorateTeamsWithMaxBid } = require('../utils/maxBid');
+const { isBiddingActive, setBiddingActive } = require('../utils/biddingState');
 
 const router = express.Router();
 
@@ -103,20 +104,69 @@ const sendAuctionError = (res, error) => res.status(error.statusCode || 500).jso
 router.get('/state', async (req, res) => {
   try {
     const organizerId = req.user?.id || req.teamOwner?.organizerId;
-    res.json(await auctionService.getStatePayload({ organizerId, tournamentScope: req.tournamentScope }));
+    const statePayload = await auctionService.getStatePayload({ organizerId, tournamentScope: req.tournamentScope });
+    const biddingActive = isBiddingActive(organizerId);
+    res.json(statePayload ? { ...statePayload, biddingActive } : null);
   } catch (error) { sendAuctionError(res, error); }
 });
 
 router.post('/start', async (req, res) => {
   if (req.teamOwner) return res.status(403).json({ message: 'Only organizer can start auction.' });
-  try { res.json(await auctionService.startAuction({ organizerId: req.user.id, tournamentScope: req.tournamentScope, playerId: req.body.playerId })); }
+  try {
+    setBiddingActive(req.user.id, false);
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`organizer:${req.user.id}`).emit('biddingStateUpdate', {
+        biddingActive: false,
+        organizerId: req.user.id,
+        tournamentId: req.tournamentScope?.tournamentId
+      });
+      if (req.tournamentScope?.tournamentId) {
+        io.to(`tournament:${req.tournamentScope.tournamentId}`).emit('biddingStateUpdate', {
+          biddingActive: false,
+          organizerId: req.user.id,
+          tournamentId: req.tournamentScope.tournamentId
+        });
+      }
+    }
+    res.json(await auctionService.startAuction({ organizerId: req.user.id, tournamentScope: req.tournamentScope, playerId: req.body.playerId }));
+  }
   catch (error) { sendAuctionError(res, error); }
+});
+
+router.post('/toggle-bidding', async (req, res) => {
+  if (req.teamOwner) return res.status(403).json({ message: 'Only organizer can toggle bidding state.' });
+  try {
+    const active = Boolean(req.body.active);
+    setBiddingActive(req.user.id, active);
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`organizer:${req.user.id}`).emit('biddingStateUpdate', {
+        biddingActive: active,
+        organizerId: req.user.id,
+        tournamentId: req.tournamentScope?.tournamentId
+      });
+      if (req.tournamentScope?.tournamentId) {
+        io.to(`tournament:${req.tournamentScope.tournamentId}`).emit('biddingStateUpdate', {
+          biddingActive: active,
+          organizerId: req.user.id,
+          tournamentId: req.tournamentScope.tournamentId
+        });
+      }
+    }
+    res.json({ success: true, biddingActive: active });
+  } catch (error) {
+    sendAuctionError(res, error);
+  }
 });
 
 router.post('/bid', async (req, res) => {
   try {
     const isOrganizer = Boolean(req.user);
     const organizerId = isOrganizer ? req.user.id : req.teamOwner.organizerId;
+    if (!isBiddingActive(organizerId)) {
+      return res.status(409).json({ message: 'Bidding is currently paused by the organizer.', code: 'BIDDING_PAUSED' });
+    }
     // Team Owner teamId is derived STRICTLY from authenticated session, never request body!
     const teamId = isOrganizer ? req.body.teamId : req.teamOwner.teamId;
     // Team Owner can ONLY use organizer-configured increments, no custom or base bids

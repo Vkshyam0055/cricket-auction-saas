@@ -46,6 +46,7 @@ export default function RemoteBiddingPublic() {
   const [bidStatus, setBidStatus] = useState(null); // { loading: boolean, message: string, type: 'success' | 'error' | 'info' }
   const [teamInfo, setTeamInfo] = useState(null);
   const [tournamentInfo, setTournamentInfo] = useState(null);
+  const [biddingActive, setBiddingActive] = useState(false);
 
   // Authorized Data Tab States
   const [tabLoading, setTabLoading] = useState(false);
@@ -152,6 +153,9 @@ export default function RemoteBiddingPublic() {
         headers: { Authorization: `Bearer ${token}` }
       });
       const resData = res?.data || res;
+      if (resData && typeof resData.biddingActive === 'boolean') {
+        setBiddingActive(resData.biddingActive);
+      }
       if (resData?.status === 'bidding' && resData?.activePlayer) {
         setAuctionState({
           currentPlayer: resData.activePlayer,
@@ -185,6 +189,12 @@ export default function RemoteBiddingPublic() {
       setIsConnected(false);
     });
 
+    newSocket.on('biddingStateUpdate', (data) => {
+      if (data && typeof data.biddingActive === 'boolean') {
+        setBiddingActive(data.biddingActive);
+      }
+    });
+
     newSocket.on('connect_error', (err) => {
       setIsConnected(false);
       if (String(err?.message || '').toLowerCase().includes('unauthorized')) {
@@ -198,6 +208,9 @@ export default function RemoteBiddingPublic() {
 
     newSocket.on('updateAudienceScreen', (data) => {
       if (!data) return;
+      if (data.biddingActive !== undefined) {
+        setBiddingActive(Boolean(data.biddingActive));
+      }
       setAuctionState((prev) => ({
         ...prev,
         currentPlayer: data.player || data.currentPlayer || prev.currentPlayer,
@@ -280,6 +293,15 @@ export default function RemoteBiddingPublic() {
   // =========================================================================
   const handleBid = (incrementAmount) => {
     if (!socket || !auctionState.currentPlayer || auctionState.playerStatus !== 'bidding') return;
+
+    if (!biddingActive) {
+      setBidStatus({
+        loading: false,
+        message: '🚫 Bidding is currently paused by the organizer.',
+        type: 'error'
+      });
+      return;
+    }
 
     setBidStatus({ loading: true, message: 'Submitting bid...', type: 'info' });
 
@@ -676,7 +698,19 @@ export default function RemoteBiddingPublic() {
                 <div className="mt-auto">
                   {playerStatus === 'bidding' ? (
                     <div className="space-y-2">
-                      {isMyTeamLeading && (
+                      {!biddingActive && (
+                        <div className="w-full py-4 px-4 rounded-xl text-center font-bold border bg-amber-500/20 text-amber-200 border-amber-500/40">
+                          <div className="flex items-center justify-center gap-2 mb-1">
+                            <span className="text-base">⏸️</span>
+                            <span className="font-black text-xs sm:text-sm uppercase tracking-wide">Bidding is Paused</span>
+                          </div>
+                          <p className="text-[11px] text-amber-300/80">
+                            The organizer has paused bidding for this player. Bids are temporarily disabled.
+                          </p>
+                        </div>
+                      )}
+
+                      {isMyTeamLeading && biddingActive && (
                         <p className="text-[11px] font-bold text-emerald-400 text-center mb-1">
                           ✓ You currently hold the highest bid
                         </p>
@@ -687,6 +721,7 @@ export default function RemoteBiddingPublic() {
                           <button
                             onClick={() => handleBid(btn1)}
                             disabled={
+                              !biddingActive ||
                               bidStatus?.loading ||
                               isMyTeamLeading ||
                               currentBid + btn1 > effectiveMaxBid ||
@@ -703,6 +738,7 @@ export default function RemoteBiddingPublic() {
                           <button
                             onClick={() => handleBid(btn2)}
                             disabled={
+                              !biddingActive ||
                               bidStatus?.loading ||
                               isMyTeamLeading ||
                               currentBid + btn2 > effectiveMaxBid ||
@@ -719,6 +755,7 @@ export default function RemoteBiddingPublic() {
                           <button
                             onClick={() => handleBid(btn3)}
                             disabled={
+                              !biddingActive ||
                               bidStatus?.loading ||
                               isMyTeamLeading ||
                               currentBid + btn3 > effectiveMaxBid ||

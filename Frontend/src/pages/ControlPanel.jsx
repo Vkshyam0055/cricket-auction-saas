@@ -51,6 +51,7 @@ function ControlPanel() {
   const [screenView, setScreenView] = useState('live');
   const [breakView, setBreakView] = useState('teams-dashboard');
   const [selectedSquadTeam, setSelectedSquadTeam] = useState(() => localStorage.getItem('selectedSquadTeam') || '');
+  const [biddingActive, setBiddingActive] = useState(false);
 
   const currentPlayerRef = useRef(currentPlayer);
   const playerStatusRef = useRef(playerStatus);
@@ -225,6 +226,7 @@ function ControlPanel() {
         setPlayerStatus('bidding');
         playerStatusRef.current = 'bidding';
         setAuctionVersion(Number(authoritativeState.version));
+        setBiddingActive(Boolean(authoritativeState.biddingActive));
       }
 
       const availablePlayers = allPlayersPayload.filter(
@@ -356,9 +358,15 @@ function ControlPanel() {
     const token = localStorage.getItem('token');
     if (!token) return;
     const socket = io(getSocketBaseUrl(), {
-      auth: { token }
+      auth: { token, clientType: 'operator' }
     });
     socketRef.current = socket;
+
+    socket.on('biddingStateUpdate', (data) => {
+      if (data && typeof data.biddingActive === 'boolean') {
+        setBiddingActive(data.biddingActive);
+      }
+    });
 
     socket.on('updateAudienceScreen', (data) => {
       if (data && data.bidAmount !== undefined) {
@@ -436,8 +444,10 @@ function ControlPanel() {
       socket.off('activeBiddingSync');
       socket.off('activeBiddingUpdate');
       socket.off('liveScreenConfigSync');
+      socket.off('biddingStateUpdate');
       socket.off('sessionExpired');
       socket.off('connect_error');
+      socket.emit('setBiddingActive', { active: false });
       socket.disconnect();
       socketRef.current = null;
     };
@@ -467,6 +477,12 @@ function ControlPanel() {
       }
     };
   }, [displayMode, layout, photoSize, screenView, breakView, selectedSquadTeam, syncLiveScreenConfig]);
+
+  useEffect(() => {
+    if (screenView === 'break') {
+      setBiddingActive(false);
+    }
+  }, [screenView]);
 
   // 🌟 ENRICHED BREAK DATA SNAPSHOT FOR PROJECTOR/LIVE SCREEN (REQUIREMENTS 8 & 9) 🌟
   const breakDataSnapshot = useMemo(() => {
@@ -660,6 +676,7 @@ function ControlPanel() {
     setHasBiddingStarted(false);
     setPlayerStatus('bidding');
     playerStatusRef.current = 'bidding';
+    setBiddingActive(false);
     setActiveBiddingList([]);
     setTeamBidActivity({});
     syncActiveBiddingState('reset');
@@ -723,6 +740,12 @@ function ControlPanel() {
     if (playerStatus !== 'bidding') {
       if (isRemote && callback) callback({ success: false, message: 'Bidding is not active' });
       return;
+    }
+
+    if (!biddingActive) {
+      if (isRemote && callback) callback({ success: false, message: 'Bidding is currently paused by the organizer.' });
+      else alert('⚠️ Bidding is paused. Click "Start Bidding" to resume.');
+      return false;
     }
 
     const team = resolveTeam(teamRef);
@@ -878,6 +901,28 @@ function ControlPanel() {
     if (success) {
       setCustomBid('');
       setJumpBidTeam('');
+    }
+  };
+
+  const handleToggleBidding = async () => {
+    if (!currentPlayer || playerStatus !== 'bidding') return;
+    if (screenView === 'break') {
+      alert('🚫 Cannot start bidding while viewing Break Content.');
+      return;
+    }
+    const nextActive = !biddingActive;
+    try {
+      const token = localStorage.getItem('token');
+      await apiRequest({
+        method: 'post',
+        path: '/api/auction/toggle-bidding',
+        data: { active: nextActive },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setBiddingActive(nextActive);
+      socketRef.current?.emit('setBiddingActive', { active: nextActive });
+    } catch (err) {
+      alert(`🚫 ${err.response?.data?.message || 'Failed to update bidding state.'}`);
     }
   };
 
@@ -1592,12 +1637,33 @@ function ControlPanel() {
                 <button
                   onClick={pickRandomPlayer}
                   disabled={Boolean(currentPlayer && playerStatus === 'bidding' && hasBiddingStarted)}
-                  className={`w-full text-white font-black text-xs lg:text-sm py-2 rounded-xl shadow-sm active:translate-y-0.5 transition-all mb-2.5 disabled:opacity-40 disabled:cursor-not-allowed ${
+                  className={`w-full text-white font-black text-xs lg:text-sm py-2 rounded-xl shadow-sm active:translate-y-0.5 transition-all mb-2 disabled:opacity-40 disabled:cursor-not-allowed ${
                     playerStatus !== 'bidding' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-indigo-600 hover:bg-indigo-700'
                   }`}
                 >
                   {playerStatus !== 'bidding' ? '📸 Next Player' : `🎲 Next Player (${players.length} Left)`}
                 </button>
+
+                {/* START / PAUSE BIDDING BUTTON */}
+                {currentPlayer && playerStatus === 'bidding' && (
+                  <button
+                    onClick={handleToggleBidding}
+                    className={`w-full text-white font-black text-xs lg:text-sm py-2.5 rounded-xl shadow-md active:translate-y-0.5 transition-all mb-2.5 flex items-center justify-center gap-2 cursor-pointer ${
+                      biddingActive
+                        ? 'bg-amber-600 hover:bg-amber-700 border-2 border-amber-400 text-white shadow-amber-600/30'
+                        : 'bg-emerald-600 hover:bg-emerald-700 border-2 border-emerald-400 text-white ring-2 ring-emerald-500/40 shadow-emerald-600/30'
+                    }`}
+                  >
+                    <span>{biddingActive ? '⏸️ Pause Bidding' : '▶️ Start Bidding'}</span>
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider ${
+                        biddingActive ? 'bg-amber-950/50 text-amber-200' : 'bg-emerald-950/50 text-emerald-200'
+                      }`}
+                    >
+                      {biddingActive ? 'Active' : 'Stopped'}
+                    </span>
+                  </button>
+                )}
 
                 {!currentPlayer ? (
                   <div className="text-center py-12 text-slate-400 font-bold text-xs border-2 border-dashed border-slate-200 rounded-xl">
@@ -1805,7 +1871,8 @@ function ControlPanel() {
                   />
                   <button
                     onClick={handleCustomBidSubmit}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded-lg shadow-xs text-xs shrink-0"
+                    disabled={!biddingActive}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded-lg shadow-xs text-xs shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Jump
                   </button>
@@ -1826,7 +1893,8 @@ function ControlPanel() {
                   </select>
                   <button
                     onClick={handleDirectBaseSell}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2.5 py-1 rounded-lg shadow-xs text-xs"
+                    disabled={!biddingActive}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2.5 py-1 rounded-lg shadow-xs text-xs disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Base Sell
                   </button>
@@ -1898,7 +1966,7 @@ function ControlPanel() {
                         <div className={`grid ${biddingButtonsCount === 1 ? 'grid-cols-1' : biddingButtonsCount === 2 ? 'grid-cols-2' : 'grid-cols-3'} gap-1`}>
                           {biddingButtonsCount >= 1 && (
                             <button
-                              disabled={currentBid + btn1 > Number(team.maxBid || 0) || currentBid + btn1 > Number(team.remainingPurse || 0)}
+                              disabled={!biddingActive || currentBid + btn1 > Number(team.maxBid || 0) || currentBid + btn1 > Number(team.remainingPurse || 0)}
                               onClick={() => updateBid(team._id, btn1)}
                               className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
                             >
@@ -1907,7 +1975,7 @@ function ControlPanel() {
                           )}
                           {biddingButtonsCount >= 2 && (
                             <button
-                              disabled={currentBid + btn2 > Number(team.maxBid || 0) || currentBid + btn2 > Number(team.remainingPurse || 0)}
+                              disabled={!biddingActive || currentBid + btn2 > Number(team.maxBid || 0) || currentBid + btn2 > Number(team.remainingPurse || 0)}
                               onClick={() => updateBid(team._id, btn2)}
                               className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
                             >
@@ -1916,7 +1984,7 @@ function ControlPanel() {
                           )}
                           {biddingButtonsCount >= 3 && (
                             <button
-                              disabled={currentBid + btn3 > Number(team.maxBid || 0) || currentBid + btn3 > Number(team.remainingPurse || 0)}
+                              disabled={!biddingActive || currentBid + btn3 > Number(team.maxBid || 0) || currentBid + btn3 > Number(team.remainingPurse || 0)}
                               onClick={() => updateBid(team._id, btn3)}
                               className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
                             >
@@ -2053,6 +2121,7 @@ function ControlPanel() {
                           {biddingButtonsCount >= 1 && (
                             <button
                               disabled={
+                                !biddingActive ||
                                 currentBid + btn1 > Number(team.maxBid || 0) ||
                                 currentBid + btn1 > Number(team.remainingPurse || 0)
                               }
@@ -2065,6 +2134,7 @@ function ControlPanel() {
                           {biddingButtonsCount >= 2 && (
                             <button
                               disabled={
+                                !biddingActive ||
                                 currentBid + btn2 > Number(team.maxBid || 0) ||
                                 currentBid + btn2 > Number(team.remainingPurse || 0)
                               }
@@ -2077,6 +2147,7 @@ function ControlPanel() {
                           {biddingButtonsCount >= 3 && (
                             <button
                               disabled={
+                                !biddingActive ||
                                 currentBid + btn3 > Number(team.maxBid || 0) ||
                                 currentBid + btn3 > Number(team.remainingPurse || 0)
                               }
