@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import {
   Camera,
   UploadCloud,
@@ -341,6 +341,19 @@ function PublicPlayerRegistration() {
             <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mt-3">Player Name</p>
             <p className="text-sm font-black text-slate-900 mt-0.5">{formData.name}</p>
           </div>
+          <div className="mt-4 mb-4 flex justify-center">
+            <Link
+              to="/"
+              className="inline-flex items-center justify-center opacity-85 hover:opacity-100 transition-opacity cursor-pointer"
+              title="CricLeagueManager Home"
+            >
+              <img
+                src="/branding/clm-header-horizontal.png"
+                alt="CricLeagueManager"
+                className="h-7 w-auto object-contain"
+              />
+            </Link>
+          </div>
           <p className="text-xs text-slate-400 font-medium">
             You may close this window or contact the tournament organizer for queries.
           </p>
@@ -377,11 +390,13 @@ function PublicPlayerRegistration() {
   return (
     <div className="min-h-screen bg-slate-100 font-sans text-slate-900 flex flex-col items-center pb-16 antialiased">
       {/* 🌟 TOP APP BRAND HEADER 🌟 */}
-      <header className="w-full bg-[#0b192e] text-white py-3.5 px-4 shadow-md sticky top-0 z-30 flex items-center justify-between">
-        <div className="flex items-center space-x-2.5 max-w-md sm:max-w-xl md:max-w-2xl lg:max-w-3xl mx-auto w-full">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-red-600 to-red-500 flex items-center justify-center shadow-xs text-lg shrink-0 border border-white/20">
-            🏏
-          </div>
+      <header className="w-full bg-[#0b192e] text-white py-2.5 sm:py-3 px-4 shadow-md sticky top-0 z-30 flex items-center justify-between">
+        <div className="flex items-center space-x-3 max-w-md sm:max-w-xl md:max-w-2xl lg:max-w-3xl mx-auto w-full">
+          <img
+            src="/branding/clm-app-icon-180.png"
+            alt="CLM"
+            className="w-8 h-8 rounded-lg object-contain shadow-xs shrink-0 border border-white/10"
+          />
           <div>
             <h1 className="text-base font-black tracking-tight leading-none text-white">CricLeagueManager</h1>
             <p className="text-[10px] text-blue-200/80 font-medium tracking-wide mt-0.5">Play • Bid • Build Legends</p>
@@ -411,9 +426,11 @@ function PublicPlayerRegistration() {
                 className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-contain border border-slate-200 p-1 shrink-0 bg-slate-50 shadow-2xs"
               />
             ) : (
-              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-2xl shrink-0 border border-amber-200 shadow-2xs">
-                🏆
-              </div>
+              <img
+                src="/branding/clm-app-icon-180.png"
+                alt="CLM"
+                className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-contain border border-slate-200 p-1 shrink-0 bg-slate-900 shadow-2xs"
+              />
             )}
           </div>
 
@@ -1034,9 +1051,20 @@ function PublicPlayerRegistration() {
         </form>
 
         {/* 🌟 BOTTOM BRANDING FOOTER 🌟 */}
-        <div className="pt-4 pb-2 text-center text-slate-400">
+        <div className="pt-6 pb-2 text-center text-slate-400 flex flex-col items-center">
+          <Link
+            to="/"
+            className="inline-flex items-center justify-center opacity-85 hover:opacity-100 transition-opacity mb-2.5 cursor-pointer focus:outline-none"
+            title="CricLeagueManager Home"
+          >
+            <img
+              src="/branding/clm-header-horizontal.png"
+              alt="CricLeagueManager"
+              className="h-7 sm:h-8 w-auto object-contain"
+            />
+          </Link>
           <p className="text-xs font-black text-slate-500 tracking-wide uppercase">Same Passion • Bigger Opportunities</p>
-          <p className="text-[10px] text-slate-400 font-medium mt-0.5">CricLeagueManager • Tournament Auction Platform</p>
+          <p className="text-[10px] text-slate-400 font-medium mt-0.5">© {new Date().getFullYear()} CricLeagueManager • Tournament Auction Platform</p>
         </div>
       </div>
 

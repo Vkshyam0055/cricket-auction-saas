@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { apiRequest, getSocketBaseUrl, isTokenExpired, onSessionExpired } from '../utils/apiClient';
 
@@ -383,10 +384,16 @@ export default function RemoteBiddingPublic() {
       <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-4 text-white">
         <div className="bg-slate-900/90 border border-slate-700/80 p-6 rounded-3xl shadow-2xl w-full max-w-sm backdrop-blur-md">
           <div className="text-center mb-6">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-600 to-indigo-400 mx-auto flex items-center justify-center text-3xl shadow-lg shadow-indigo-500/30 mb-3">
-              📱
+            <div className="flex justify-center mb-4">
+              <Link to="/" className="inline-block transition-opacity hover:opacity-90" title="CricLeagueManager Home">
+                <img
+                  src="/branding/clm-dark-full.png"
+                  alt="CricLeagueManager"
+                  className="h-11 sm:h-12 w-auto object-contain"
+                />
+              </Link>
             </div>
-            <h1 className="text-2xl font-black tracking-tight text-white">Team Owner Login</h1>
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">Team Owner Login</h1>
             <p className="text-xs text-slate-400 font-semibold mt-1">Remote Auction Bidding Portal</p>
           </div>
 

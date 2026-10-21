@@ -235,8 +235,13 @@ function Dashboard() {
   if (loading || !tournament) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white p-4">
-        <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <div className="font-black text-lg tracking-tight">PRO AUCTION CONTROL ROOM</div>
+        <img
+          src="/branding/clm-app-icon-180.png"
+          alt="CricLeagueManager"
+          className="w-14 h-14 rounded-2xl mb-4 shadow-xl border border-slate-700 object-contain"
+        />
+        <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+        <div className="font-black text-lg tracking-tight">CRICLEAGUEMANAGER CONTROL ROOM</div>
         <p className="text-xs text-slate-400 font-medium mt-1">Loading tournament dashboard & live stats...</p>
       </div>
     );
@@ -286,11 +291,11 @@ function Dashboard() {
                 className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-white p-0.5 border border-slate-700 object-cover shrink-0"
               />
             ) : (
-              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-gradient-to-tr from-indigo-600 via-blue-600 to-amber-400 p-0.5 shrink-0 shadow-sm">
-                <div className="w-full h-full bg-slate-950 rounded-[7px] sm:rounded-[9px] flex items-center justify-center text-sm sm:text-lg">
-                  🏏
-                </div>
-              </div>
+              <img
+                src="/branding/clm-app-icon-180.png"
+                alt="CLM"
+                className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-slate-800 p-0.5 border border-slate-700 object-contain shrink-0 shadow-sm"
+              />
             )}
             <div className="min-w-0">
               <div className="flex items-center space-x-1.5 sm:space-x-2">

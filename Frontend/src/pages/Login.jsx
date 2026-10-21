@@ -31,7 +31,7 @@ function Login() {
       <div className="bg-white p-8 rounded-xl shadow-2xl w-96 border-t-4 border-blue-800">
         <div className="text-center mb-6">
           <h2 className="text-3xl font-bold text-blue-800">Login</h2>
-          <p className="text-gray-500 text-sm mt-1">Rajasthan Cricket Auction Portal</p>
+          <p className="text-gray-500 text-sm mt-1">CricLeagueManager Portal</p>
         </div>
         
         <form onSubmit={handleLogin} className="space-y-4">

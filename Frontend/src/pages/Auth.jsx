@@ -95,16 +95,12 @@ function Auth() {
 
           <div className="relative z-10">
             {/* Header / Logo */}
-            <div className="flex items-center space-x-2.5 mb-1.5 md:mb-6">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-amber-400 to-yellow-500 p-0.5 shadow-md shrink-0">
-                <div className="w-full h-full bg-slate-950 rounded-[9px] sm:rounded-[10px] flex items-center justify-center text-sm sm:text-lg">
-                  🏏
-                </div>
-              </div>
-              <div>
-                <span className="text-base sm:text-lg font-black tracking-tight text-white block">PRO AUCTION</span>
-                <span className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-amber-400">Multi-Tenant SaaS</span>
-              </div>
+            <div className="mb-2 md:mb-6">
+              <img
+                src="/branding/clm-dark-full.png"
+                alt="CricLeagueManager"
+                className="h-10 sm:h-12 w-auto object-contain"
+              />
             </div>
 
             {/* Compact Mobile Tagline */}

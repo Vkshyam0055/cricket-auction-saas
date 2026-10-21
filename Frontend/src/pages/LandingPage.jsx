@@ -78,28 +78,19 @@ function LandingPage() {
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 selection:bg-indigo-500 selection:text-white overflow-x-hidden">
       {/* 🌟 NAVBAR 🌟 */}
       <nav className="sticky top-0 z-50 bg-white/85 backdrop-blur-md border-b border-slate-200/80 transition-all">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between">
-          <div className="flex items-center space-x-2.5 sm:space-x-3 cursor-pointer" onClick={() => navigate('/')}>
-            <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-indigo-600 via-blue-600 to-amber-400 p-0.5 shadow-md shadow-indigo-500/20 shrink-0">
-              <div className="w-full h-full bg-slate-950 rounded-[9px] sm:rounded-[14px] flex items-center justify-center text-base sm:text-xl">
-                🏏
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center space-x-1.5 sm:space-x-2">
-                <span className="text-lg sm:text-xl font-black tracking-tight text-slate-900">PRO AUCTION</span>
-                <span className="text-[9px] sm:text-[10px] uppercase font-extrabold tracking-wider px-1.5 sm:px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  SaaS 2.0
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 font-medium hidden sm:block">Real-Time Cricket Auction Portal</p>
-            </div>
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-2">
+          <div className="flex items-center cursor-pointer min-w-0" onClick={() => navigate('/')}>
+            <img
+              src="/branding/clm-header-horizontal.png"
+              alt="CricLeagueManager"
+              className="h-[26px] sm:h-9 md:h-10 w-auto object-contain shrink-0"
+            />
           </div>
 
-          <div className="flex items-center space-x-2 sm:space-x-4">
+          <div className="flex items-center space-x-1.5 sm:space-x-4 shrink-0">
             <button
               onClick={() => navigate('/auth')}
-              className="inline-flex items-center text-xs sm:text-sm font-bold text-slate-700 hover:text-slate-950 px-2.5 py-1.5 sm:px-3 sm:py-2 transition"
+              className="inline-flex items-center text-xs sm:text-sm font-bold text-slate-700 hover:text-slate-950 px-2 py-1.5 sm:px-3 sm:py-2 transition"
             >
               Sign In
             </button>
@@ -108,7 +99,7 @@ function LandingPage() {
               className="relative group overflow-hidden rounded-xl p-px font-bold text-xs sm:text-sm shadow-md shadow-indigo-500/20 transition-all hover:shadow-indigo-500/30 hover:-translate-y-0.5"
             >
               <span className="absolute inset-0 bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 rounded-xl"></span>
-              <span className="relative block px-3.5 py-2 sm:px-5 sm:py-2.5 rounded-[11px] bg-indigo-600 text-white transition duration-200 group-hover:bg-opacity-90">
+              <span className="relative block px-2.5 py-1.5 sm:px-5 sm:py-2.5 rounded-[11px] bg-indigo-600 text-white transition duration-200 group-hover:bg-opacity-90 whitespace-nowrap">
                 Get Started Free →
               </span>
             </button>
@@ -283,12 +274,19 @@ function LandingPage() {
 
       {/* 🌟 FOOTER 🌟 */}
       <footer className="bg-slate-950 text-slate-400 py-10 sm:py-12 px-4 border-t border-slate-800/80 text-center font-medium">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-center space-x-2 mb-3">
-            <span className="text-xl sm:text-2xl">🏏</span>
-            <span className="text-base sm:text-lg font-black text-white tracking-tight">PRO AUCTION</span>
+        <div className="max-w-7xl mx-auto flex flex-col items-center">
+          <div
+            className="flex items-center justify-center mb-3.5 cursor-pointer opacity-95 hover:opacity-100 transition-opacity"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            title="Back to top"
+          >
+            <img
+              src="/branding/clm-dark-full.png"
+              alt="CricLeagueManager"
+              className="h-12 sm:h-14 md:h-16 w-auto object-contain"
+            />
           </div>
-          <p className="text-xs sm:text-sm text-slate-400 mb-1.5">© {new Date().getFullYear()} Pro Auction Portal. All rights reserved.</p>
+          <p className="text-xs sm:text-sm text-slate-400 mb-1.5">© {new Date().getFullYear()} CricLeagueManager. All rights reserved.</p>
           <p className="text-xs text-slate-500">Built with precision for cricket organizers, clubs & tournaments</p>
         </div>
       </footer>
