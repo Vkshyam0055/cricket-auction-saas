@@ -13,7 +13,8 @@ const Team = require('../models/Team');
 const AuctionState = require('../models/AuctionState');
 const VisitorLog = require('../models/VisitorLog');
 const { resolveEffectivePlan, getDefaultRegistrationPlan } = require('../utils/planPolicy');
-const { createSessionAndToken, createTeamOwnerSessionAndToken, getActiveDeviceIdsForUser, revokeSessionById } = require('../utils/sessionAuth');
+const { createSessionAndToken, createTeamOwnerSessionAndToken, getActiveDeviceIdsForUser, revokeSessionById, revokeAllSessionsForUser } = require('../utils/sessionAuth');
+const { forgotPasswordMiddleware, resetPasswordMiddleware } = require('../utils/rateLimiter');
 const { getAuctionStateForOrganizer, decorateTeamsWithMaxBid } = require('../utils/maxBid');
 
 const createResetToken = () => crypto.randomBytes(32).toString('hex');
@@ -24,7 +25,10 @@ const smtpConfig = {
   host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT || 587),
   secure: String(process.env.SMTP_SECURE || 'false') === 'true',
-  auth: process.env.SMTP_USER && process.env.SMTP_PASS ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined
+  auth: process.env.SMTP_USER && process.env.SMTP_PASS ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
+  connectionTimeout: 10000,
+  greetingTimeout: 8000,
+  socketTimeout: 15000
 };
 
 const mailer = nodemailer.createTransport(smtpConfig);
@@ -42,24 +46,27 @@ const ensureSmtpReady = async () => {
 };
 
 const buildResetMailHtml = ({ organizerName, resetLink }) => `
-  <div style="font-family:Arial,sans-serif;background:#f4f7ff;padding:24px;color:#1f2937;">
-    <div style="max-width:620px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
-      <div style="background:#1e3a8a;padding:20px 24px;color:#fff;">
-        <h2 style="margin:0;font-size:22px;">🏏 CricAuction Account Security</h2>
+  <div style="font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#0f172a;padding:32px 16px;color:#f8fafc;">
+    <div style="max-width:580px;margin:0 auto;background:#1e293b;border-radius:16px;overflow:hidden;border:1px solid #334155;">
+      <div style="background:linear-gradient(135deg, #1e1b4b 0%, #1e3a8a 50%, #2563eb 100%);padding:28px 24px;text-align:center;">
+        <h1 style="margin:0;font-size:24px;color:#ffffff;letter-spacing:-0.5px;">🏏 CricLeagueManager</h1>
+        <p style="margin:6px 0 0 0;font-size:13px;color:#93c5fd;font-weight:500;">Auction & Tournament Management Portal</p>
       </div>
-      <div style="padding:24px;line-height:1.6;">
-        <p style="margin-top:0;">Hello ${organizerName || 'Organizer'},</p>
-        <p>We received a request to reset your CricAuction account password. Click the button below to continue:</p>
-        <p style="text-align:center;margin:28px 0;">
-          <a href="${resetLink}" style="background:#2563eb;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:bold;display:inline-block;">Reset Password</a>
+      <div style="padding:28px 24px;line-height:1.6;color:#e2e8f0;">
+        <p style="margin-top:0;font-size:16px;font-weight:600;color:#ffffff;">Hello ${organizerName || 'Organizer'},</p>
+        <p style="font-size:14px;color:#cbd5e1;margin-bottom:24px;">We received a request to reset your CricLeagueManager account password. Click the button below to set a new password:</p>
+        <div style="text-align:center;margin:32px 0;">
+          <a href="${resetLink}" style="background:linear-gradient(135deg, #4f46e5 0%, #2563eb 100%);color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:10px;font-weight:bold;font-size:15px;display:inline-block;">Reset Password</a>
+        </div>
+        <div style="font-size:13px;color:#f59e0b;background:#451a03;border:1px solid #78350f;padding:12px 14px;border-radius:8px;margin-bottom:16px;">
+          ⏰ <strong>Security Notice:</strong> This reset link will expire in <strong>20 minutes</strong> and can only be used once.
+        </div>
+        <div style="font-size:12px;color:#94a3b8;background:#0f172a;border:1px solid #1e293b;padding:12px 14px;border-radius:8px;margin-bottom:20px;">
+          If you did not request this reset, please ignore this email. Your password will remain unchanged.
+        </div>
+        <p style="font-size:11px;color:#64748b;word-break:break-all;border-top:1px solid #334155;padding-top:16px;margin-bottom:0;">
+          If the button does not work, use this link:<br/>${resetLink}
         </p>
-        <p style="font-size:14px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;padding:10px;border-radius:8px;">
-          ⏰ This link will expire in <strong>20 minutes</strong> and can be used only once.
-        </p>
-        <p style="font-size:13px;color:#374151;background:#f9fafb;border:1px solid #e5e7eb;padding:10px;border-radius:8px;">
-          Security note: If you did not request this reset, please ignore this email. Your password will remain unchanged.
-        </p>
-        <p style="font-size:12px;color:#6b7280;word-break:break-all;">If the button does not work, use this link:<br/>${resetLink}</p>
       </div>
     </div>
   </div>
@@ -210,19 +217,24 @@ router.post('/team-login', async (req, res) => {
   }
 });
 
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', forgotPasswordMiddleware, async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email) return res.status(400).json({ message: 'ईमेल आवश्यक है।' });
+    if (!email) return res.status(400).json({ success: false, message: 'ईमेल आवश्यक है।' });
     const normalizedEmail = String(email).trim().toLowerCase();
-    if (!emailRegex.test(normalizedEmail)) return res.status(400).json({ message: 'मान्य ईमेल दर्ज करें।' });
+    if (!emailRegex.test(normalizedEmail)) return res.status(400).json({ success: false, message: 'मान्य ईमेल दर्ज करें।' });
+
+    const genericSuccessMessage = 'यदि यह ईमेल हमारे पास पंजीकृत है, तो पासवर्ड रीसेट लिंक भेज दिया गया है। कृपया अपना इनबॉक्स और स्पैम फ़ोल्डर जांचें।';
 
     const user = await User.findOne({ email: normalizedEmail });
-    if (!user) return res.json({ message: 'यदि ईमेल मौजूद होगा तो लिंक भेज दिया जाएगा।' });
+    if (!user) {
+      // Return identical structured response to prevent account enumeration
+      return res.json({ success: true, message: genericSuccessMessage });
+    }
 
     const rawToken = createResetToken();
     const hashedToken = hashToken(rawToken);
-    const tokenExpiry = new Date(Date.now() + 20 * 60 * 1000);
+    const tokenExpiry = new Date(Date.now() + 20 * 60 * 1000); // 20 minutes
     await User.updateOne(
       { _id: user._id },
       { $set: { resetPasswordToken: hashedToken, resetPasswordExpire: tokenExpiry } }
@@ -234,49 +246,118 @@ router.post('/forgot-password', async (req, res) => {
     try {
       await ensureSmtpReady();
       await mailer.sendMail({
-        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        from: process.env.SMTP_FROM || `"CricLeagueManager" <${process.env.SMTP_USER}>`,
         to: user.email,
-        subject: 'CricAuction Password Reset Request',
-        text: `Reset your CricAuction password: ${resetLink}\nThis link expires in 20 minutes and can be used once.`,
+        subject: 'CricLeagueManager - Password Reset Link',
+        text: `Hello ${user.name || 'Organizer'},\n\nWe received a request to reset your CricLeagueManager password. Click the link below to set a new password:\n${resetLink}\n\nThis link expires in 20 minutes and can be used once.\n\nIf you did not request this, you can safely ignore this email.`,
         html: buildResetMailHtml({ organizerName: user.name, resetLink })
       });
     } catch (mailError) {
+      console.error('[forgot-password] Email delivery failure:', mailError.message || mailError);
       await User.updateOne(
         { _id: user._id },
         { $set: { resetPasswordToken: null, resetPasswordExpire: null } }
       );
-
-      if (mailError.code === 'EAUTH') return res.status(502).json({ message: 'SMTP authentication failed. कृपया SMTP credentials जांचें।' });
-      if (mailError.code === 'SMTP_CONFIG_MISSING') return res.status(500).json({ message: 'SMTP configuration missing on server.' });
-      return res.status(502).json({ message: 'ईमेल डिलीवरी असफल रही। कृपया कुछ देर बाद पुनः प्रयास करें।' });
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(`[DEV NOTE] Reset link would have been: ${resetLink}`);
+      }
     }
 
-    res.json({ message: 'यदि ईमेल मौजूद होगा तो लिंक भेज दिया जाएगा।' });
+    // Always return constant, generic message to prevent account enumeration
+    res.json({ success: true, message: genericSuccessMessage });
   } catch (e) {
     console.error('forgot-password error:', e);
-    res.status(500).json({ message: 'Reset लिंक भेजने में दिक्कत।' });
+    res.status(500).json({ success: false, message: 'Reset लिंक भेजने में दिक्कत आई। कृपया कुछ देर बाद प्रयास करें।' });
   }
 });
 
-router.post('/reset-password/:token', async (req, res) => {
+// Pre-validate reset token on page load for better UX
+router.get('/validate-reset-token/:token', async (req, res) => {
   try {
-    const { password, confirmPassword } = req.body;
-    if (!password || password.length < 6) return res.status(400).json({ message: 'पासवर्ड कम से कम 6 अक्षर का होना चाहिए।' });
-    if (password !== confirmPassword) return res.status(400).json({ message: 'पासवर्ड मैच नहीं कर रहे।' });
+    const rawToken = String(req.params.token || '').trim();
+    if (!rawToken || rawToken.length !== 64 || !/^[0-9a-f]+$/i.test(rawToken)) {
+      return res.status(400).json({ valid: false, message: 'अमान्य रीसेट लिंक।' });
+    }
 
-    const hashed = hashToken(req.params.token);
+    const hashed = hashToken(rawToken);
+    const user = await User.findOne({
+      resetPasswordToken: hashed,
+      resetPasswordExpire: { $gt: new Date() }
+    }).select('_id email name');
+
+    if (!user) {
+      return res.status(400).json({ valid: false, message: 'यह रीसेट लिंक अमान्य या एक्सपायर हो चुका है।' });
+    }
+
+    let maskedEmail = '';
+    if (user.email && user.email.includes('@')) {
+      const [localPart, domain] = user.email.split('@');
+      const visible = localPart.slice(0, Math.min(2, localPart.length));
+      maskedEmail = `${visible}***@${domain}`;
+    }
+
+    res.json({ valid: true, maskedEmail, organizerName: user.name || 'Organizer' });
+  } catch (e) {
+    console.error('validate-reset-token error:', e);
+    res.status(500).json({ valid: false, message: 'टोकन जांचने में त्रुटि।' });
+  }
+});
+
+router.post('/reset-password/:token', resetPasswordMiddleware, async (req, res) => {
+  try {
+    const rawToken = String(req.params.token || '').trim();
+    const { password, confirmPassword } = req.body;
+
+    if (!rawToken || rawToken.length !== 64 || !/^[0-9a-f]+$/i.test(rawToken)) {
+      return res.status(400).json({ success: false, message: 'अमान्य रीसेट लिंक।' });
+    }
+
+    if (!password || typeof password !== 'string' || password.length < 6) {
+      return res.status(400).json({ success: false, message: 'पासवर्ड कम से कम 6 अक्षर का होना चाहिए।' });
+    }
+    if (password.length > 128) {
+      return res.status(400).json({ success: false, message: 'पासवर्ड 128 अक्षरों से अधिक नहीं हो सकता।' });
+    }
+    if (password !== confirmPassword) {
+      return res.status(400).json({ success: false, message: 'पासवर्ड मैच नहीं कर रहे हैं।' });
+    }
+
+    const hashed = hashToken(rawToken);
     const user = await User.findOne({ resetPasswordToken: hashed, resetPasswordExpire: { $gt: new Date() } });
-    if (!user) return res.status(400).json({ message: 'टोकन अमान्य या एक्सपायर हो चुका है।' });
+    if (!user) {
+      return res.status(400).json({ success: false, message: 'यह रीसेट टोकन अमान्य है या एक्सपायर हो चुका है।' });
+    }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+
+    // 1. Update password, invalidate token, clear active device list
     await User.updateOne(
       { _id: user._id },
-      { $set: { password: hashedPassword, resetPasswordToken: null, resetPasswordExpire: null } }
+      { $set: { password: hashedPassword, resetPasswordToken: null, resetPasswordExpire: null, activeDevices: [] } }
     );
 
-    res.json({ message: 'पासवर्ड सफलतापूर्वक अपडेट हो गया।' });
+    // 2. Revoke ALL active sessions for this user across all devices
+    await revokeAllSessionsForUser(user._id);
+
+    // 3. Drop active Socket.IO connections for this user so stale sessions are dropped immediately
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        for (const [, socket] of io.of('/').sockets) {
+          if (String(socket.organizerId) === String(user._id)) {
+            socket.emit('sessionExpired', { message: 'पासवर्ड बदल दिया गया है। कृपया पुनः लॉगिन करें।' });
+            socket.disconnect(true);
+          }
+        }
+      }
+    } catch (socketErr) {
+      console.warn('Socket disconnect notice on password reset:', socketErr.message);
+    }
+
+    res.json({ success: true, message: 'पासवर्ड सफलतापूर्वक बदल दिया गया है! कृपया नए पासवर्ड से लॉगिन करें।' });
   } catch (e) {
-    res.status(500).json({ message: 'पासवर्ड रीसेट में एरर।' });
+    console.error('reset-password error:', e);
+    res.status(500).json({ success: false, message: 'पासवर्ड रीसेट करने में समस्या आई।' });
   }
 });
 
@@ -369,9 +450,15 @@ router.post('/track-visitor', async (req, res) => {
         const { visitorId, route } = req.body;
         if (!visitorId) return res.status(400).json({ error: 'visitorId required' });
         
+        let sanitizedRoute = String(route || '/');
+        // Prevent storing raw password reset tokens in VisitorLog
+        if (sanitizedRoute.startsWith('/reset-password/')) {
+            sanitizedRoute = '/reset-password/:token';
+        }
+
         await VisitorLog.create({
             visitorId: String(visitorId),
-            route: String(route || '/'),
+            route: sanitizedRoute,
             ipAddress: req.ip,
             userAgent: req.get('user-agent')
         });

@@ -1,18 +1,28 @@
 import React, { useState, useContext, useEffect } from 'react'; 
 import { useNavigate } from 'react-router-dom';
+import { Eye, EyeOff, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { TournamentContext } from '../context/TournamentContext'; 
 import { apiRequest } from '../utils/apiClient';
 
 function Auth() {
   const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   
   const { fetchTournament } = useContext(TournamentContext);
   
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-    const [email, setEmail] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Validation rules consistent with Reset Password guide
+  const isLengthValid = password.length >= 6;
+  const isMatch = Boolean(password && confirmPassword && password === confirmPassword);
+  const isRegisterFormInvalid = !isLogin && (!isLengthValid || !isMatch);
 
   // 🌟 ब्राउज़र के लिए एक यूनीक Device ID बनाना 
   useEffect(() => {
@@ -24,9 +34,11 @@ function Auth() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isLogin && isLoading) return;
     
     try {
       if (isLogin) {
+        setIsLoading(true);
         const deviceId = localStorage.getItem('deviceId');
         const res = await apiRequest({ method: 'post', path: '/api/auth/login', data: { 
             phone, 
@@ -49,6 +61,15 @@ function Auth() {
         navigate('/dashboard'); 
         
       } else {
+        if (password.length < 6) {
+          alert("एरर: पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।");
+          return;
+        }
+        if (password !== confirmPassword) {
+          alert("एरर: पासवर्ड और कन्फर्म पासवर्ड मेल नहीं खा रहे हैं।");
+          return;
+        }
+
         await apiRequest({ method: 'post', path: '/api/auth/register', data: { 
             name, 
             phone, 
@@ -59,9 +80,16 @@ function Auth() {
         alert("रजिस्ट्रेशन सफल रहा! ✅ कृपया अब अपने नंबर और पासवर्ड से लॉगिन करें।");
         setIsLogin(true); 
         setPassword(''); 
+        setConfirmPassword('');
+        setShowPassword(false); 
+        setShowConfirmPassword(false);
       }
     } catch (error) {
       alert("एरर: " + (error.response?.data?.message || "सर्वर से कनेक्ट नहीं हो पाया!"));
+    } finally {
+      if (isLogin) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -156,7 +184,12 @@ function Auth() {
           <div className="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200 mb-5 sm:mb-6 md:mb-8">
             <button
               type="button"
-              onClick={() => setIsLogin(true)}
+              onClick={() => {
+                setIsLogin(true);
+                setShowPassword(false);
+                setShowConfirmPassword(false);
+                setIsLoading(false);
+              }}
               className={`flex-1 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all ${
                 isLogin
                   ? 'bg-slate-900 text-white shadow-sm'
@@ -167,7 +200,12 @@ function Auth() {
             </button>
             <button
               type="button"
-              onClick={() => setIsLogin(false)}
+              onClick={() => {
+                setIsLogin(false);
+                setShowPassword(false);
+                setShowConfirmPassword(false);
+                setIsLoading(false);
+              }}
               className={`flex-1 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all ${
                 !isLogin
                   ? 'bg-slate-900 text-white shadow-sm'
@@ -192,12 +230,14 @@ function Auth() {
           <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-4">
             {!isLogin && (
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                <label htmlFor="auth-name" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
                   Full Name
                 </label>
                 <input
+                  id="auth-name"
                   type="text"
                   required
+                  autoComplete="name"
                   placeholder="e.g. Vivek Meena"
                   className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-300 bg-white text-slate-900 font-semibold placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 focus:outline-none transition-all duration-200 text-sm sm:text-base"
                   value={name}
@@ -207,12 +247,14 @@ function Auth() {
             )}
 
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+              <label htmlFor="auth-phone" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
                 Mobile Number
               </label>
               <input
+                id="auth-phone"
                 type="tel"
                 required
+                autoComplete="tel"
                 placeholder="e.g. 9876543210"
                 className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-300 bg-white text-slate-900 font-bold placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 focus:outline-none transition-all duration-200 text-sm sm:text-base"
                 value={phone}
@@ -222,12 +264,14 @@ function Auth() {
 
             {!isLogin && (
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                <label htmlFor="auth-email" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
                   Email Address
                 </label>
                 <input
+                  id="auth-email"
                   type="email"
                   required
+                  autoComplete="email"
                   placeholder="e.g. you@example.com"
                   className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-300 bg-white text-slate-900 font-semibold placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 focus:outline-none transition-all duration-200 text-sm sm:text-base"
                   value={email}
@@ -238,34 +282,127 @@ function Auth() {
 
             <div>
               <div className="flex justify-between items-center mb-1">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                <label htmlFor="auth-password" className="block text-xs font-bold uppercase tracking-wider text-slate-700">
                   Password
                 </label>
                 {isLogin && (
                   <button
                     type="button"
                     onClick={() => navigate('/forgot-password')}
-                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition underline underline-offset-2"
+                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition underline underline-offset-2 cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500 rounded"
                   >
                     Forgot Password?
                   </button>
                 )}
               </div>
-              <input
-                type="password"
-                required
-                placeholder="••••••••"
-                className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-300 bg-white text-slate-900 font-bold placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 focus:outline-none transition-all duration-200 text-sm sm:text-base tracking-widest"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
+              <div className="relative">
+                <input
+                  id="auth-password"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  placeholder="••••••••"
+                  autoComplete={isLogin ? 'current-password' : 'new-password'}
+                  className={`w-full pl-3.5 sm:pl-4 pr-11 py-2.5 sm:py-3 rounded-xl border border-slate-300 bg-white text-slate-900 font-bold placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 focus:outline-none transition-all duration-200 text-sm sm:text-base ${showPassword ? 'tracking-normal' : 'tracking-widest'}`}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+                <button
+                  type="button"
+                  tabIndex={0}
+                  onClick={() => setShowPassword(prev => !prev)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-700 focus:outline-none focus:text-indigo-600 transition cursor-pointer"
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-5 h-5" aria-hidden="true" />
+                  ) : (
+                    <Eye className="w-5 h-5" aria-hidden="true" />
+                  )}
+                </button>
+              </div>
             </div>
+
+            {!isLogin && (
+              <div>
+                <label htmlFor="auth-confirm-password" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <input
+                    id="auth-confirm-password"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    required
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                    className={`w-full pl-3.5 sm:pl-4 pr-11 py-2.5 sm:py-3 rounded-xl border border-slate-300 bg-white text-slate-900 font-bold placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 focus:outline-none transition-all duration-200 text-sm sm:text-base ${showConfirmPassword ? 'tracking-normal' : 'tracking-widest'}`}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    tabIndex={0}
+                    onClick={() => setShowConfirmPassword(prev => !prev)}
+                    aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                    title={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-700 focus:outline-none focus:text-indigo-600 transition cursor-pointer"
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="w-5 h-5" aria-hidden="true" />
+                    ) : (
+                      <Eye className="w-5 h-5" aria-hidden="true" />
+                    )}
+                  </button>
+                </div>
+
+                {confirmPassword && (
+                  <p className={`mt-1.5 text-[11px] font-semibold flex items-center gap-1 ${isMatch ? 'text-emerald-600' : 'text-amber-600'}`}>
+                    {isMatch ? (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        <span>पासवर्ड मेल खा रहे हैं</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>पासवर्ड मेल नहीं खा रहे हैं</span>
+                      </>
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {!isLogin && (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-[11px] text-slate-500 space-y-1">
+                <div className={`flex items-center gap-1.5 ${isLengthValid ? 'text-emerald-600 font-semibold' : 'text-slate-500'}`}>
+                  <span>{isLengthValid ? '✓' : '○'}</span>
+                  <span>कम से कम 6 अक्षर लंबा</span>
+                </div>
+                <div className={`flex items-center gap-1.5 ${isMatch ? 'text-emerald-600 font-semibold' : 'text-slate-500'}`}>
+                  <span>{isMatch ? '✓' : '○'}</span>
+                  <span>दोनों पासवर्ड समान हों</span>
+                </div>
+              </div>
+            )}
 
             <button
               type="submit"
-              className="w-full py-3 sm:py-3.5 rounded-xl font-black text-sm sm:text-base text-white bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 hover:from-indigo-500 hover:to-blue-500 shadow-lg shadow-indigo-600/25 hover:shadow-indigo-600/40 active:scale-[0.99] transition-all duration-200 mt-2 sm:mt-3"
+              disabled={isLogin ? isLoading : isRegisterFormInvalid}
+              className="w-full py-3 sm:py-3.5 rounded-xl font-black text-sm sm:text-base text-white bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 hover:from-indigo-500 hover:to-blue-500 shadow-lg shadow-indigo-600/25 hover:shadow-indigo-600/40 active:scale-[0.99] transition-all duration-200 mt-2 sm:mt-3 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2"
             >
-              {isLogin ? 'Secure Login 🔒' : 'Create Account ✨'}
+              {isLogin ? (
+                isLoading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin shrink-0" />
+                    <span>Logging in...</span>
+                  </>
+                ) : (
+                  <span>Login</span>
+                )
+              ) : (
+                'Create Account ✨'
+              )}
             </button>
           </form>
 
@@ -275,7 +412,12 @@ function Auth() {
               {isLogin ? 'खाता नहीं है?' : 'पहले से खाता है?'}
               <button
                 type="button"
-                onClick={() => setIsLogin(!isLogin)}
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setShowPassword(false);
+                  setShowConfirmPassword(false);
+                  setIsLoading(false);
+                }}
                 className="ml-1.5 sm:ml-2 text-indigo-600 hover:text-indigo-800 font-black underline underline-offset-4 transition"
               >
                 {isLogin ? 'नया अकाउंट बनाएं' : 'यहाँ लॉगिन करें'}

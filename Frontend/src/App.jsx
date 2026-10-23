@@ -169,10 +169,14 @@ const VisitorTracker = () => {
 
     const isImpersonated = Boolean(localStorage.getItem('adminToken') || localStorage.getItem('superAdminSession'));
     if (!isImpersonated) {
+      let safeRoute = location.pathname;
+      if (safeRoute.startsWith('/reset-password/')) {
+        safeRoute = '/reset-password/:token';
+      }
       apiRequest({
         method: 'post',
         path: '/api/auth/track-visitor',
-        data: { visitorId, route: location.pathname }
+        data: { visitorId, route: safeRoute }
       }).catch(() => {});
     }
   }, [location.pathname]);
