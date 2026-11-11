@@ -1,11 +1,12 @@
 import React, { useState, useContext, useEffect } from 'react'; 
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { TournamentContext } from '../context/TournamentContext'; 
 import { apiRequest } from '../utils/apiClient';
 
 function Auth() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   
@@ -58,7 +59,8 @@ function Auth() {
         await fetchTournament();
         
         alert(`लॉगिन सफल! 🎉 स्वागत है ${res.data.user.name}`);
-        navigate('/dashboard'); 
+        const destination = location.state?.from || '/dashboard';
+        navigate(destination); 
         
       } else {
         if (password.length < 6) {

@@ -27,4 +27,9 @@ const playerSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
+// Targeted compound indexes for fast player rotation, auction status filtering & squad aggregations
+playerSchema.index({ organizer: 1, tournament: 1, auctionStatus: 1, approvalStatus: 1 });
+playerSchema.index({ organizer: 1, tournament: 1, auctionStatus: 1, soldTo: 1 });
+playerSchema.index({ organizer: 1, tournament: 1, soldTo: 1 });
+
 module.exports = mongoose.model('Player', playerSchema);

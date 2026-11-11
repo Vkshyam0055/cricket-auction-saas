@@ -31,7 +31,7 @@ function LandingPage() {
     let isMounted = true;
     const fetchPlans = async () => {
       try {
-        const res = await apiRequest({ method: 'get', path: '/api/plans' });
+        const res = await apiRequest({ method: 'get', path: '/api/plans', skipAuthRedirect: true });
         if (isMounted && res.data && res.data.length > 0) {
           setPlans(res.data);
           localStorage.setItem('cricauction_plans_cache', JSON.stringify(res.data));

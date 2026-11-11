@@ -121,14 +121,19 @@ const buildApiUrl = (baseUrl, path) => {
   return `${normalizedBase}${requestPath}`;
 };
 
-export const apiRequest = async ({ method = 'get', path, data, params, headers = {} }) => {
+export const apiRequest = async ({ method = 'get', path, data, params, headers = {}, skipAuthRedirect = false }) => {
   let lastError = null;
+  const token = localStorage.getItem('token');
+  const requestHeaders = { ...headers };
+  if (token && !requestHeaders.Authorization && !requestHeaders.authorization) {
+    requestHeaders.Authorization = 'Bearer ' + token;
+  }
   const candidates = getApiBaseCandidates();
   for (let i = 0; i < candidates.length; i++) {
     const baseUrl = candidates[i];
     const requestUrl = buildApiUrl(baseUrl, path);
     try {
-      const response = await axios({ method, url: requestUrl, data, params, headers });
+      const response = await axios({ method, url: requestUrl, data, params, headers: requestHeaders });
       localStorage.setItem('apiBaseUrl', String(baseUrl).replace(/\/$/, ''));
       return response;
     } catch (error) {
@@ -136,7 +141,13 @@ export const apiRequest = async ({ method = 'get', path, data, params, headers =
       // If it's a 401 and we've exhausted all candidates, clear session.
       // But don't clear it immediately, since a token might be valid locally but invalid on PROD.
       if (error?.response?.status === 401 && i === candidates.length - 1) {
-        clearAuthSession();
+        const isPublicPage = typeof window !== 'undefined' && (
+          window.location.pathname === '/' ||
+          window.location.pathname.startsWith('/register/')
+        );
+        if (!skipAuthRedirect && !isPublicPage) {
+          clearAuthSession();
+        }
       }      
     }
   }

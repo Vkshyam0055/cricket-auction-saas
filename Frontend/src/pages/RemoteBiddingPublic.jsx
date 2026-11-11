@@ -2,6 +2,10 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { apiRequest, getSocketBaseUrl, isTokenExpired, onSessionExpired } from '../utils/apiClient';
+import RemoteLiveTab from '../components/remote-bidding/RemoteLiveTab';
+import RemoteSquadTab from '../components/remote-bidding/RemoteSquadTab';
+import RemoteOtherTeamsTab from '../components/remote-bidding/RemoteOtherTeamsTab';
+import RemoteSecurityTab from '../components/remote-bidding/RemoteSecurityTab';
 
 export default function RemoteBiddingPublic() {
   // Authentication & Login State
@@ -219,7 +223,7 @@ export default function RemoteBiddingPublic() {
         biddingTeamId: data.teamId || data.biddingTeamId || '',
         biddingTeamName: data.teamName || data.biddingTeamName || '',
         playerStatus: data.status || data.playerStatus || 'bidding',
-        version: data.version !== undefined ? data.version : prev.version
+        version: (data.version !== undefined && Number(data.version) > (prev.version || 0)) ? Number(data.version) : prev.version
       }));
 
       // Refresh team purse & stats on any accepted bid
@@ -320,7 +324,7 @@ export default function RemoteBiddingPublic() {
             currentBid: Number(response.newBidAmount !== undefined ? response.newBidAmount : prev.currentBid),
             biddingTeamId: response.teamId || prev.biddingTeamId,
             biddingTeamName: authData?.team?.teamName || prev.biddingTeamName,
-            version: response.version !== undefined ? response.version : prev.version
+            version: (response.version !== undefined && Number(response.version) > (prev.version || 0)) ? Number(response.version) : prev.version
           }));
           setBidStatus({
             loading: false,
@@ -609,337 +613,47 @@ export default function RemoteBiddingPublic() {
       <main className="flex-1 overflow-y-auto p-3 flex flex-col">
         {/* VIEW 1: LIVE BIDDING */}
         {activeTab === 'live' && (
-          <div className="flex-1 flex flex-col justify-between">
-            {!currentPlayer ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-slate-500">
-                <span className="text-4xl mb-3">⏳</span>
-                <h3 className="text-base font-black text-slate-400">Waiting for Auctioneer</h3>
-                <p className="text-xs font-medium text-slate-500 mt-1 max-w-xs">
-                  The auction operator has not placed a player on the bidding stage yet. Please wait...
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-col flex-1">
-                {/* ACTIVE PLAYER STAGE CARD */}
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg mb-3">
-                  <div className="flex items-center gap-3.5 mb-3">
-                    <img
-                      src={currentPlayer.photoUrl || currentPlayer.photo || 'https://via.placeholder.com/150?text=Player'}
-                      alt={currentPlayer.name}
-                      className="w-20 h-20 rounded-2xl object-cover bg-slate-800 border-2 border-indigo-500/40 shadow-md shrink-0"
-                      onError={(e) => {
-                        e.target.src = 'https://via.placeholder.com/150?text=Player';
-                      }}
-                    />
-                    <div className="min-w-0">
-                      <h2 className="text-xl font-black text-white capitalize truncate" title={currentPlayer.name}>
-                        {currentPlayer.name}
-                      </h2>
-                      <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                          {currentPlayer.role || 'Player'}
-                        </span>
-                        {currentPlayer.category && (
-                          <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                            {currentPlayer.category}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] font-bold text-slate-400 mt-1.5">
-                        Base Price: <span className="text-emerald-400 font-extrabold">{formatCurrency(currentPlayer.basePrice)}</span>
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* CURRENT BID & HIGHEST BIDDER CARD */}
-                <div className="bg-gradient-to-b from-slate-900 to-slate-900/90 border border-slate-800 rounded-2xl p-4 text-center shadow-lg mb-3">
-                  <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-widest block mb-1">
-                    Current Highest Bid
-                  </span>
-                  <div className="text-3xl font-black text-amber-400 mb-2">
-                    {formatCurrency(currentBid || currentPlayer.basePrice)}
-                  </div>
-
-                  {biddingTeamId ? (
-                    <div
-                      className={`text-xs font-black px-3 py-1.5 rounded-xl inline-flex items-center gap-1.5 border ${
-                        isMyTeamLeading
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 animate-pulse'
-                          : 'bg-slate-800 text-slate-300 border-slate-700'
-                      }`}
-                    >
-                      {isMyTeamLeading ? (
-                        <>
-                          <span>🎉</span>
-                          <span>Your Team is Leading!</span>
-                        </>
-                      ) : (
-                        <>
-                          <span>Leading:</span>
-                          <span className="text-white">{auctionState.biddingTeamName || 'Opponent Team'}</span>
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-xs font-bold text-slate-500">No bids placed yet</div>
-                  )}
-                </div>
-
-                {/* STATUS / ERROR NOTIFICATION */}
-                {bidStatus && (
-                  <div
-                    className={`mb-3 px-3.5 py-2 rounded-xl text-center text-xs font-black border transition ${
-                      bidStatus.type === 'error'
-                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                        : bidStatus.type === 'success'
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                        : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
-                    }`}
-                  >
-                    {bidStatus.message}
-                  </div>
-                )}
-
-                {/* BIDDING BUTTONS ROW (PHASE 6: EXACT INCREMENTS ONLY, NO CUSTOM BIDS) */}
-                <div className="mt-auto">
-                  {playerStatus === 'bidding' ? (
-                    <div className="space-y-2">
-                      {!biddingActive && (
-                        <div className="w-full py-4 px-4 rounded-xl text-center font-bold border bg-amber-500/20 text-amber-200 border-amber-500/40">
-                          <div className="flex items-center justify-center gap-2 mb-1">
-                            <span className="text-base">⏸️</span>
-                            <span className="font-black text-xs sm:text-sm uppercase tracking-wide">Bidding is Paused</span>
-                          </div>
-                          <p className="text-[11px] text-amber-300/80">
-                            The organizer has paused bidding for this player. Bids are temporarily disabled.
-                          </p>
-                        </div>
-                      )}
-
-                      {isMyTeamLeading && biddingActive && (
-                        <p className="text-[11px] font-bold text-emerald-400 text-center mb-1">
-                          ✓ You currently hold the highest bid
-                        </p>
-                      )}
-
-                      <div className="grid grid-cols-1 gap-2">
-                        {btnCount >= 1 && (
-                          <button
-                            onClick={() => handleBid(btn1)}
-                            disabled={
-                              !biddingActive ||
-                              bidStatus?.loading ||
-                              isMyTeamLeading ||
-                              currentBid + btn1 > effectiveMaxBid ||
-                              currentBid + btn1 > Number(teamInfo?.remainingPurse || 0)
-                            }
-                            className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 active:scale-98 text-white font-black rounded-xl shadow-lg shadow-indigo-600/30 transition disabled:opacity-40 disabled:cursor-not-allowed text-xs sm:text-sm flex items-center justify-between px-4 cursor-pointer"
-                          >
-                            <span>Bid +{formatCurrency(btn1)}</span>
-                            <span className="text-indigo-200 text-xs">Next: {formatCurrency(currentBid + btn1)}</span>
-                          </button>
-                        )}
-
-                        {btnCount >= 2 && (
-                          <button
-                            onClick={() => handleBid(btn2)}
-                            disabled={
-                              !biddingActive ||
-                              bidStatus?.loading ||
-                              isMyTeamLeading ||
-                              currentBid + btn2 > effectiveMaxBid ||
-                              currentBid + btn2 > Number(teamInfo?.remainingPurse || 0)
-                            }
-                            className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 active:scale-98 text-white font-black rounded-xl shadow-lg shadow-indigo-600/30 transition disabled:opacity-40 disabled:cursor-not-allowed text-xs sm:text-sm flex items-center justify-between px-4 cursor-pointer"
-                          >
-                            <span>Bid +{formatCurrency(btn2)}</span>
-                            <span className="text-indigo-200 text-xs">Next: {formatCurrency(currentBid + btn2)}</span>
-                          </button>
-                        )}
-
-                        {btnCount >= 3 && (
-                          <button
-                            onClick={() => handleBid(btn3)}
-                            disabled={
-                              !biddingActive ||
-                              bidStatus?.loading ||
-                              isMyTeamLeading ||
-                              currentBid + btn3 > effectiveMaxBid ||
-                              currentBid + btn3 > Number(teamInfo?.remainingPurse || 0)
-                            }
-                            className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 active:scale-98 text-white font-black rounded-xl shadow-lg shadow-indigo-600/30 transition disabled:opacity-40 disabled:cursor-not-allowed text-xs sm:text-sm flex items-center justify-between px-4 cursor-pointer"
-                          >
-                            <span>Bid +{formatCurrency(btn3)}</span>
-                            <span className="text-indigo-200 text-xs">Next: {formatCurrency(currentBid + btn3)}</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div
-                      className={`w-full py-4 rounded-xl text-center font-black uppercase tracking-wider text-sm border ${
-                        playerStatus === 'sold'
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                          : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                      }`}
-                    >
-                      {playerStatus === 'sold' ? 'Player Sold!' : 'Player Marked Unsold'}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+          <RemoteLiveTab
+            currentPlayer={currentPlayer}
+            currentBid={currentBid}
+            biddingTeamId={biddingTeamId}
+            isMyTeamLeading={isMyTeamLeading}
+            auctionState={auctionState}
+            bidStatus={bidStatus}
+            playerStatus={playerStatus}
+            biddingActive={biddingActive}
+            btnCount={btnCount}
+            btn1={btn1}
+            btn2={btn2}
+            btn3={btn3}
+            handleBid={handleBid}
+            effectiveMaxBid={effectiveMaxBid}
+            teamInfo={teamInfo}
+            formatCurrency={formatCurrency}
+          />
         )}
 
         {/* VIEW 2: MY TEAM SQUAD */}
         {activeTab === 'squad' && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <h2 className="text-sm font-black text-white flex items-center gap-1.5">
-                <span>🛡️</span> My Team Squad
-              </h2>
-              <span className="text-xs font-bold text-slate-400">
-                {squadData?.squadCount || 0} Players
-              </span>
-            </div>
-
-            {/* SQUAD FINANCIAL SUMMARY */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="bg-slate-900 border border-slate-800 p-3 rounded-xl">
-                <span className="text-[10px] text-slate-400 font-extrabold uppercase block">Spent</span>
-                <span className="text-sm font-black text-amber-400">{formatCurrency(squadData?.totalSpent || 0)}</span>
-              </div>
-              <div className="bg-slate-900 border border-slate-800 p-3 rounded-xl">
-                <span className="text-[10px] text-slate-400 font-extrabold uppercase block">Remaining Purse</span>
-                <span className="text-sm font-black text-emerald-400">{formatCurrency(squadData?.team?.remainingPurse || teamInfo?.remainingPurse || 0)}</span>
-              </div>
-            </div>
-
-            {(tabLoading && !squadData) ? (
-              <div className="text-center py-8 text-xs font-bold text-slate-500">Loading squad players...</div>
-            ) : (!squadData?.squad || squadData.squad.length === 0) ? (
-              <div className="text-center py-10 bg-slate-900 border border-slate-800 rounded-2xl text-xs font-bold text-slate-500">
-                No players acquired yet. Place bids in live auction to build your squad!
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {squadData?.squad?.map((player) => (
-                  <div
-                    key={player._id}
-                    className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl flex items-center justify-between gap-3 shadow-xs"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <img
-                        src={player.photoUrl || 'https://via.placeholder.com/150'}
-                        alt=""
-                        className="w-10 h-10 rounded-lg object-cover bg-slate-800 border border-slate-700 shrink-0"
-                        onError={(e) => {
-                          e.target.src = 'https://via.placeholder.com/150?text=Player';
-                        }}
-                      />
-                      <div className="min-w-0">
-                        <h4 className="font-black text-xs text-white truncate">{player.name}</h4>
-                        <div className="flex items-center gap-1 text-[10px] text-slate-400 font-semibold mt-0.5">
-                          <span>{player.role || 'Player'}</span>
-                          <span>•</span>
-                          <span>{player.category || 'Standard'}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <span className="text-xs font-black text-emerald-400 block">{formatCurrency(player.soldPrice)}</span>
-                      <span className="text-[9px] font-bold text-slate-500 uppercase">Acquired</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <RemoteSquadTab
+            squadData={squadData}
+            teamInfo={teamInfo}
+            tabLoading={tabLoading}
+            formatCurrency={formatCurrency}
+          />
         )}
 
         {/* VIEW 3: OTHER TEAMS / SQUADS */}
         {activeTab === 'other-teams' && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <h2 className="text-sm font-black text-white flex items-center gap-1.5">
-                <span>👥</span> Other Tournament Teams
-              </h2>
-              <span className="text-xs font-bold text-slate-400">{otherTeamsData.length} Teams</span>
-            </div>
-
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search teams by name..."
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs font-semibold text-white placeholder-slate-500 outline-none focus:border-indigo-500"
-            />
-
-            {(tabLoading && (!otherTeamsData || otherTeamsData.length === 0)) ? (
-              <div className="text-center py-8 text-xs font-bold text-slate-500">Loading other teams...</div>
-            ) : (
-              <div className="space-y-2">
-                {otherTeamsData
-                  .filter((t) => {
-                    const q = searchQuery.trim().toLowerCase();
-                    return !q || t.teamName?.toLowerCase().includes(q) || t.shortName?.toLowerCase().includes(q);
-                  })
-                  .map((team) => {
-                    const isExpanded = expandedTeamId === team._id;
-                    return (
-                      <div
-                        key={team._id}
-                        className={`bg-slate-900 border rounded-xl overflow-hidden transition ${
-                          team.isMyTeam ? 'border-indigo-500/50 bg-indigo-950/20' : 'border-slate-800'
-                        }`}
-                      >
-                        <div
-                          onClick={() => setExpandedTeamId(isExpanded ? null : team._id)}
-                          className="p-3 flex items-center justify-between gap-2 cursor-pointer hover:bg-slate-850/50 transition"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            {team.logoUrl ? (
-                              <img src={team.logoUrl} alt="" className="w-8 h-8 rounded-lg object-contain bg-slate-800 p-0.5 shrink-0" />
-                            ) : (
-                              <div className="w-8 h-8 rounded-lg bg-slate-800 text-indigo-400 font-black text-xs flex items-center justify-center shrink-0">
-                                {team.shortName || team.teamName?.slice(0, 2).toUpperCase()}
-                              </div>
-                            )}
-                            <div className="min-w-0">
-                              <h4 className="font-black text-xs text-white truncate">
-                                {team.teamName} {team.isMyTeam && <span className="text-indigo-400 text-[10px]">(My Team)</span>}
-                              </h4>
-                              <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                                Purse: <b className="text-emerald-400">{formatCurrency(team.remainingPurse)}</b> • Squad: <b>{team.squadCount}</b>
-                              </p>
-                            </div>
-                          </div>
-                          <span className="text-xs text-slate-500 font-bold shrink-0">{isExpanded ? '▲' : '▼'}</span>
-                        </div>
-
-                        {/* EXPANDABLE SQUAD LIST */}
-                        {isExpanded && (
-                          <div className="px-3 pb-3 pt-1 border-t border-slate-800/80 bg-slate-950/40 space-y-1.5">
-                            {team.squad?.length === 0 ? (
-                              <p className="text-[11px] text-slate-500 font-medium py-1">No players bought yet.</p>
-                            ) : (
-                              team.squad?.map((p) => (
-                                <div key={p._id} className="flex justify-between items-center text-[11px] font-semibold text-slate-300 py-0.5 border-b border-slate-850">
-                                  <span>{p.name} <span className="text-[10px] text-slate-500">({p.role || 'P'})</span></span>
-                                  <span className="font-black text-emerald-400">{formatCurrency(p.soldPrice)}</span>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-              </div>
-            )}
-          </div>
+          <RemoteOtherTeamsTab
+            otherTeamsData={otherTeamsData}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            tabLoading={tabLoading}
+            expandedTeamId={expandedTeamId}
+            setExpandedTeamId={setExpandedTeamId}
+            formatCurrency={formatCurrency}
+          />
         )}
 
         {/* VIEW 4: SOLD PLAYERS */}
@@ -1135,97 +849,18 @@ export default function RemoteBiddingPublic() {
 
         {/* VIEW 7: PROFILE / CHANGE PASSWORD */}
         {activeTab === 'profile' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <h2 className="text-sm font-black text-white flex items-center gap-1.5">
-                <span>🔑</span> Profile & Password
-              </h2>
-            </div>
-
-            {/* TEAM INFO CARD */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
-              <h3 className="text-xs font-extrabold text-indigo-400 uppercase tracking-wider mb-2">Team Details</h3>
-              <div className="flex justify-between text-xs py-1 border-b border-slate-800/80">
-                <span className="text-slate-400">Team Name:</span>
-                <span className="font-black text-white">{teamInfo?.teamName}</span>
-              </div>
-              <div className="flex justify-between text-xs py-1 border-b border-slate-800/80">
-                <span className="text-slate-400">Short Code:</span>
-                <span className="font-black text-white">{teamInfo?.shortName || 'N/A'}</span>
-              </div>
-              <div className="flex justify-between text-xs py-1 border-b border-slate-800/80">
-                <span className="text-slate-400">Owner Name:</span>
-                <span className="font-black text-white">{teamInfo?.ownerName || 'N/A'}</span>
-              </div>
-              <div className="flex justify-between text-xs py-1">
-                <span className="text-slate-400">Tournament:</span>
-                <span className="font-black text-white">{tournamentInfo?.name || 'Active'}</span>
-              </div>
-            </div>
-
-            {/* CHANGE PASSWORD FORM */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-              <h3 className="text-xs font-extrabold text-amber-400 uppercase tracking-wider mb-3">Change Password</h3>
-
-              {pwdStatus && (
-                <div
-                  className={`mb-3 p-2.5 rounded-xl text-xs font-bold text-center border ${
-                    pwdStatus.type === 'error'
-                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                      : pwdStatus.type === 'success'
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                      : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
-                  }`}
-                >
-                  {pwdStatus.message}
-                </div>
-              )}
-
-              <form onSubmit={handleChangePassword} className="space-y-3">
-                <div>
-                  <label className="block text-[11px] font-extrabold uppercase text-slate-400 mb-1">Current Password</label>
-                  <input
-                    type="password"
-                    required
-                    value={pwdCurrent}
-                    onChange={(e) => setPwdCurrent(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs font-semibold text-white outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-extrabold uppercase text-slate-400 mb-1">New Password</label>
-                  <input
-                    type="password"
-                    required
-                    value={pwdNew}
-                    onChange={(e) => setPwdNew(e.target.value)}
-                    placeholder="Minimum 6 characters"
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs font-semibold text-white outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-extrabold uppercase text-slate-400 mb-1">Confirm New Password</label>
-                  <input
-                    type="password"
-                    required
-                    value={pwdConfirm}
-                    onChange={(e) => setPwdConfirm(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs font-semibold text-white outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={pwdStatus?.loading}
-                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 active:scale-98 text-white font-black rounded-xl text-xs shadow-md transition disabled:opacity-50 mt-1 cursor-pointer"
-                >
-                  {pwdStatus?.loading ? 'Updating...' : 'Save New Password'}
-                </button>
-              </form>
-            </div>
-          </div>
+          <RemoteSecurityTab
+            teamInfo={teamInfo}
+            tournamentInfo={tournamentInfo}
+            pwdStatus={pwdStatus}
+            pwdCurrent={pwdCurrent}
+            setPwdCurrent={setPwdCurrent}
+            pwdNew={pwdNew}
+            setPwdNew={setPwdNew}
+            pwdConfirm={pwdConfirm}
+            setPwdConfirm={setPwdConfirm}
+            handleChangePassword={handleChangePassword}
+          />
         )}
       </main>
     </div>

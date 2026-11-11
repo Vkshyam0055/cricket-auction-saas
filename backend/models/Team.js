@@ -27,4 +27,7 @@ teamSchema.index(
     { unique: true, partialFilterExpression: { remoteUsername: { $type: "string", $gt: "" } } }
 );
 
+// Scoped index for organizer tournament queries
+teamSchema.index({ organizer: 1, tournament: 1 });
+
 module.exports = mongoose.model('Team', teamSchema);

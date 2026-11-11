@@ -1,0 +1,113 @@
+import React from 'react';
+
+export default function ActiveBiddingZone({
+  activeBiddingTeams,
+  biddingTeam,
+  lastBidSource,
+  formatCurrency,
+  biddingButtonsCount,
+  biddingActive,
+  currentBid,
+  btn1,
+  btn2,
+  btn3,
+  updateBid
+}) {
+  return (
+    <div className="py-2 shrink-0">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-[10px] font-black uppercase tracking-wider text-purple-800">
+          Active Bidders (Max 4)
+        </h3>
+        <span className="text-[10px] text-slate-400 font-semibold">
+          {activeBiddingTeams.length}/4 Active
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5">
+        {[0, 1, 2, 3].map((slotIdx) => {
+          const team = activeBiddingTeams[slotIdx];
+          if (!team) {
+            return (
+              <div
+                key={`empty-slot-${slotIdx}`}
+                className="rounded-lg border border-dashed border-purple-200 bg-purple-50/40 p-1.5 flex items-center justify-center text-[10px] font-semibold text-purple-400"
+              >
+                + Slot {slotIdx + 1}
+              </div>
+            );
+          }
+
+          const isHighestBidder = Boolean(biddingTeam) && (String(biddingTeam) === String(team._id) || biddingTeam === team.teamName);
+          return (
+            <div
+              key={`active-${team._id}`}
+              className={`rounded-lg border p-1.5 flex flex-col justify-between transition-all ${
+                isHighestBidder
+                  ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-400/30 shadow-xs'
+                  : 'border-purple-300 bg-purple-50/80 hover:border-purple-400'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-1 mb-0.5">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  {team.logoUrl || team.logo ? (
+                    <img src={team.logoUrl || team.logo} alt="" className="w-5 h-5 rounded object-contain bg-white border border-purple-200 shrink-0" />
+                  ) : (
+                    <div className="w-5 h-5 rounded bg-purple-700 text-white font-black text-[9px] flex items-center justify-center shrink-0 uppercase">
+                      {team.shortName || team.teamName.slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <h4 className="font-black text-xs text-slate-900 truncate" title={team.teamName}>
+                    {team.shortName || team.teamName}
+                  </h4>
+                </div>
+                {isHighestBidder ? (
+                  <span className="text-[9px] px-1 rounded bg-amber-400 text-amber-950 font-black shrink-0">
+                    {lastBidSource === 'remote' ? 'Leader 📱' : 'Leader 🏢'}
+                  </span>
+                ) : (
+                  <span className="text-[9px] px-1 rounded bg-purple-700 text-white font-black shrink-0">
+                    #{slotIdx + 1}
+                  </span>
+                )}
+              </div>
+              <div className="flex justify-between items-center text-[10px] text-purple-900 font-bold mb-1 leading-tight">
+                <span>₹{team.remainingPurse.toLocaleString()}</span>
+                <span className="text-[9px] text-purple-700 font-semibold">Max {formatCurrency(team.maxBid)}</span>
+              </div>
+              <div className={`grid ${biddingButtonsCount === 1 ? 'grid-cols-1' : biddingButtonsCount === 2 ? 'grid-cols-2' : 'grid-cols-3'} gap-1`}>
+                {biddingButtonsCount >= 1 && (
+                  <button
+                    disabled={!biddingActive || currentBid + btn1 > Number(team.maxBid || 0) || currentBid + btn1 > Number(team.remainingPurse || 0)}
+                    onClick={() => updateBid(team._id, btn1)}
+                    className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                  >
+                    {formatCurrency(currentBid + btn1)}
+                  </button>
+                )}
+                {biddingButtonsCount >= 2 && (
+                  <button
+                    disabled={!biddingActive || currentBid + btn2 > Number(team.maxBid || 0) || currentBid + btn2 > Number(team.remainingPurse || 0)}
+                    onClick={() => updateBid(team._id, btn2)}
+                    className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                  >
+                    {formatCurrency(currentBid + btn2)}
+                  </button>
+                )}
+                {biddingButtonsCount >= 3 && (
+                  <button
+                    disabled={!biddingActive || currentBid + btn3 > Number(team.maxBid || 0) || currentBid + btn3 > Number(team.remainingPurse || 0)}
+                    onClick={() => updateBid(team._id, btn3)}
+                    className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                  >
+                    {formatCurrency(currentBid + btn3)}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

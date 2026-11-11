@@ -20,8 +20,15 @@ const configuredIncrements = (tournament) => [
 ].filter((amount) => Number.isFinite(amount) && amount > 0);
 
 const assertExpectedVersion = (state, expectedVersion) => {
-  if (expectedVersion !== undefined && Number(expectedVersion) !== Number(state.version)) {
-    throw auctionError('STALE_AUCTION_STATE', 409, 'Auction state changed. Refresh and retry.');
+  if (expectedVersion !== undefined && expectedVersion !== null && expectedVersion !== '') {
+    const numVersion = Number(expectedVersion);
+    if (Number.isFinite(numVersion) && numVersion > 0) {
+      if (numVersion !== Number(state.version)) {
+        const err = auctionError('STALE_AUCTION_STATE', 409, 'Auction state changed. Refresh and retry.');
+        err.currentVersion = state.version;
+        throw err;
+      }
+    }
   }
 };
 
@@ -79,7 +86,7 @@ const startAuction = async ({ organizerId, tournamentScope, playerId }) => {
   }, scope)).lean();
   if (!player) throw auctionError('PLAYER_NOT_ELIGIBLE', 409, 'Player is not eligible for auction.');
 
-  const activeState = await AuctionState.findOne({ organizer: organizerId, tournament: tournamentScope.tournamentId, status: 'bidding' }).lean();
+  const activeState = await AuctionState.findOne({ organizer: organizerId, tournament: scope.tournamentId, status: 'bidding' }).lean();
   if (activeState && String(activeState.activePlayer) !== String(player._id)) {
     if (activeState.highestBidder) {
       throw auctionError('AUCTION_ALREADY_ACTIVE', 409, 'Another player is already active for bidding.');
@@ -89,7 +96,7 @@ const startAuction = async ({ organizerId, tournamentScope, playerId }) => {
   const state = await AuctionState.findOneAndUpdate(
     {
       organizer: organizerId,
-      tournament: tournamentScope.tournamentId,
+      tournament: scope.tournamentId,
       $or: [
         { status: { $ne: 'bidding' } },
         { highestBidder: null }
@@ -98,7 +105,7 @@ const startAuction = async ({ organizerId, tournamentScope, playerId }) => {
     {
       $set: {
         organizer: organizerId,
-        tournament: tournamentScope.tournamentId,
+        tournament: scope.tournamentId,
         activePlayer: player._id,
         currentBid: Number(player.basePrice || 0),
         highestBidder: null,
@@ -160,7 +167,12 @@ const placeBid = async ({ organizerId, tournamentScope, teamId, playerId, amount
     { $set: { currentBid: nextBid, highestBidder: team._id }, $inc: { version: 1 } },
     { new: true }
   ).lean();
-  if (!updated) throw auctionError('BID_CONFLICT', 409, 'Another bid was accepted first. Refresh and retry.');
+  if (!updated) {
+    const latestState = await AuctionState.findById(state._id).select('version').lean();
+    const err = auctionError('BID_CONFLICT', 409, 'Another bid was accepted first. Refresh and retry.');
+    err.currentVersion = latestState?.version;
+    throw err;
+  }
   return { state: updated, team: teamWithMaxBid, player };
 };
 
@@ -176,7 +188,12 @@ const resetAuctionBid = async ({ organizerId, tournamentScope, playerId, expecte
     { $set: { currentBid: Number(player.basePrice || 0), highestBidder: null }, $inc: { version: 1 } },
     { new: true }
   ).lean();
-  if (!updated) throw auctionError('BID_CONFLICT', 409, 'Auction state changed. Refresh and retry.');
+  if (!updated) {
+    const latestState = await AuctionState.findById(state._id).select('version').lean();
+    const err = auctionError('BID_CONFLICT', 409, 'Auction state changed. Refresh and retry.');
+    err.currentVersion = latestState?.version;
+    throw err;
+  }
   return { state: updated, player };
 };
 
