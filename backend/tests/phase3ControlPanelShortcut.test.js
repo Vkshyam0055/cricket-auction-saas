@@ -11,17 +11,17 @@ describe('Phase 3: Control Panel Keyboard Shortcut & Unsold Guard Suite', () => 
   // Test 1: Static Source Code Analysis & Guard Presence Verification
   // =========================================================================
   test('1. ControlPanel.jsx contains explicit null/empty guards in onKeyDown and finalizePlayer', () => {
-    // Verify guard in finalizePlayer
+    // Verify guard in finalizePlayer (accommodating action processing debounce lock)
     assert.match(
       fileContent,
-      /const finalizePlayer = async \([^)]*\) => \{\s*if \(!currentPlayer \|\| !currentPlayer\._id\) \{\s*return;\s*\}/,
+      /const finalizePlayer = async \([^)]*\) => \{\s*(?:if\s*\([^)]*isActionProcessing[^)]*\)\s*return;\s*)?if \(!currentPlayer \|\| !currentPlayer\._id\) \{\s*return;\s*\}/,
       'finalizePlayer must guard against missing or invalid currentPlayer'
     );
 
-    // Verify guard in onKeyDown handler for key 'u'
+    // Verify guard in onKeyDown handler for key 'u' (accommodating action processing debounce lock)
     assert.match(
       fileContent,
-      /else if \(key === 'u'\) \{\s*event\.preventDefault\(\);\s*if \(!currentPlayer \|\| !currentPlayer\._id\) return;\s*finalizePlayer\('Unsold'\);/,
+      /else if \(key === 'u'\) \{\s*event\.preventDefault\(\);\s*(?:if\s*\([^)]*isActionProcessing[^)]*\)\s*return;\s*)?if \(!currentPlayer \|\| !currentPlayer\._id\) return;\s*finalizePlayer\('Unsold'\);/,
       'onKeyDown handler for key "u" must guard against missing or invalid currentPlayer before calling finalizePlayer'
     );
   });
@@ -168,9 +168,9 @@ describe('Phase 3: Control Panel Keyboard Shortcut & Unsold Guard Suite', () => 
   // Test 5: Other shortcuts (N, S, R, B) remain preserved
   // =========================================================================
   test('5. Other shortcuts (N = pickRandomPlayer, S = Sold, R = resetBid, B = breakView) remain intact', () => {
-    assert.match(fileContent, /if \(key === 'n'\) \{\s*event\.preventDefault\(\);\s*pickRandomPlayer\(\);/);
-    assert.match(fileContent, /else if \(key === 's'\) \{\s*event\.preventDefault\(\);\s*finalizePlayer\('Sold'\);/);
-    assert.match(fileContent, /else if \(key === 'r'\) \{\s*event\.preventDefault\(\);\s*handleResetBid\(\);/);
+    assert.match(fileContent, /if \(key === 'n'\) \{\s*event\.preventDefault\(\);\s*(?:if\s*\([^)]*isActionProcessing[^)]*\)\s*return;\s*)?pickRandomPlayer\(\);/);
+    assert.match(fileContent, /else if \(key === 's'\) \{\s*event\.preventDefault\(\);\s*(?:if\s*\([^)]*isActionProcessing[^)]*\)\s*return;\s*)?finalizePlayer\('Sold'\);/);
+    assert.match(fileContent, /else if \(key === 'r'\) \{\s*event\.preventDefault\(\);\s*(?:if\s*\([^)]*isActionProcessing[^)]*\)\s*return;\s*)?handleResetBid\(\);/);
     assert.match(fileContent, /else if \(key === 'b'\) \{\s*event\.preventDefault\(\);\s*setScreenView\(/);
   });
 });

@@ -1,10 +1,14 @@
-const { test, describe, before, after } = require('node:test');
+const { test: nodeTest, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 require('dotenv').config({ path: './.env' });
+
+const { getDbSkipReason, connectSafeTestMongo, createDbSafeTest } = require('./testMongoGuard');
+const dbSkipReason = getDbSkipReason();
+const test = createDbSafeTest(nodeTest, dbSkipReason);
 
 const User = require('../models/User');
 const UserSession = require('../models/UserSession');
@@ -45,9 +49,8 @@ describe('Team Identity & Normalization Test Suite', () => {
     };
 
     before(async () => {
-        if (mongoose.connection.readyState === 0) {
-            await mongoose.connect(process.env.MONGO_URI);
-        }
+        if (dbSkipReason) return;
+        await connectSafeTestMongo();
 
         app = express();
         app.use(express.json());
@@ -82,6 +85,7 @@ describe('Team Identity & Normalization Test Suite', () => {
     });
 
     after(async () => {
+        if (dbSkipReason) return;
         if (server) {
             await new Promise((resolve) => server.close(resolve));
         }

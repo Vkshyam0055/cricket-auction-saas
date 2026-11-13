@@ -1,4 +1,4 @@
-const { test, describe, before, after } = require('node:test');
+const { test: nodeTest, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
 const express = require('express');
@@ -8,6 +8,10 @@ const jwt = require('jsonwebtoken');
 const path = require('path');
 
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
+const { getDbSkipReason, connectSafeTestMongo, createDbSafeTest } = require('./testMongoGuard');
+const dbSkipReason = getDbSkipReason();
+const test = createDbSafeTest(nodeTest, dbSkipReason);
 
 const User = require('../models/User');
 const UserSession = require('../models/UserSession');
@@ -48,12 +52,9 @@ describe('Team Owner Authentication Test Suite', () => {
     };
 
     before(async () => {
-        // Isolation cannot be guaranteed because mongodb-memory-server failed to install.
-        // We refuse to attempt connection to localhost or fallback to .env as per strict instructions.
-        console.warn('BLOCKED: Skipping DB tests. Safe isolated test database (mongodb-memory-server) is unavailable.');
-        process.exit(0);
+        if (dbSkipReason) return;
+        await connectSafeTestMongo();
         
-        // Unreachable, but syntactically valid setup
         app = express();
         app.use(express.json());
         app.use('/api/auth', authRoutes);
@@ -103,6 +104,7 @@ describe('Team Owner Authentication Test Suite', () => {
     });
 
     after(async () => {
+        if (dbSkipReason) return;
         await mongoose.disconnect();
         server.close();
     });

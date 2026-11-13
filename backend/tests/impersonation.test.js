@@ -1,4 +1,4 @@
-const { test, describe, before, after } = require('node:test');
+const { test: nodeTest, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
 const express = require('express');
@@ -7,6 +7,10 @@ const jwt = require('jsonwebtoken');
 const { Server } = require('socket.io');
 const ioClient = require('../../Frontend/node_modules/socket.io-client');
 require('dotenv').config({ path: './.env' });
+
+const { getDbSkipReason, connectSafeTestMongo, createDbSafeTest } = require('./testMongoGuard');
+const dbSkipReason = getDbSkipReason();
+const test = createDbSafeTest(nodeTest, dbSkipReason);
 
 const User = require('../models/User');
 const UserSession = require('../models/UserSession');
@@ -37,9 +41,8 @@ describe('Super Admin User Impersonation Feature & Security Suite', () => {
     let organizerBToken;
 
     before(async () => {
-        if (mongoose.connection.readyState === 0) {
-            await mongoose.connect(process.env.MONGO_URI);
-        }
+        if (dbSkipReason) return;
+        await connectSafeTestMongo();
 
         app = express();
         app.use(express.json());
@@ -191,6 +194,7 @@ describe('Super Admin User Impersonation Feature & Security Suite', () => {
     });
 
     after(async () => {
+        if (dbSkipReason) return;
         // Cleanup all test records
         if (testAdmin?._id) {
             await User.deleteOne({ _id: testAdmin._id });

@@ -1,10 +1,14 @@
-const { test, describe, before, after } = require('node:test');
+const { test: nodeTest, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
 const express = require('express');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 require('dotenv').config({ path: './.env' });
+
+const { getDbSkipReason, connectSafeTestMongo, createDbSafeTest } = require('./testMongoGuard');
+const dbSkipReason = getDbSkipReason();
+const test = createDbSafeTest(nodeTest, dbSkipReason);
 
 const User = require('../models/User');
 const UserSession = require('../models/UserSession');
@@ -39,9 +43,8 @@ describe('Super Admin Dynamic Plan Management & Limit Enforcement Suite', () => 
     let proTournament;
 
     before(async () => {
-        if (mongoose.connection.readyState === 0) {
-            await mongoose.connect(process.env.MONGO_URI);
-        }
+        if (dbSkipReason) return;
+        await connectSafeTestMongo();
 
         app = express();
         app.use(express.json());
@@ -130,6 +133,7 @@ describe('Super Admin Dynamic Plan Management & Limit Enforcement Suite', () => 
     });
 
     after(async () => {
+        if (dbSkipReason) return;
         // Restore default Free plan in DB
         if (freePlanDoc) {
             await Plan.findByIdAndUpdate(freePlanDoc._id, {

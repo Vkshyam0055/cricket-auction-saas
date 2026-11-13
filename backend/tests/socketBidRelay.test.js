@@ -1,9 +1,12 @@
-const { test, describe, before } = require('node:test');
+const { test: nodeTest, describe, before } = require('node:test');
+
+const { getDbSkipReason, createDbSafeTest } = require('./testMongoGuard');
+const dbSkipReason = getDbSkipReason();
+const test = createDbSafeTest(nodeTest, dbSkipReason);
 
 describe('Phase 2.3 Remote Bid Relay & Delegation Test Suite', () => {
     before(() => {
-        console.warn('BLOCKED: Skipping Socket Integration tests. Safe isolated test database is unavailable.');
-        process.exit(0);
+        if (dbSkipReason) return;
     });
 
     test('1. Backend strictly overrides teamId with authenticated socket.teamOwner.teamId', async () => {});

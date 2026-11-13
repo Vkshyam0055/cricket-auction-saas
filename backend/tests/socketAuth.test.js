@@ -1,16 +1,17 @@
-const { test, describe, before, after } = require('node:test');
+const { test: nodeTest, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 
+const { getDbSkipReason, createDbSafeTest } = require('./testMongoGuard');
+const dbSkipReason = getDbSkipReason();
+const test = createDbSafeTest(nodeTest, dbSkipReason);
+
 describe('Socket.IO Phase 2.2 Authentication & Authorization Test Suite', () => {
     before(async () => {
-        // Isolation cannot be guaranteed because mongodb-memory-server failed to install in this environment.
-        // We refuse to attempt connection to localhost or fallback to .env as per strict instructions.
-        console.warn('BLOCKED: Skipping Socket.IO DB tests. Safe isolated test database (mongodb-memory-server) is unavailable.');
-        process.exit(0);
+        if (dbSkipReason) return;
     });
 
     // These tests are unreachable unless a safe DB is provided, but they document the verified behavior.
