@@ -41,6 +41,7 @@ describe('Super Admin Dynamic Plan Management & Limit Enforcement Suite', () => 
     let proPlanDoc;
     let freeTournament;
     let proTournament;
+    let adminTournament;
 
     before(async () => {
         if (dbSkipReason) return;
@@ -130,6 +131,13 @@ describe('Super Admin Dynamic Plan Management & Limit Enforcement Suite', () => 
             organizer: organizerPro._id,
             isRegistrationOpen: true
         });
+
+        adminTournament = await Tournament.create({
+            name: 'Admin Premier League',
+            venue: 'Admin Ground',
+            organizer: superAdminUser._id,
+            isRegistrationOpen: true
+        });
     });
 
     after(async () => {
@@ -151,12 +159,15 @@ describe('Super Admin Dynamic Plan Management & Limit Enforcement Suite', () => 
         // Cleanup test data
         await User.deleteMany({ _id: { $in: [superAdminUser._id, organizerFree._id, organizerPro._id] } });
         await UserSession.deleteMany({ userId: { $in: [superAdminUser._id, organizerFree._id, organizerPro._id] } });
-        await Tournament.deleteMany({ _id: { $in: [freeTournament._id, proTournament._id] } });
+        await Tournament.deleteMany({ _id: { $in: [freeTournament._id, proTournament._id, adminTournament?._id].filter(Boolean) } });
         await Team.deleteMany({ organizer: { $in: [superAdminUser._id, organizerFree._id, organizerPro._id] } });
         await Player.deleteMany({ organizer: { $in: [superAdminUser._id, organizerFree._id, organizerPro._id] } });
 
         if (server) {
             await new Promise((resolve) => server.close(resolve));
+        }
+        if (mongoose.connection.readyState !== 0) {
+            await mongoose.disconnect();
         }
     });
 

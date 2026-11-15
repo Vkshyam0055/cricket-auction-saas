@@ -15,6 +15,7 @@ const UserSession = require('../models/UserSession');
 const Tournament = require('../models/Tournament');
 const Team = require('../models/Team');
 const Player = require('../models/Player');
+const AuctionState = require('../models/AuctionState');
 const { createSessionAndToken } = require('../utils/sessionAuth');
 
 describe('Team Identity & Normalization Test Suite', () => {
@@ -95,6 +96,7 @@ describe('Team Identity & Normalization Test Suite', () => {
             await Tournament.deleteMany({ organizer: organizer._id });
             await Team.deleteMany({ organizer: organizer._id });
             await Player.deleteMany({ organizer: organizer._id });
+            await AuctionState.deleteMany({ organizer: organizer._id });
         }
         if (mongoose.connection.readyState !== 0) {
             await mongoose.disconnect();
@@ -202,6 +204,20 @@ describe('Team Identity & Normalization Test Suite', () => {
             tournament: tournament._id
         });
 
+        // Set up active auction state for tournament
+        await AuctionState.findOneAndUpdate(
+            { organizer: organizer._id, tournament: tournament._id },
+            {
+                $set: {
+                    activePlayer: player._id,
+                    status: 'bidding',
+                    currentBid: 75000,
+                    highestBidder: team1._id
+                }
+            },
+            { upsert: true }
+        );
+
         // 3. Sell player to Team 1 via teamId
         const resSell = await request('PUT', `/api/players/sell/${player._id}`, {
             teamId: String(team1._id),
@@ -267,6 +283,20 @@ describe('Team Identity & Normalization Test Suite', () => {
         // Re-sell player to team1 ("Mumbai Maestros")
         const team1 = await Team.findOne({ organizer: organizer._id, teamName: 'Mumbai Maestros' });
         const player = await Player.findOne({ organizer: organizer._id, name: 'Rohit Sharma Test' });
+
+        // Set up active auction state for tournament
+        await AuctionState.findOneAndUpdate(
+            { organizer: organizer._id, tournament: tournament._id },
+            {
+                $set: {
+                    activePlayer: player._id,
+                    status: 'bidding',
+                    currentBid: 50000,
+                    highestBidder: team1._id
+                }
+            },
+            { upsert: true }
+        );
 
         const resSell = await request('PUT', `/api/players/sell/${player._id}`, {
             teamId: String(team1._id),
