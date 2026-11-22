@@ -22,13 +22,17 @@ export default function BiddingControlBar({
   setDirectSellTeam,
   handleDirectBaseSell,
   isActionProcessing = false,
+  handleCommonBid,
+  isCommonBidProcessing = false,
+  isAwaitingTeam = false,
+  playerStatus = 'bidding',
 }) {
   return (
     <>
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 pb-2 shrink-0 mb-1">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  {/* CURRENT BID AMOUNT */}
-                  <div className="flex items-center gap-2">
+                  {/* CURRENT BID AMOUNT & COMMON BID BUTTON */}
+                  <div className="flex items-center gap-2.5">
                     <div>
                       <span className="text-[10px] uppercase font-extrabold text-slate-500 tracking-wider block leading-none">
                         Current Highest Bid
@@ -44,11 +48,43 @@ export default function BiddingControlBar({
                     >
                       🔄
                     </button>
+                    {handleCommonBid && (
+                      <button
+                        onClick={handleCommonBid}
+                        disabled={isCommonBidProcessing || !biddingActive || playerStatus !== 'bidding' || !currentPlayer}
+                        className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black px-3 py-1.5 rounded-lg shadow-sm active:translate-y-0.5 transition flex items-center gap-1.5 text-xs disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                        title="Auto increment bid without assigning a team"
+                      >
+                        <span>{isCommonBidProcessing ? '⏳' : '⚡'}</span>
+                        <span className="font-extrabold uppercase tracking-wide">
+                          {isCommonBidProcessing ? 'Bidding...' : 'Common BID'}
+                        </span>
+                      </button>
+                    )}
                   </div>
 
-                  {/* PROMINENT LEADING BIDDER BADGE & DETAILS */}
+                  {/* PROMINENT LEADING BIDDER BADGE & DETAILS / AWAITING TEAM */}
                   <div className="flex items-center gap-2 max-w-full">
-                    {activeBiddingTeamData ? (
+                    {isAwaitingTeam ? (
+                      <div className="flex items-center gap-2 bg-amber-50 border-2 border-amber-400 rounded-lg p-1.5 shadow-xs animate-pulse">
+                        <div className="w-8 h-8 rounded-md bg-amber-500 text-amber-950 font-black text-sm flex items-center justify-center shrink-0">
+                          ⏳
+                        </div>
+                        <div className="min-w-0 pr-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-sm font-black text-amber-950 uppercase tracking-wider">
+                              Awaiting Team
+                            </span>
+                            <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-900 border border-amber-300">
+                              Unassigned Bid
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-amber-800 font-semibold mt-0.5">
+                            Click any eligible team to claim this bid at ₹{currentBid.toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                    ) : activeBiddingTeamData ? (
                       <div className="flex items-center gap-2 bg-white border border-amber-300 rounded-lg p-1.5 shadow-xs">
                         {activeBiddingTeamData.logoUrl || activeBiddingTeamData.logo ? (
                           <img

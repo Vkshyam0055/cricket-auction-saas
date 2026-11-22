@@ -98,7 +98,8 @@ const sellPlayer = async ({ organizerId, tournamentScope, playerId, teamId, team
                     $set: {
                         status: 'sold',
                         highestBidder: teamWithMaxBid._id,
-                        currentBid: numericSoldPrice
+                        currentBid: numericSoldPrice,
+                        isAwaitingTeam: false
                     },
                     $inc: { version: 1 }
                 },
@@ -126,7 +127,7 @@ const unsoldPlayer = async ({ organizerId, tournamentScope, playerId }) => {
 
             const finalizedState = await AuctionState.findOneAndUpdate(
                 { organizer: organizerId, tournament: tournamentScope.tournamentId, activePlayer: player._id, highestBidder: null, status: 'bidding' },
-                { $set: { status: 'unsold' }, $inc: { version: 1 } },
+                { $set: { status: 'unsold', isAwaitingTeam: false }, $inc: { version: 1 } },
                 { new: true, session }
             );
             if (!finalizedState) throw new Error('AUCTION_STATE_CONFLICT');
@@ -145,47 +146,62 @@ const unsoldPlayer = async ({ organizerId, tournamentScope, playerId }) => {
 };
 
 const undoPlayerAction = async ({ organizerId, tournamentScope, playerId }) => {
-    const player = await Player.findOne(mergeWithTournamentScope({ _id: playerId, organizer: organizerId }, tournamentScope));
-    if (!player) {
-        const err = new Error('PLAYER_NOT_FOUND');
-        err.statusCode = 404;
-        err.publicMessage = "खिलाड़ी नहीं मिला";
-        throw err;
+    const session = await mongoose.startSession();
+    try {
+        let responsePayload = null;
+        await session.withTransaction(async () => {
+            const player = await Player.findOne(
+                mergeWithTournamentScope({ _id: playerId, organizer: organizerId }, tournamentScope)
+            ).session(session);
+
+            if (!player) {
+                const err = new Error('PLAYER_NOT_FOUND');
+                err.statusCode = 404;
+                err.publicMessage = "खिलाड़ी नहीं मिला";
+                throw err;
+            }
+
+            if (player.isIcon || player.auctionStatus === 'Icon') {
+                const err = new Error('ICON_PLAYER_RESTRICTED');
+                err.statusCode = 400;
+                err.publicMessage = "Icon players must be managed exclusively from the Player Management tab.";
+                throw err;
+            }
+
+            const wasSold = (player.auctionStatus === 'Sold' || player.auctionStatus === 'Icon') &&
+                            Boolean(player.soldTo) && player.soldTo !== 'Unsold';
+            const refundAmount = Number(player.soldPrice) || 0;
+
+            if (wasSold && refundAmount > 0) {
+                const teamQuery = mongoose.Types.ObjectId.isValid(player.soldTo)
+                    ? { _id: player.soldTo, organizer: organizerId }
+                    : { teamName: player.soldTo, organizer: organizerId };
+
+                await Team.findOneAndUpdate(
+                    mergeWithTournamentScope(teamQuery, tournamentScope),
+                    { $inc: { remainingPurse: refundAmount } },
+                    { session }
+                );
+            }
+
+            player.auctionStatus = 'ReadyForAuction';
+            player.soldTo = null;
+            player.soldPrice = 0;
+            await player.save({ session });
+
+            await AuctionState.findOneAndUpdate(
+                { organizer: organizerId, tournament: tournamentScope.tournamentId, activePlayer: player._id },
+                { $set: { status: 'idle', activePlayer: null, currentBid: 0, highestBidder: null, isAwaitingTeam: false }, $inc: { version: 1 } },
+                { session }
+            );
+
+            responsePayload = { message: "Undo Successful!", player };
+        });
+
+        return responsePayload;
+    } finally {
+        session.endSession();
     }
-
-    if (player.isIcon || player.auctionStatus === 'Icon') {
-        const err = new Error('ICON_PLAYER_RESTRICTED');
-        err.statusCode = 400;
-        err.publicMessage = "Icon players must be managed exclusively from the Player Management tab.";
-        throw err;
-    }
-
-    const wasSold = (player.auctionStatus === 'Sold' || player.auctionStatus === 'Icon') &&
-                    Boolean(player.soldTo) && player.soldTo !== 'Unsold';
-    const refundAmount = Number(player.soldPrice) || 0;
-
-    if (wasSold && refundAmount > 0) {
-        const teamQuery = mongoose.Types.ObjectId.isValid(player.soldTo)
-            ? { _id: player.soldTo, organizer: organizerId }
-            : { teamName: player.soldTo, organizer: organizerId };
-
-        await Team.findOneAndUpdate(
-            mergeWithTournamentScope(teamQuery, tournamentScope),
-            { $inc: { remainingPurse: refundAmount } }
-        );
-    }
-
-    player.auctionStatus = 'ReadyForAuction';
-    player.soldTo = null;
-    player.soldPrice = 0;
-    await player.save();
-
-    await AuctionState.findOneAndUpdate(
-        { organizer: organizerId, tournament: tournamentScope.tournamentId, activePlayer: player._id },
-        { $set: { status: 'idle', activePlayer: null, currentBid: 0, highestBidder: null }, $inc: { version: 1 } }
-    );
-
-    return { message: "Undo Successful!", player };
 };
 
 const restoreUnsoldPlayers = async ({ organizerId, tournamentScope }) => {
@@ -279,7 +295,7 @@ const resetAuction = async ({ organizerId, tournamentScope }) => {
 
     await AuctionState.findOneAndUpdate(
         { organizer: organizerId, tournament: tournamentScope.tournamentId },
-        { $set: { status: 'idle', activePlayer: null, currentBid: 0, highestBidder: null }, $inc: { version: 1 } }
+        { $set: { status: 'idle', activePlayer: null, currentBid: 0, highestBidder: null, isAwaitingTeam: false }, $inc: { version: 1 } }
     );
 
     return {

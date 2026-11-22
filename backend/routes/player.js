@@ -331,7 +331,9 @@ router.put('/undo/:id', async (req, res) => {
         });
         res.json(responsePayload);
     } catch (error) {
-        if (error.statusCode) return res.status(error.statusCode).json({ message: error.publicMessage });
+        if (error.statusCode && error.publicMessage) return res.status(error.statusCode).json({ message: error.publicMessage });
+        if (error.message === 'PLAYER_NOT_FOUND') return res.status(404).json({ message: 'खिलाड़ी नहीं मिला' });
+        if (error.message === 'ICON_PLAYER_RESTRICTED') return res.status(400).json({ message: 'Icon players must be managed exclusively from the Player Management tab.' });
         console.error("Undo player error:", error);
         res.status(500).json({ message: "एरर!" });
     }

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { apiRequest } from '../../utils/apiClient';
 
 export function useAuctionBidding({
@@ -39,10 +39,15 @@ export function useAuctionBidding({
   directSellTeam,
   finalizePlayer,
   screenView,
+  isAwaitingTeam = false,
+  setIsAwaitingTeam,
+  isAwaitingTeamRef,
 }) {
   const activeBidPromiseRef = useRef(null);
+  const [isCommonBidProcessing, setIsCommonBidProcessing] = useState(false);
+  const isCommonBidProcessingRef = useRef(false);
 
-  const updateBid = async (teamRef, amount, isJump = false, isRemote = false, callback = null, bidTypeOverride = null) => {
+  const updateBid = async (teamRef, amount = undefined, isJump = false, isRemote = false, callback = null, bidTypeOverride = null) => {
     if (playerStatus !== 'bidding') {
       if (isRemote && callback) callback({ success: false, message: 'Bidding is not active' });
       return false;
@@ -63,7 +68,7 @@ export function useAuctionBidding({
       if (biddingButtonsCount >= 2) validIncrements.push(btn2);
       if (biddingButtonsCount >= 3) validIncrements.push(btn3);
 
-      if (!isJump && !validIncrements.includes(amount)) {
+      if (!isJump && amount && !validIncrements.includes(amount)) {
         if (callback) callback({ success: false, message: 'Invalid bid increment' });
         return false;
       }
@@ -72,15 +77,29 @@ export function useAuctionBidding({
     const executeBid = async () => {
       const exactCurrentBid = currentBidRef?.current !== undefined ? currentBidRef.current : currentBid;
       const exactBiddingTeam = biddingTeamRef?.current !== undefined ? biddingTeamRef.current : biddingTeam;
+      const exactIsAwaiting = isAwaitingTeamRef?.current !== undefined ? isAwaitingTeamRef.current : isAwaitingTeam;
 
-      if (String(exactBiddingTeam) === String(team._id) && !isJump && bidTypeOverride !== 'base') {
+      // Case C: Leading team cannot bid against itself
+      if (!exactIsAwaiting && String(exactBiddingTeam) === String(team._id) && !isJump && bidTypeOverride !== 'base') {
         if (isRemote && callback) callback({ success: false, message: 'You are already the highest bidder' });
         return false;
       }
 
-      const newBidAmount = bidTypeOverride === 'base'
+      // Check squad capacity
+      if (team.remainingRequiredPlayers !== undefined && team.remainingRequiredPlayers <= 0) {
+        if (isRemote && callback) return callback({ success: false, message: 'Team squad is full' });
+        alert(`🚫 ${team.teamName} का स्क्वाड फुल हो चुका है!`);
+        return false;
+      }
+
+      const isAutoBid = !isJump && bidTypeOverride !== 'base' && (!amount || bidTypeOverride === 'auto');
+      const bidTypeToSend = bidTypeOverride || (isJump ? 'custom' : (isAutoBid ? 'auto' : 'increment'));
+
+      const newBidAmount = exactIsAwaiting && !isJump && bidTypeOverride !== 'custom'
         ? exactCurrentBid
-        : (isJump ? amount : exactCurrentBid + amount);
+        : (bidTypeOverride === 'base'
+          ? exactCurrentBid
+          : (isJump ? amount : (amount ? exactCurrentBid + amount : exactCurrentBid)));
 
       if (newBidAmount > team.remainingPurse) {
         if (isRemote && callback) return callback({ success: false, message: 'Insufficient purse' });
@@ -113,8 +132,8 @@ export function useAuctionBidding({
             data: {
               teamId: team._id,
               playerId: currentPlayerRef.current?._id,
-              amount,
-              bidType: bidTypeOverride || (isJump ? 'custom' : 'increment'),
+              amount: isJump ? amount : (amount || undefined),
+              bidType: bidTypeToSend,
               expectedVersion: currentExpectedVersion
             },
             headers: { Authorization: `Bearer ${token}` }
@@ -155,11 +174,13 @@ export function useAuctionBidding({
                 setCurrentBid(sBid);
                 if (currentBidRef) currentBidRef.current = sBid;
               }
-              if (stateRes.data.highestBidder) {
-                const hbId = stateRes.data.highestBidder._id || stateRes.data.highestBidder;
-                setBiddingTeam(hbId);
-                if (biddingTeamRef) biddingTeamRef.current = hbId;
-              }
+              const hbId = stateRes.data.highestBidder?._id || stateRes.data.highestBidder || '';
+              setBiddingTeam(hbId);
+              if (biddingTeamRef) biddingTeamRef.current = hbId;
+              const awaiting = Boolean(stateRes.data.isAwaitingTeam || (!hbId && stateRes.data.currentBid > (stateRes.data.activePlayer?.basePrice || 0)));
+              if (setIsAwaitingTeam) setIsAwaitingTeam(awaiting);
+              if (isAwaitingTeamRef) isAwaitingTeamRef.current = awaiting;
+              setHasBiddingStarted(Boolean(hbId && !awaiting));
             }
           } catch { /* non-blocking sync */ }
 
@@ -182,6 +203,8 @@ export function useAuctionBidding({
 
       setCurrentBid(acceptedBid);
       setBiddingTeam(team._id);
+      if (setIsAwaitingTeam) setIsAwaitingTeam(false);
+      if (isAwaitingTeamRef) isAwaitingTeamRef.current = false;
       setLastBidSource('onsite');
       setHasBiddingStarted(true);
 
@@ -235,7 +258,8 @@ export function useAuctionBidding({
         playerStatus: playerStatus,
         version: newVer,
         isRemote: false,
-        bidSource: 'onsite'
+        bidSource: 'onsite',
+        isAwaitingTeam: false
       });
       return true;
     };
@@ -250,6 +274,158 @@ export function useAuctionBidding({
       if (activeBidPromiseRef.current === currentPromise) {
         activeBidPromiseRef.current = null;
       }
+    }
+  };
+
+  const handleCommonBid = async () => {
+    if (!currentPlayerRef?.current || playerStatus !== 'bidding') {
+      alert('⚠️ No active player available for bidding.');
+      return false;
+    }
+
+    if (!biddingActive) {
+      alert('⚠️ Bidding is paused. Click "Start Bidding" to resume.');
+      return false;
+    }
+
+    if (isCommonBidProcessingRef.current || activeBidPromiseRef.current) {
+      return false;
+    }
+
+    isCommonBidProcessingRef.current = true;
+    setIsCommonBidProcessing(true);
+
+    const executeCommonBid = async () => {
+      let retries = 0;
+      const maxRetries = 2;
+      let authoritativeCommonBid;
+
+      while (retries <= maxRetries) {
+        const currentExpectedVersion = (auctionVersionRef?.current && auctionVersionRef.current > 0)
+          ? auctionVersionRef.current
+          : ((auctionVersion !== undefined && auctionVersion !== null && Number(auctionVersion) > 0) ? Number(auctionVersion) : undefined);
+
+        try {
+          const token = localStorage.getItem('token');
+          authoritativeCommonBid = await apiRequest({
+            method: 'post',
+            path: '/api/auction/common-bid',
+            data: {
+              playerId: currentPlayerRef.current._id,
+              expectedVersion: currentExpectedVersion
+            },
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          break;
+        } catch (error) {
+          const respData = error.response?.data;
+          const isConflict = error.response?.status === 409 &&
+            (respData?.code === 'STALE_AUCTION_STATE' || respData?.code === 'BID_CONFLICT');
+
+          if (respData?.currentVersion) {
+            const newVer = Number(respData.currentVersion);
+            if (Number.isFinite(newVer) && newVer > (auctionVersionRef?.current || 0)) {
+              if (auctionVersionRef) auctionVersionRef.current = newVer;
+              setAuctionVersion(newVer);
+            }
+          }
+
+          if (isConflict && retries < maxRetries) {
+            retries++;
+            continue;
+          }
+
+          // Auto-heal auction state from server on error
+          try {
+            const token = localStorage.getItem('token');
+            const stateRes = await apiRequest({ method: 'get', path: '/api/auction/state', headers: { Authorization: `Bearer ${token}` }, skipAuthRedirect: true });
+            if (stateRes.data) {
+              if (stateRes.data.version) {
+                const sVer = Number(stateRes.data.version);
+                if (auctionVersionRef && sVer > (auctionVersionRef.current || 0)) {
+                  auctionVersionRef.current = sVer;
+                }
+                setAuctionVersion(sVer);
+              }
+              if (stateRes.data.currentBid) {
+                const sBid = Number(stateRes.data.currentBid);
+                setCurrentBid(sBid);
+                if (currentBidRef) currentBidRef.current = sBid;
+              }
+              const hbId = stateRes.data.highestBidder?._id || stateRes.data.highestBidder || '';
+              setBiddingTeam(hbId);
+              if (biddingTeamRef) biddingTeamRef.current = hbId;
+              const awaiting = Boolean(stateRes.data.isAwaitingTeam || (!hbId && stateRes.data.currentBid > (stateRes.data.activePlayer?.basePrice || 0)));
+              if (setIsAwaitingTeam) setIsAwaitingTeam(awaiting);
+              if (isAwaitingTeamRef) isAwaitingTeamRef.current = awaiting;
+              setHasBiddingStarted(Boolean(hbId && !awaiting));
+            }
+          } catch { /* non-blocking sync */ }
+
+          const message = error.response?.data?.message || 'Common BID was rejected.';
+          if (!isConflict) alert(`🚫 ${message}`);
+          return false;
+        }
+      }
+
+      if (!authoritativeCommonBid?.data?.state) return false;
+
+      const updatedState = authoritativeCommonBid.data.state;
+      const acceptedBid = Number(updatedState.currentBid);
+      const newVer = Number(updatedState.version);
+
+      if (auctionVersionRef && Number.isFinite(newVer) && newVer > (auctionVersionRef.current || 0)) {
+        auctionVersionRef.current = newVer;
+      }
+      setAuctionVersion(newVer);
+      if (currentBidRef) currentBidRef.current = acceptedBid;
+      setCurrentBid(acceptedBid);
+
+      // Clear highest bidder & set Awaiting Team
+      setBiddingTeam('');
+      if (biddingTeamRef) biddingTeamRef.current = '';
+      if (setIsAwaitingTeam) setIsAwaitingTeam(true);
+      if (isAwaitingTeamRef) isAwaitingTeamRef.current = true;
+
+      // UNSOLD remains available because no actual team has claimed the bid
+      setHasBiddingStarted(false);
+      setLastBidSource('onsite');
+      saveStateToHistory('COMMON_BID');
+
+      socketRef.current?.emit('newLiveBid', {
+        bidAmount: acceptedBid,
+        currentBid: acceptedBid,
+        teamId: '',
+        biddingTeamId: '',
+        teamName: '',
+        biddingTeamName: '',
+        shortName: '',
+        logoUrl: '',
+        player: currentPlayerRef.current,
+        currentPlayer: currentPlayerRef.current,
+        status: playerStatus,
+        playerStatus: playerStatus,
+        version: newVer,
+        isRemote: false,
+        bidSource: 'onsite',
+        isAwaitingTeam: true
+      });
+
+      return true;
+    };
+
+    const previousPromise = activeBidPromiseRef.current || Promise.resolve();
+    const currentPromise = previousPromise.then(() => executeCommonBid(), () => executeCommonBid());
+    activeBidPromiseRef.current = currentPromise;
+
+    try {
+      return await currentPromise;
+    } finally {
+      if (activeBidPromiseRef.current === currentPromise) {
+        activeBidPromiseRef.current = null;
+      }
+      isCommonBidProcessingRef.current = false;
+      setIsCommonBidProcessing(false);
     }
   };
 
@@ -331,6 +507,8 @@ export function useAuctionBidding({
 
   return {
     updateBid,
+    handleCommonBid,
+    isCommonBidProcessing,
     handleCustomBidSubmit,
     handleToggleBidding,
     handleDirectBaseSell,

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { TournamentContext } from '../context/TournamentContext';
 import { apiRequest } from '../utils/apiClient';
 import axios from 'axios';
+import AutoIncrementSlabsConfig, { DEFAULT_AUTO_INCREMENT_SLABS, validateSlabsClient } from '../components/AutoIncrementSlabsConfig';
 
 export default function TournamentSettings() {
   const navigate = useNavigate();
@@ -11,6 +12,7 @@ export default function TournamentSettings() {
   const [openSection1, setOpenSection1] = useState(true);
   const [openSection2, setOpenSection2] = useState(true);
   const [openSection3, setOpenSection3] = useState(true);
+  const [openSection4, setOpenSection4] = useState(true);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -23,6 +25,7 @@ export default function TournamentSettings() {
     bidButton2: 1000,
     bidButton3: 5000,
     biddingButtonsCount: 3,
+    autoIncrementSlabs: DEFAULT_AUTO_INCREMENT_SLABS,
   });
 
   const [loading, setLoading] = useState(false);
@@ -43,6 +46,9 @@ export default function TournamentSettings() {
         bidButton2: tournament.bidButton2 || 1000,
         bidButton3: tournament.bidButton3 || 5000,
         biddingButtonsCount: tournament.biddingButtonsCount || 3,
+        autoIncrementSlabs: tournament.autoIncrementSlabs?.length
+          ? tournament.autoIncrementSlabs
+          : DEFAULT_AUTO_INCREMENT_SLABS,
       });
     }
   }, [tournament]);
@@ -83,6 +89,14 @@ export default function TournamentSettings() {
       return;
     }
 
+    if (formData.autoIncrementSlabs) {
+      const slabValidation = validateSlabsClient(formData.autoIncrementSlabs);
+      if (!slabValidation.isValid) {
+        showToast(slabValidation.message);
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
@@ -99,6 +113,7 @@ export default function TournamentSettings() {
         bidButton2: formData.bidButton2,
         bidButton3: formData.bidButton3,
         biddingButtonsCount: formData.biddingButtonsCount,
+        autoIncrementSlabs: formData.autoIncrementSlabs,
         // Preserve existing fields from tournament
         customFields: tournament?.customFields || [],
         upiQrUrl: tournament?.upiQrUrl || '',
@@ -111,7 +126,7 @@ export default function TournamentSettings() {
       showToast('Settings saved successfully!');
     } catch (err) {
       console.error(err);
-      showToast('Failed to save settings');
+      showToast(err.response?.data?.message || 'Failed to save settings');
     } finally {
       setLoading(false);
     }
@@ -136,7 +151,7 @@ export default function TournamentSettings() {
         </div>
       </header>
 
-      <main className="p-4 max-w-md mx-auto space-y-4">
+      <main className="p-4 max-w-xl mx-auto space-y-4">
         {/* Section 1 */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
           <button 
@@ -296,6 +311,33 @@ export default function TournamentSettings() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* Section 4: Auto Increment Slabs */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+          <button 
+            type="button"
+            onClick={() => setOpenSection4(!openSection4)}
+            className="w-full flex justify-between items-center p-4 bg-slate-800/50 hover:bg-slate-800 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-slate-100">📈 Auto Increment Slabs (ऑटो इंक्रीमेंट स्लैब)</h2>
+              <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/30 uppercase">
+                {formData.autoIncrementSlabs?.length || 5} Slabs
+              </span>
+            </div>
+            <span className="text-slate-400">{openSection4 ? '▼' : '▶'}</span>
+          </button>
+          
+          {openSection4 && (
+            <div className="p-4">
+              <AutoIncrementSlabsConfig
+                slabs={formData.autoIncrementSlabs}
+                onChange={(newSlabs) => setFormData(prev => ({ ...prev, autoIncrementSlabs: newSlabs }))}
+                teamBudget={formData.teamBudget}
+              />
             </div>
           )}
         </div>

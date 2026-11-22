@@ -15,6 +15,8 @@ function LiveScreen() {
   const [liveTeam, setLiveTeam] = useState('');
   const [liveTeamData, setLiveTeamData] = useState(null);
   const [playerStatus, setPlayerStatus] = useState('bidding');
+  const [isAwaitingTeam, setIsAwaitingTeam] = useState(false);
+  const lastAuctionVersionRef = useRef(0);
 
   const [displayMode, setDisplayMode] = useState('night');
   const [layout, setLayout] = useState('classic');
@@ -45,46 +47,87 @@ function LiveScreen() {
     const token = localStorage.getItem('token');
     if (!token) return;
 
-    apiRequest({
-      method: 'get',
-      path: '/api/auction/state',
-      headers: { Authorization: 'Bearer ' + token },
-      skipAuthRedirect: true
-    })
-      .then((res) => {
-        const data = res.data;
-        if (data && data.activePlayer) {
-          setCurrentPlayer(data.activePlayer);
-          setLiveBid(data.currentBid || 0);
-          if (data.highestBidder) {
-            setLiveTeam(data.highestBidder.teamName || '');
-            setLiveTeamData({
-              _id: data.highestBidder._id,
-              teamName: data.highestBidder.teamName,
-              shortName: data.highestBidder.shortName,
-              logoUrl: data.highestBidder.logoUrl || data.highestBidder.logo || ''
-            });
-          }
-          if (data.status) {
-            setPlayerStatus(data.status);
-          }
-        }
+    const fetchAuctionState = () => {
+      apiRequest({
+        method: 'get',
+        path: '/api/auction/state',
+        headers: { Authorization: 'Bearer ' + token },
+        skipAuthRedirect: true
       })
-      .catch(() => {});
+        .then((res) => {
+          const data = res.data;
+          if (data && data.activePlayer) {
+            const incomingVersion = Number(data.version) || 0;
+            if (incomingVersion > 0 && incomingVersion < lastAuctionVersionRef.current) {
+              return;
+            }
+            if (incomingVersion > 0) {
+              lastAuctionVersionRef.current = incomingVersion;
+            }
+            setCurrentPlayer(data.activePlayer);
+            setLiveBid(Number(data.currentBid || 0));
+            const isAwaiting = data.isAwaitingTeam !== undefined
+              ? Boolean(data.isAwaitingTeam)
+              : Boolean(!data.highestBidder && Number(data.currentBid || 0) > Number(data.activePlayer?.basePrice || 0));
+            setIsAwaitingTeam(isAwaiting);
+            if (data.highestBidder && !isAwaiting) {
+              setLiveTeam(data.highestBidder.teamName || '');
+              setLiveTeamData({
+                _id: data.highestBidder._id,
+                teamName: data.highestBidder.teamName,
+                shortName: data.highestBidder.shortName,
+                logoUrl: data.highestBidder.logoUrl || data.highestBidder.logo || ''
+              });
+            } else {
+              setLiveTeam('');
+              setLiveTeamData(null);
+            }
+            if (data.status) {
+              setPlayerStatus(data.status);
+            }
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchAuctionState();
 
     const socket = io(getSocketBaseUrl(), {
       auth: { token }
     });
 
+    socket.on('connect', () => {
+      fetchAuctionState();
+    });
+
     socket.on('updateAudienceScreen', (data) => {
-      setLiveBid(data.bidAmount || 0);
-      setLiveTeam(data.teamName || '');
-      setLiveTeamData(data.teamId || data.logoUrl ? {
-        _id: data.teamId,
-        teamName: data.teamName,
-        shortName: data.shortName,
-        logoUrl: data.logoUrl
-      } : null);
+      if (!data) return;
+      const incomingVersion = Number(data.version);
+      if (Number.isFinite(incomingVersion) && incomingVersion > 0) {
+        if (incomingVersion < lastAuctionVersionRef.current) return;
+        lastAuctionVersionRef.current = incomingVersion;
+      }
+      const nextBidVal = Number(data.bidAmount !== undefined ? data.bidAmount : data.currentBid || 0);
+      const activeBasePrice = Number(data.player?.basePrice || data.currentPlayer?.basePrice || 0);
+      const hasTeam = Boolean(data.teamId || data.teamName);
+      const isAwaiting = data.isAwaitingTeam !== undefined
+        ? Boolean(data.isAwaitingTeam)
+        : Boolean(!hasTeam && nextBidVal > activeBasePrice);
+
+      setLiveBid(nextBidVal);
+      setIsAwaitingTeam(isAwaiting);
+      if (hasTeam && !isAwaiting) {
+        setLiveTeam(data.teamName || '');
+        setLiveTeamData(data.teamId || data.logoUrl ? {
+          _id: data.teamId,
+          teamName: data.teamName,
+          shortName: data.shortName,
+          logoUrl: data.logoUrl
+        } : null);
+      } else {
+        setLiveTeam('');
+        setLiveTeamData(null);
+      }
       setPlayerStatus(data.status || 'bidding');
       if (data.player !== undefined) {
         setCurrentPlayer(data.player);
@@ -136,6 +179,7 @@ function LiveScreen() {
     });
 
     return () => {
+      socket.off('connect');
       socket.off('updateAudienceScreen');
       socket.off('liveScreenConfigSync');
       socket.off('liveScreenConfigUpdate');
@@ -180,32 +224,37 @@ function LiveScreen() {
   }, [teamsById, teamsByName]);
 
   const getTeamFullName = (teamRef) => {
+    if (!teamRef) return '';
     const match = resolveTeam(teamRef);
     if (match?.teamName) return match.teamName;
     if (typeof teamRef === 'object' && teamRef?.teamName) return teamRef.teamName;
     if (typeof teamRef === 'string') return teamRef;
-    return 'Team';
+    return '';
   };
 
   const getTeamShortName = (teamRef) => {
+    if (!teamRef) return '';
     const match = resolveTeam(teamRef);
     if (match?.shortName) return match.shortName;
     if (match?.teamName) return match.teamName.slice(0, 3).toUpperCase();
-    if (typeof teamRef === 'object') return teamRef?.shortName || teamRef?.teamName?.slice(0, 3).toUpperCase() || 'TM';
+    if (typeof teamRef === 'object') return teamRef?.shortName || teamRef?.teamName?.slice(0, 3).toUpperCase() || '';
     if (typeof teamRef === 'string') return teamRef.slice(0, 3).toUpperCase();
-    return 'TM';
+    return '';
   };
 
   const getTeamLogo = (teamRef) => {
+    if (!teamRef) return '';
     const match = resolveTeam(teamRef);
     return match?.logoUrl || match?.logo || (typeof teamRef === 'object' ? (teamRef?.logoUrl || teamRef?.logo || '') : '');
   };
 
   // Resolve active bidder team object for logos & abbreviations
-  const activeBidderTeam = resolveTeam(liveTeamData) || resolveTeam(liveTeam) || liveTeamData;
-  const activeBidderLogo = getTeamLogo(activeBidderTeam);
-  const activeBidderShortName = getTeamShortName(activeBidderTeam);
-  const activeBidderFullName = getTeamFullName(activeBidderTeam) || liveTeam || '';
+  const activeBidderTeam = (liveTeam || liveTeamData)
+    ? (resolveTeam(liveTeamData) || resolveTeam(liveTeam) || liveTeamData)
+    : null;
+  const activeBidderLogo = activeBidderTeam ? getTeamLogo(activeBidderTeam) : '';
+  const activeBidderShortName = activeBidderTeam ? getTeamShortName(activeBidderTeam) : '';
+  const activeBidderFullName = activeBidderTeam ? (getTeamFullName(activeBidderTeam) || liveTeam || '') : '';
 
   const renderBreakView = () => (
     <BreakViewRenderer
@@ -273,12 +322,12 @@ function LiveScreen() {
 
         <div className={`p-4 lg:p-6 rounded-2xl border-l-8 shadow-xl flex-1 flex flex-col justify-center ${liveTeam ? modeTheme.strongPanel : modeTheme.panel}`}>
           <p className={`font-bold text-xs lg:text-sm uppercase tracking-wider mb-1 ${modeTheme.mutedText}`}>
-            {liveTeam ? 'Current Highest Bid' : 'Waiting for Opening Bid...'}
+            {liveTeam ? 'Current Highest Bid' : isAwaitingTeam ? '' : 'Waiting for Opening Bid...'}
           </p>
           <p className={`text-3xl lg:text-5xl xl:text-6xl font-black ${modeTheme.bidText}`}>
             ₹{liveBid.toLocaleString()}
           </p>
-          {liveTeam && (
+          {liveTeam && !isAwaitingTeam && (
             <div className="mt-2 flex justify-between items-center border-t pt-2">
               <span className={`text-xs lg:text-sm font-bold uppercase ${modeTheme.mutedText}`}>
                 Highest Bidder
@@ -348,9 +397,11 @@ function LiveScreen() {
 
         {/* Hero Bid Display */}
         <div className={`p-6 lg:p-8 rounded-2xl border-2 shadow-2xl flex-1 flex flex-col justify-center items-center text-center ${modeTheme.strongPanel}`}>
-          <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 mb-3 animate-pulse">
-            {liveTeam ? '⚡ Live Bidding In Progress' : '⏳ Awaiting First Bid'}
-          </span>
+          {!isAwaitingTeam && (
+            <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 mb-3 animate-pulse">
+              {liveTeam ? '⚡ Live Bidding In Progress' : '⏳ Awaiting First Bid'}
+            </span>
+          )}
           <span className={`text-xs lg:text-sm font-bold uppercase tracking-widest block mb-1 ${modeTheme.mutedText}`}>
             Current Highest Bid
           </span>
@@ -366,11 +417,13 @@ function LiveScreen() {
               <img src={activeBidderLogo} alt={activeBidderFullName} className="w-12 h-12 rounded-xl object-cover border-2 border-amber-400 shadow-md shrink-0" />
             ) : null}
             <div className="min-w-0">
-              <span className={`text-[10px] uppercase font-black tracking-widest block ${modeTheme.mutedText}`}>
-                Current Leader
-              </span>
+              {!isAwaitingTeam && (
+                <span className={`text-[10px] uppercase font-black tracking-widest block ${modeTheme.mutedText}`}>
+                  Current Leader
+                </span>
+              )}
               <span className={`text-2xl lg:text-3xl font-black uppercase truncate block ${liveTeam ? modeTheme.bidderText : 'text-slate-400'}`}>
-                {activeBidderFullName || 'No Active Bidder'}
+                {liveTeam ? (activeBidderFullName || '') : (isAwaitingTeam ? '' : 'No Active Bidder')}
               </span>
             </div>
           </div>
@@ -459,11 +512,13 @@ function LiveScreen() {
               <img src={activeBidderLogo} alt={activeBidderFullName} className="w-11 h-11 rounded-xl object-cover border-2 border-amber-400/70 shadow-sm shrink-0" />
             ) : null}
             <div className="min-w-0">
-              <span className={`text-[10px] uppercase font-bold tracking-widest block mb-0.5 ${modeTheme.mutedText}`}>
-                Highest Bidder Team
-              </span>
+              {!isAwaitingTeam && (
+                <span className={`text-[10px] uppercase font-bold tracking-widest block mb-0.5 ${modeTheme.mutedText}`}>
+                  Highest Bidder Team
+                </span>
+              )}
               <span className={`text-2xl font-black uppercase truncate block ${liveTeam ? modeTheme.bidderText : 'text-slate-400'}`}>
-                {activeBidderFullName || 'Waiting for Bids'}
+                {liveTeam ? (activeBidderFullName || '') : (isAwaitingTeam ? '' : 'Waiting for Bids')}
               </span>
             </div>
           </div>
@@ -546,15 +601,17 @@ function LiveScreen() {
         <div className="flex items-center gap-3 pl-4 lg:border-l border-slate-700/60 shrink-0">
           {activeBidderLogo ? (
             <img src={activeBidderLogo} alt={activeBidderFullName} className="w-10 h-10 rounded-xl object-cover border border-amber-400 shadow-sm shrink-0" />
-          ) : (
+          ) : !isAwaitingTeam ? (
             <span className="text-2xl">👑</span>
-          )}
+          ) : null}
           <div className="text-right">
-            <span className={`text-[10px] font-bold uppercase tracking-wider block ${modeTheme.mutedText}`}>
-              Leading Bidder
-            </span>
+            {!isAwaitingTeam && (
+              <span className={`text-[10px] font-bold uppercase tracking-wider block ${modeTheme.mutedText}`}>
+                Leading Bidder
+              </span>
+            )}
             <span className={`text-xl lg:text-2xl font-black uppercase ${liveTeam ? modeTheme.bidderText : 'text-slate-400'}`}>
-              {activeBidderFullName || 'No Bids'}
+              {liveTeam ? (activeBidderFullName || '') : (isAwaitingTeam ? '' : 'No Bids')}
             </span>
           </div>
         </div>

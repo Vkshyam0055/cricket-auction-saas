@@ -6,6 +6,7 @@ const auctionStateSchema = new mongoose.Schema({
   activePlayer: { type: mongoose.Schema.Types.ObjectId, ref: 'Player', default: null },
   currentBid: { type: Number, default: 0 },
   highestBidder: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: null },
+  isAwaitingTeam: { type: Boolean, default: false },
   status: { type: String, enum: ['idle', 'bidding', 'sold', 'unsold'], default: 'idle' },
   version: { type: Number, default: 0 }
 }, { timestamps: true });

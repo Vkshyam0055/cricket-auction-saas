@@ -209,9 +209,10 @@ function initAuctionSockets(io) {
             }
 
             const playerId = String(payload?.playerId || '');
-            const amount = Number(payload?.amount || 0);
+            const rawAmount = payload?.amount !== undefined && payload?.amount !== null ? Number(payload.amount) : undefined;
+            const amount = (rawAmount !== undefined && !isNaN(rawAmount) && rawAmount > 0) ? rawAmount : undefined;
 
-            if (!playerId || !amount || amount <= 0) {
+            if (!playerId) {
                 if (typeof callback === 'function') callback({ success: false, message: 'Invalid bid payload' });
                 return;
             }
@@ -242,9 +243,10 @@ function initAuctionSockets(io) {
                     teamId: socket.teamOwner.teamId,
                     playerId,
                     amount,
-                    bidType: 'increment',
+                    bidType: payload?.bidType || (amount ? 'increment' : 'auto'),
                     expectedVersion: payload?.expectedVersion,
-                    allowCustomBid: false
+                    allowCustomBid: false,
+                    isRemote: true
                 });
 
                 const acceptedBid = Number(result.state.currentBid);
@@ -263,7 +265,8 @@ function initAuctionSockets(io) {
                     playerStatus: 'bidding',
                     version: result.state.version,
                     isRemote: true,
-                    bidSource: 'remote'
+                    bidSource: 'remote',
+                    isAwaitingTeam: false
                 };
 
                 const current = organizerActiveBids.get(organizerKey) || [];
@@ -282,7 +285,9 @@ function initAuctionSockets(io) {
                         teamId: result.team._id,
                         version: result.state.version,
                         isRemote: true,
-                        bidSource: 'remote'
+                        bidSource: 'remote',
+                        isAwaitingTeam: false,
+                        claimed: Boolean(result.claimed)
                     });
                 }
             } catch (error) {
@@ -291,6 +296,7 @@ function initAuctionSockets(io) {
                     callback({
                         success: false,
                         message,
+                        code: error.message,
                         currentVersion: error.currentVersion !== undefined ? error.currentVersion : undefined
                     });
                 }

@@ -1,4 +1,11 @@
 const mongoose = require('mongoose');
+const { DEFAULT_AUTO_INCREMENT_SLABS } = require('../utils/autoIncrement');
+
+const autoIncrementSlabSchema = new mongoose.Schema({
+    fromPercentage: { type: Number, required: true },
+    toPercentage: { type: Number, required: true },
+    incrementPercentage: { type: Number, required: true }
+}, { _id: false });
 
 const tournamentSchema = new mongoose.Schema({
     name: { type: String, required: true },
@@ -17,6 +24,10 @@ const tournamentSchema = new mongoose.Schema({
     bidButton2: { type: Number, default: 1000 },
     bidButton3: { type: Number, default: 5000 },
     biddingButtonsCount: { type: Number, default: 3 },
+    autoIncrementSlabs: {
+        type: [autoIncrementSlabSchema],
+        default: () => DEFAULT_AUTO_INCREMENT_SLABS.map(s => ({ ...s }))
+    },
     isRegistrationOpen: { type: Boolean, default: true },
     
     customFields: [{

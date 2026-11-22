@@ -46,8 +46,10 @@ export default function RemoteBiddingPublic() {
     biddingTeamId: '',
     biddingTeamName: '',
     playerStatus: 'pending',
-    version: null
+    version: null,
+    isAwaitingTeam: false
   });
+  const isBidProcessingRef = useRef(false);
   const [bidStatus, setBidStatus] = useState(null); // { loading: boolean, message: string, type: 'success' | 'error' | 'info' }
   const [teamInfo, setTeamInfo] = useState(null);
   const [tournamentInfo, setTournamentInfo] = useState(null);
@@ -162,13 +164,19 @@ export default function RemoteBiddingPublic() {
         setBiddingActive(resData.biddingActive);
       }
       if (resData?.status === 'bidding' && resData?.activePlayer) {
+        const hbId = resData.highestBidder?._id || resData.highestBidder || '';
+        const basePrice = Number(resData.activePlayer.basePrice || 0);
+        const curBid = Number(resData.currentBid || basePrice);
+        const isAwaiting = Boolean(resData.isAwaitingTeam || (!hbId && curBid > basePrice));
+
         setAuctionState({
           currentPlayer: resData.activePlayer,
-          currentBid: Number(resData.currentBid || resData.activePlayer.basePrice || 0),
-          biddingTeamId: resData.highestBidder?._id || resData.highestBidder || '',
-          biddingTeamName: resData.highestBidder?.teamName || '',
+          currentBid: curBid,
+          biddingTeamId: isAwaiting ? '' : hbId,
+          biddingTeamName: isAwaiting ? '' : (resData.highestBidder?.teamName || ''),
           playerStatus: 'bidding',
-          version: resData.version
+          version: resData.version,
+          isAwaitingTeam: isAwaiting
         });
       }
     } catch (err) {
@@ -216,15 +224,30 @@ export default function RemoteBiddingPublic() {
       if (data.biddingActive !== undefined) {
         setBiddingActive(Boolean(data.biddingActive));
       }
-      setAuctionState((prev) => ({
-        ...prev,
-        currentPlayer: data.player || data.currentPlayer || prev.currentPlayer,
-        currentBid: Number(data.bidAmount !== undefined ? data.bidAmount : data.currentBid !== undefined ? data.currentBid : prev.currentBid),
-        biddingTeamId: data.teamId || data.biddingTeamId || '',
-        biddingTeamName: data.teamName || data.biddingTeamName || '',
-        playerStatus: data.status || data.playerStatus || 'bidding',
-        version: (data.version !== undefined && Number(data.version) > (prev.version || 0)) ? Number(data.version) : prev.version
-      }));
+      setAuctionState((prev) => {
+        const incomingVersion = Number(data.version);
+        const currentVersion = Number(prev.version);
+        if (Number.isFinite(incomingVersion) && Number.isFinite(currentVersion) && incomingVersion < currentVersion) {
+          // Stale event guard: do not overwrite newer state
+          return prev;
+        }
+
+        const nextBidVal = Number(data.bidAmount !== undefined ? data.bidAmount : data.currentBid !== undefined ? data.currentBid : prev.currentBid);
+        const hasTeamBid = Boolean(data.teamId || data.biddingTeamId);
+        const activeBasePrice = Number(data.player?.basePrice || data.currentPlayer?.basePrice || prev.currentPlayer?.basePrice || 0);
+        const awaiting = Boolean(data.isAwaitingTeam || (!hasTeamBid && nextBidVal > activeBasePrice));
+
+        return {
+          ...prev,
+          currentPlayer: data.player || data.currentPlayer || prev.currentPlayer,
+          currentBid: nextBidVal,
+          biddingTeamId: awaiting ? '' : (data.teamId || data.biddingTeamId || ''),
+          biddingTeamName: awaiting ? '' : (data.teamName || data.biddingTeamName || ''),
+          playerStatus: data.status || data.playerStatus || 'bidding',
+          version: Number.isFinite(incomingVersion) ? incomingVersion : prev.version,
+          isAwaitingTeam: awaiting
+        };
+      });
 
       // Refresh team purse & stats on any accepted bid
       fetchLiveTeamInfo(authData.token);
@@ -296,8 +319,10 @@ export default function RemoteBiddingPublic() {
   // =========================================================================
   // Place Server-Authoritative Remote Bid
   // =========================================================================
-  const handleBid = (incrementAmount) => {
+  const handleBid = (options = {}) => {
     if (!socket || !auctionState.currentPlayer || auctionState.playerStatus !== 'bidding') return;
+
+    if (isBidProcessingRef.current) return;
 
     if (!biddingActive) {
       setBidStatus({
@@ -308,27 +333,75 @@ export default function RemoteBiddingPublic() {
       return;
     }
 
-    setBidStatus({ loading: true, message: 'Submitting bid...', type: 'info' });
+    // Case C: Leading team cannot bid against itself
+    if (!auctionState.isAwaitingTeam && isMyTeamLeading) {
+      setBidStatus({
+        loading: false,
+        message: 'ℹ️ Your team is already holding the highest bid.',
+        type: 'info'
+      });
+      return;
+    }
+
+    // Case D: Squad capacity validation
+    if (teamInfo?.remainingRequiredPlayers !== undefined && teamInfo.remainingRequiredPlayers <= 0) {
+      setBidStatus({
+        loading: false,
+        message: '🚫 Cannot bid: Squad is full.',
+        type: 'error'
+      });
+      return;
+    }
+
+    // Case D: Purse & Max Bid validation
+    const purseLimit = Number(teamInfo?.remainingPurse || 0);
+    const maxBidLimit = effectiveMaxBid > 0 ? effectiveMaxBid : purseLimit;
+    if (auctionState.currentBid >= maxBidLimit || auctionState.currentBid >= purseLimit) {
+      setBidStatus({
+        loading: false,
+        message: '🚫 Cannot bid: Exceeds team purse or maximum permitted bid.',
+        type: 'error'
+      });
+      return;
+    }
+
+    isBidProcessingRef.current = true;
+    setBidStatus({
+      loading: true,
+      message: 'Submitting bid...',
+      type: 'info'
+    });
+
+    const isExplicitLegacy = typeof options === 'number' && options > 0;
+    const bidPayload = {
+      playerId: auctionState.currentPlayer._id,
+      bidType: isExplicitLegacy ? 'increment' : (options?.bidType || 'auto'),
+      expectedVersion: auctionState.version
+    };
+    if (isExplicitLegacy) {
+      bidPayload.amount = options;
+    } else if (options?.amount !== undefined && options.amount > 0) {
+      bidPayload.amount = options.amount;
+    }
 
     socket.emit(
       'requestRemoteBid',
-      {
-        playerId: auctionState.currentPlayer._id,
-        amount: incrementAmount,
-        expectedVersion: auctionState.version
-      },
+      bidPayload,
       (response) => {
+        isBidProcessingRef.current = false;
         if (response && response.success) {
+          const acceptedBid = Number(response.newBidAmount !== undefined ? response.newBidAmount : auctionState.currentBid);
           setAuctionState((prev) => ({
             ...prev,
-            currentBid: Number(response.newBidAmount !== undefined ? response.newBidAmount : prev.currentBid),
+            currentBid: acceptedBid,
             biddingTeamId: response.teamId || prev.biddingTeamId,
             biddingTeamName: authData?.team?.teamName || prev.biddingTeamName,
-            version: (response.version !== undefined && Number(response.version) > (prev.version || 0)) ? Number(response.version) : prev.version
+            version: (response.version !== undefined && Number(response.version) > (prev.version || 0)) ? Number(response.version) : prev.version,
+            isAwaitingTeam: false
           }));
           setBidStatus({
             loading: false,
-            message: `✅ Bid of ₹${response.newBidAmount?.toLocaleString()} accepted!`,
+            message: `✅ Bid of ₹${acceptedBid.toLocaleString()} accepted!`,
             type: 'success'
           });
           fetchLiveTeamInfo(authData.token);
@@ -466,8 +539,8 @@ export default function RemoteBiddingPublic() {
   // =========================================================================
   // MAIN MOBILE-FIRST INTERFACE
   // =========================================================================
-  const { currentPlayer, currentBid, biddingTeamId, playerStatus } = auctionState;
-  const isMyTeamLeading = Boolean(biddingTeamId && teamInfo?._id && String(biddingTeamId) === String(teamInfo._id));
+  const { currentPlayer, currentBid, biddingTeamId, playerStatus, isAwaitingTeam } = auctionState;
+  const isMyTeamLeading = Boolean(!isAwaitingTeam && biddingTeamId && teamInfo?._id && String(biddingTeamId) === String(teamInfo._id));
 
   // Dynamic buttons based on tournament configuration
   const btn1 = tournamentInfo?.bidButton1 || 500;
@@ -618,6 +691,7 @@ export default function RemoteBiddingPublic() {
             currentBid={currentBid}
             biddingTeamId={biddingTeamId}
             isMyTeamLeading={isMyTeamLeading}
+            isAwaitingTeam={Boolean(isAwaitingTeam)}
             auctionState={auctionState}
             bidStatus={bidStatus}
             playerStatus={playerStatus}

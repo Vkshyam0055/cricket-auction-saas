@@ -47,6 +47,7 @@ function ControlPanel() {
   const [playerStatus, setPlayerStatus] = useState('bidding');
   const [customBid, setCustomBid] = useState('');
   const [hasBiddingStarted, setHasBiddingStarted] = useState(false);
+  const [isAwaitingTeam, setIsAwaitingTeam] = useState(false);
 
   useEffect(() => {
     if (!latestRemoteToast) return;
@@ -97,6 +98,11 @@ function ControlPanel() {
   useEffect(() => {
     biddingTeamRef.current = biddingTeam;
   }, [biddingTeam]);
+
+  const isAwaitingTeamRef = useRef(isAwaitingTeam);
+  useEffect(() => {
+    isAwaitingTeamRef.current = isAwaitingTeam;
+  }, [isAwaitingTeam]);
 
   const configVersionRef = useRef(0);
   const configDebounceRef = useRef(null);
@@ -224,6 +230,8 @@ function ControlPanel() {
     setTeams,
     normalizeCategory,
     normalizeTeam,
+    setIsAwaitingTeam,
+    isAwaitingTeamRef,
   });
 
   useControlPanelSocket({
@@ -257,6 +265,8 @@ function ControlPanel() {
     screenView,
     breakView,
     selectedSquadTeam,
+    setIsAwaitingTeam,
+    isAwaitingTeamRef,
   });
 
   useEffect(() => {
@@ -294,16 +304,20 @@ function ControlPanel() {
       if (currentPlayerRef.current && socketRef.current) {
         const p = currentPlayerRef.current;
         const currentTeams = teamsRef.current || [];
-        const winningTeamObj = currentTeams.find((t) => t._id === biddingTeamRef.current || t.teamName === biddingTeamRef.current);
+        const isAwaiting = Boolean(isAwaitingTeamRef?.current);
+        const winningTeamObj = (!isAwaiting && biddingTeamRef.current)
+          ? currentTeams.find((t) => t._id === biddingTeamRef.current || t.teamName === biddingTeamRef.current)
+          : null;
         socketRef.current.emit('newLiveBid', {
           bidAmount: currentBidRef.current,
           teamId: winningTeamObj?._id || '',
-          teamName: winningTeamObj?.teamName || biddingTeamRef.current || '',
+          teamName: winningTeamObj?.teamName || (!isAwaiting ? biddingTeamRef.current || '' : ''),
           shortName: winningTeamObj?.shortName || '',
           logoUrl: winningTeamObj?.logoUrl || winningTeamObj?.logo || '',
           player: p,
           status: playerStatusRef.current,
-          version: auctionVersionRef.current || undefined
+          version: auctionVersionRef.current || undefined,
+          isAwaitingTeam: isAwaiting
         });
       }
     }, 2000);
@@ -343,7 +357,7 @@ function ControlPanel() {
 
   const pickRandomPlayer = async () => {
     if (isActionProcessingRef.current) return;
-    if (currentPlayer && playerStatus === 'bidding' && hasBiddingStarted) {
+    if (currentPlayer && playerStatus === 'bidding' && hasBiddingStarted && !isAwaitingTeam && Boolean(biddingTeam)) {
       alert('बिडिंग शुरू होने के बाद खिलाड़ी बदला नहीं जा सकता। पहले SOLD करें।');
       return;
     }
@@ -400,6 +414,8 @@ function ControlPanel() {
       setJumpBidTeam('');
       setCustomBid('');
       setHasBiddingStarted(false);
+      setIsAwaitingTeam(false);
+      if (isAwaitingTeamRef) isAwaitingTeamRef.current = false;
       setPlayerStatus('bidding');
       playerStatusRef.current = 'bidding';
       setBiddingActive(false);
@@ -417,7 +433,8 @@ function ControlPanel() {
         status: 'bidding',
         version: Number(result.data.state.version),
         isRemote: false,
-        bidSource: 'onsite'
+        bidSource: 'onsite',
+        isAwaitingTeam: false
       });
     } finally {
       isActionProcessingRef.current = false;
@@ -446,6 +463,8 @@ function ControlPanel() {
     setJumpBidTeam('');
     setCustomBid('');
     setHasBiddingStarted(false);
+    setIsAwaitingTeam(false);
+    if (isAwaitingTeamRef) isAwaitingTeamRef.current = false;
     setActiveBiddingList([]);
     setTeamBidActivity({});
     syncActiveBiddingState('reset');
@@ -459,7 +478,8 @@ function ControlPanel() {
       status: playerStatus,
       version: newResetVersion,
       isRemote: false,
-      bidSource: 'onsite'
+      bidSource: 'onsite',
+      isAwaitingTeam: false
     });
     return true;
   };
@@ -472,11 +492,11 @@ function ControlPanel() {
     const targetTeamRef = options.soldTeamId || options.soldTeamName || biddingTeam;
     const winningTeam = resolveTeam(targetTeamRef);
     const soldPrice = Number(options.soldPrice || currentBid);
-    if (status === 'Sold' && !winningTeam) {
+    if (status === 'Sold' && (!winningTeam || isAwaitingTeam)) {
       alert('टीम सेलेक्ट करें!');
       return;
     }
-    if (status === 'Unsold' && hasBiddingStarted) {
+    if (status === 'Unsold' && hasBiddingStarted && !isAwaitingTeam && Boolean(biddingTeam)) {
       alert('बिडिंग शुरू होने के बाद खिलाड़ी को Unsold नहीं कर सकते।');
       return;
     }
@@ -504,6 +524,8 @@ function ControlPanel() {
       setPlayerStatus(status.toLowerCase());
       playerStatusRef.current = status.toLowerCase();
       setHasBiddingStarted(false);
+      setIsAwaitingTeam(false);
+      if (isAwaitingTeamRef) isAwaitingTeamRef.current = false;
       setDirectSellTeam('');
       setJumpBidTeam('');
       setCustomBid('');
@@ -518,7 +540,8 @@ function ControlPanel() {
         shortName: winningTeam?.shortName || '',
         logoUrl: winningTeam?.logoUrl || winningTeam?.logo || '',
         player: currentPlayer,
-        status: status.toLowerCase()
+        status: status.toLowerCase(),
+        isAwaitingTeam: false
       });
 
       await Promise.all([fetchTeamsWithMaxBid(), fetchData()]);
@@ -538,6 +561,8 @@ function ControlPanel() {
 
   const {
     updateBid,
+    handleCommonBid,
+    isCommonBidProcessing,
     handleCustomBidSubmit,
     handleToggleBidding,
     handleDirectBaseSell,
@@ -580,6 +605,9 @@ function ControlPanel() {
     setDirectSellTeam,
     finalizePlayer,
     screenView,
+    isAwaitingTeam,
+    setIsAwaitingTeam,
+    isAwaitingTeamRef,
   });
 
   useEffect(() => {
@@ -606,6 +634,10 @@ function ControlPanel() {
         event.preventDefault();
         if (isActionProcessingRef.current) return;
         handleResetBid();
+      } else if (key === 'c') {
+        event.preventDefault();
+        if (isActionProcessingRef.current) return;
+        handleCommonBid();
       } else if (key === 'b') {
         event.preventDefault();
         setScreenView((prev) => {
@@ -707,8 +739,9 @@ function ControlPanel() {
   );
 
   const activeBiddingTeamData = useMemo(() => {
+    if (isAwaitingTeam) return null;
     return resolveTeam(biddingTeam);
-  }, [biddingTeam, resolveTeam]);
+  }, [biddingTeam, resolveTeam, isAwaitingTeam]);
 
   const filteredTeams = useMemo(() => {
     const query = teamSearch.trim().toLowerCase();
@@ -792,6 +825,7 @@ function ControlPanel() {
               biddingTeam={biddingTeam}
               getTeamLabel={getTeamLabel}
               currentBid={currentBid}
+              isAwaitingTeam={isAwaitingTeam}
             />
 
                         {/* 🌟 RIGHT COLUMN: BID STATUS, QUICK BIDS, ACTIVE BIDDERS & 16-TEAM GRID 🌟 */}
@@ -822,6 +856,10 @@ function ControlPanel() {
                 directSellTeam={directSellTeam}
                 setDirectSellTeam={setDirectSellTeam}
                 handleDirectBaseSell={handleDirectBaseSell}
+                handleCommonBid={handleCommonBid}
+                isCommonBidProcessing={isCommonBidProcessing}
+                isAwaitingTeam={isAwaitingTeam}
+                playerStatus={playerStatus}
               />
 
                             {/* 🌟 ACTIVE BIDDERS ZONE (MAX 4 TEAMS) (REQUIREMENT 3) 🌟 */}
@@ -837,6 +875,7 @@ function ControlPanel() {
                 btn2={btn2}
                 btn3={btn3}
                 updateBid={updateBid}
+                isAwaitingTeam={isAwaitingTeam}
               />
 
               <TeamAuctionGrid
@@ -857,6 +896,7 @@ function ControlPanel() {
                 biddingButtonsCount={biddingButtonsCount}
                 formatCurrency={formatCurrency}
                 biddingActive={biddingActive}
+                isAwaitingTeam={isAwaitingTeam}
               />
             </div>
           </div>

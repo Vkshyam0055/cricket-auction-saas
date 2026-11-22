@@ -14,6 +14,7 @@ export default function PlayerStageCard({
   getTeamLabel,
   currentBid,
   isActionProcessing = false,
+  isAwaitingTeam = false,
 }) {
   return (
             <div className="lg:col-span-4 bg-white rounded-2xl shadow-sm border border-slate-200/80 p-3 flex flex-col justify-between overflow-hidden">
@@ -21,7 +22,7 @@ export default function PlayerStageCard({
                 {/* NEXT PLAYER BUTTON */}
                 <button
                   onClick={pickRandomPlayer}
-                  disabled={isActionProcessing || Boolean(currentPlayer && playerStatus === 'bidding' && hasBiddingStarted)}
+                  disabled={isActionProcessing || Boolean(currentPlayer && playerStatus === 'bidding' && hasBiddingStarted && !isAwaitingTeam && Boolean(biddingTeam))}
                   className={`w-full text-white font-black text-xs lg:text-sm py-2 rounded-xl shadow-sm active:translate-y-0.5 transition-all mb-2 disabled:opacity-40 disabled:cursor-not-allowed ${
                     playerStatus !== 'bidding' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-indigo-600 hover:bg-indigo-700'
                   }`}
@@ -100,15 +101,15 @@ export default function PlayerStageCard({
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={() => finalizePlayer('Sold')}
-                        disabled={isActionProcessing || !hasBiddingStarted || !biddingTeam}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs lg:text-sm py-2.5 rounded-xl shadow-sm active:translate-y-0.5 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                        disabled={isActionProcessing || !biddingTeam || isAwaitingTeam}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs lg:text-sm py-2.5 rounded-xl shadow-sm active:translate-y-0.5 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                       >
                         {isActionProcessing ? '⏳ Selling...' : 'SOLD 🔨'}
                       </button>
                       <button
                         onClick={() => finalizePlayer('Unsold')}
-                        disabled={isActionProcessing || hasBiddingStarted}
-                        className="bg-rose-600 hover:bg-rose-700 text-white font-black text-xs lg:text-sm py-2.5 rounded-xl shadow-sm active:translate-y-0.5 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                        disabled={isActionProcessing || (hasBiddingStarted && !isAwaitingTeam && Boolean(biddingTeam))}
+                        className="bg-rose-600 hover:bg-rose-700 text-white font-black text-xs lg:text-sm py-2.5 rounded-xl shadow-sm active:translate-y-0.5 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                       >
                         {isActionProcessing ? '⏳ Processing...' : 'UNSOLD ❌'}
                       </button>

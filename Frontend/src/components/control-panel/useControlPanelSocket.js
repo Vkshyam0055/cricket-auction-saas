@@ -33,6 +33,8 @@ export function useControlPanelSocket({
   screenView,
   breakView,
   selectedSquadTeam,
+  setIsAwaitingTeam,
+  isAwaitingTeamRef,
 }) {
   const internalVersionRef = useRef(0);
   const versionRef = auctionVersionRef || internalVersionRef;
@@ -72,20 +74,28 @@ export function useControlPanelSocket({
 
         const activeBasePrice = Number(data.player?.basePrice ?? currentPlayerRef.current?.basePrice ?? 0);
         const hasTeamBid = Boolean(data.teamId || data.teamName || data.biddingTeam);
-        const isAboveBase = nextBidVal > activeBasePrice;
-        const biddingStarted = Boolean(hasTeamBid || isAboveBase);
+        const isAwaiting = Boolean(data.isAwaitingTeam || (!hasTeamBid && nextBidVal > activeBasePrice));
 
-        if (data.teamId) {
+        if (setIsAwaitingTeam) {
+          setIsAwaitingTeam(isAwaiting);
+        }
+        if (isAwaitingTeamRef) {
+          isAwaitingTeamRef.current = isAwaiting;
+        }
+
+        if (data.teamId && !isAwaiting) {
           setBiddingTeam(data.teamId);
           if (biddingTeamRef) biddingTeamRef.current = data.teamId;
-        } else if (!hasTeamBid) {
+        } else {
           setBiddingTeam('');
           if (biddingTeamRef) biddingTeamRef.current = '';
         }
 
-        setHasBiddingStarted(biddingStarted);
+        // Only mark bidding started when an actual team has claimed the bid
+        const actualTeamClaimed = Boolean(hasTeamBid && !isAwaiting);
+        setHasBiddingStarted(actualTeamClaimed);
 
-        if (biddingStarted) {
+        if (actualTeamClaimed) {
           const source = data.bidSource || (data.isRemote ? 'remote' : 'onsite');
           setLastBidSource(source);
           if (source === 'remote') {

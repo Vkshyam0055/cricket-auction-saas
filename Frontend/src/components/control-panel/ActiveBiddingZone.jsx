@@ -11,7 +11,8 @@ export default function ActiveBiddingZone({
   btn1,
   btn2,
   btn3,
-  updateBid
+  updateBid,
+  isAwaitingTeam = false,
 }) {
   return (
     <div className="py-2 shrink-0">
@@ -38,11 +39,19 @@ export default function ActiveBiddingZone({
             );
           }
 
-          const isHighestBidder = Boolean(biddingTeam) && (String(biddingTeam) === String(team._id) || biddingTeam === team.teamName);
+          const isHighestBidder = !isAwaitingTeam && Boolean(biddingTeam) && (String(biddingTeam) === String(team._id) || biddingTeam === team.teamName);
+          const isSquadFull = team.remainingRequiredPlayers !== undefined && team.remainingRequiredPlayers <= 0;
+          const hasInsufficientPurse = currentBid > Number(team.remainingPurse || 0);
+          const exceedsMaxBid = currentBid > Number(team.maxBid || 0);
+          const canTeamBid = biddingActive && !isSquadFull && !hasInsufficientPurse && !exceedsMaxBid && !isHighestBidder;
+
           return (
             <div
               key={`active-${team._id}`}
-              className={`rounded-lg border p-1.5 flex flex-col justify-between transition-all ${
+              onClick={() => {
+                if (canTeamBid) updateBid(team._id);
+              }}
+              className={`rounded-lg border p-1.5 flex flex-col justify-between transition-all ${canTeamBid ? 'cursor-pointer hover:shadow-sm' : ''} ${
                 isHighestBidder
                   ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-400/30 shadow-xs'
                   : 'border-purple-300 bg-purple-50/80 hover:border-purple-400'
@@ -65,6 +74,10 @@ export default function ActiveBiddingZone({
                   <span className="text-[9px] px-1 rounded bg-amber-400 text-amber-950 font-black shrink-0">
                     {lastBidSource === 'remote' ? 'Leader 📱' : 'Leader 🏢'}
                   </span>
+                ) : isAwaitingTeam ? (
+                  <span className="text-[9px] px-1 rounded bg-amber-500 text-amber-950 font-black shrink-0">
+                    Awaiting
+                  </span>
                 ) : (
                   <span className="text-[9px] px-1 rounded bg-purple-700 text-white font-black shrink-0">
                     #{slotIdx + 1}
@@ -75,11 +88,49 @@ export default function ActiveBiddingZone({
                 <span>₹{team.remainingPurse.toLocaleString()}</span>
                 <span className="text-[9px] text-purple-700 font-semibold">Max {formatCurrency(team.maxBid)}</span>
               </div>
+
+              {/* PRIMARY AUTO BID / CLAIM BUTTON */}
+              <div className="mb-1">
+                <button
+                  disabled={!canTeamBid}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    updateBid(team._id);
+                  }}
+                  className={`w-full py-1 px-1.5 rounded-md font-black text-xs transition flex items-center justify-center gap-1 shadow-2xs ${
+                    isHighestBidder
+                      ? 'bg-amber-200 text-amber-900 cursor-not-allowed opacity-90'
+                      : isAwaitingTeam
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white active:translate-y-0.5'
+                        : 'bg-purple-700 hover:bg-purple-800 text-white active:translate-y-0.5'
+                  } disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer`}
+                  title={
+                    isHighestBidder
+                      ? 'Currently leading bidder'
+                      : isAwaitingTeam
+                        ? `Claim bid at ₹${currentBid.toLocaleString()}`
+                        : 'Place bid'
+                  }
+                >
+                  <span>{isHighestBidder ? '👑' : isAwaitingTeam ? '⚡' : '▲'}</span>
+                  <span>
+                    {isHighestBidder
+                      ? 'Leader'
+                      : isAwaitingTeam
+                        ? `Claim ₹${currentBid.toLocaleString()}`
+                        : 'BID'}
+                  </span>
+                </button>
+              </div>
+
               <div className={`grid ${biddingButtonsCount === 1 ? 'grid-cols-1' : biddingButtonsCount === 2 ? 'grid-cols-2' : 'grid-cols-3'} gap-1`}>
                 {biddingButtonsCount >= 1 && (
                   <button
                     disabled={!biddingActive || currentBid + btn1 > Number(team.maxBid || 0) || currentBid + btn1 > Number(team.remainingPurse || 0)}
-                    onClick={() => updateBid(team._id, btn1)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateBid(team._id, btn1);
+                    }}
                     className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
                   >
                     {formatCurrency(currentBid + btn1)}
@@ -88,7 +139,10 @@ export default function ActiveBiddingZone({
                 {biddingButtonsCount >= 2 && (
                   <button
                     disabled={!biddingActive || currentBid + btn2 > Number(team.maxBid || 0) || currentBid + btn2 > Number(team.remainingPurse || 0)}
-                    onClick={() => updateBid(team._id, btn2)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateBid(team._id, btn2);
+                    }}
                     className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
                   >
                     {formatCurrency(currentBid + btn2)}
@@ -97,7 +151,10 @@ export default function ActiveBiddingZone({
                 {biddingButtonsCount >= 3 && (
                   <button
                     disabled={!biddingActive || currentBid + btn3 > Number(team.maxBid || 0) || currentBid + btn3 > Number(team.remainingPurse || 0)}
-                    onClick={() => updateBid(team._id, btn3)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateBid(team._id, btn3);
+                    }}
                     className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
                   >
                     {formatCurrency(currentBid + btn3)}

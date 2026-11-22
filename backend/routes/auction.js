@@ -181,7 +181,7 @@ router.post('/bid', async (req, res) => {
     const teamId = isOrganizer ? req.body.teamId : req.teamOwner.teamId;
     // Team Owner can ONLY use organizer-configured increments, no custom or base bids
     const allowCustomBid = isOrganizer;
-    const bidType = isOrganizer ? (req.body.bidType || 'increment') : 'increment';
+    const bidType = isOrganizer ? (req.body.bidType || 'auto') : (req.body.bidType || 'auto');
 
     const result = await auctionService.placeBid({
       organizerId,
@@ -191,7 +191,8 @@ router.post('/bid', async (req, res) => {
       amount: req.body.amount,
       bidType,
       expectedVersion: sanitizeExpectedVersion(req.body.expectedVersion),
-      allowCustomBid
+      allowCustomBid,
+      isRemote: !isOrganizer
     });
 
     const io = req.app.get('io');
@@ -213,6 +214,7 @@ router.post('/bid', async (req, res) => {
         version: result.state.version,
         isRemote: !isOrganizer,
         bidSource: isOrganizer ? 'onsite' : 'remote',
+        isAwaitingTeam: false,
         biddingActive: isBiddingActive(organizerId)
       };
 
@@ -223,6 +225,55 @@ router.post('/bid', async (req, res) => {
 
     res.json(result);
   } catch (error) { sendAuctionError(res, error); }
+});
+
+router.post('/common-bid', async (req, res) => {
+  if (req.teamOwner) return res.status(403).json({ message: 'Only organizer can trigger common bid.' });
+  try {
+    const organizerId = req.user.id;
+    if (!isBiddingActive(organizerId)) {
+      return res.status(409).json({ message: 'Bidding is currently paused by the organizer.', code: 'BIDDING_PAUSED' });
+    }
+
+    const result = await auctionService.placeCommonBid({
+      organizerId,
+      tournamentScope: req.tournamentScope,
+      playerId: req.body.playerId,
+      expectedVersion: sanitizeExpectedVersion(req.body.expectedVersion)
+    });
+
+    const io = req.app.get('io');
+    if (io) {
+      const tournamentId = req.tournamentScope?.tournamentId;
+      const commonBidPayload = {
+        bidAmount: result.state.currentBid,
+        currentBid: result.state.currentBid,
+        teamId: '',
+        biddingTeamId: '',
+        teamName: '',
+        biddingTeamName: '',
+        shortName: '',
+        logoUrl: '',
+        player: result.player,
+        currentPlayer: result.player,
+        status: 'bidding',
+        playerStatus: 'bidding',
+        version: result.state.version,
+        isRemote: false,
+        bidSource: 'onsite',
+        isAwaitingTeam: true,
+        biddingActive: isBiddingActive(organizerId)
+      };
+
+      let broadcaster = io.to("organizer:" + organizerId);
+      if (tournamentId) broadcaster = broadcaster.to("tournament:" + tournamentId);
+      broadcaster.emit('updateAudienceScreen', commonBidPayload);
+    }
+
+    res.json(result);
+  } catch (error) {
+    sendAuctionError(res, error);
+  }
 });
 
 router.post('/reset-bid', async (req, res) => {
@@ -255,6 +306,7 @@ router.post('/reset-bid', async (req, res) => {
         version: result.state.version,
         isRemote: false,
         bidSource: 'onsite',
+        isAwaitingTeam: false,
         biddingActive: isBiddingActive(organizerId)
       };
 

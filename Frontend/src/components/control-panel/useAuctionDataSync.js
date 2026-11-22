@@ -22,6 +22,8 @@ export function useAuctionDataSync({
   setTeams,
   normalizeCategory,
   normalizeTeam,
+  setIsAwaitingTeam,
+  isAwaitingTeamRef,
 }) {
   const fetchTeamsWithMaxBid = useCallback(async () => {
     try {
@@ -59,9 +61,15 @@ export function useAuctionDataSync({
         const activePlayer = allPlayersPayload.find((player) => String(player._id) === String(authoritativeState.activePlayer._id)) || authoritativeState.activePlayer;
         setCurrentPlayer(activePlayer);
         currentPlayerRef.current = activePlayer;
-        setCurrentBid(Number(authoritativeState.currentBid || activePlayer.basePrice || 0));
-        setBiddingTeam(authoritativeState.highestBidder?._id || authoritativeState.highestBidder || '');
-        setHasBiddingStarted(Boolean(authoritativeState.highestBidder));
+        const basePrice = Number(activePlayer.basePrice || 0);
+        const stateBid = Number(authoritativeState.currentBid || basePrice);
+        const hbId = authoritativeState.highestBidder?._id || authoritativeState.highestBidder || '';
+        const awaiting = Boolean(authoritativeState.isAwaitingTeam || (!hbId && stateBid > basePrice));
+        if (setIsAwaitingTeam) setIsAwaitingTeam(awaiting);
+        if (isAwaitingTeamRef) isAwaitingTeamRef.current = awaiting;
+        setCurrentBid(stateBid);
+        setBiddingTeam(awaiting ? '' : hbId);
+        setHasBiddingStarted(Boolean(hbId && !awaiting));
         setPlayerStatus('bidding');
         playerStatusRef.current = 'bidding';
         const sVer = Number(authoritativeState.version);
