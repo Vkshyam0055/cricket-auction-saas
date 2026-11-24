@@ -262,6 +262,22 @@ router.post('/common-bid', async (req, res) => {
   }
 });
 
+// Advisory preview for the organizer control panel. Bid submission always
+// re-evaluates this amount against the latest state and version on the server.
+router.get('/next-bid-preview', async (req, res) => {
+  if (req.teamOwner) return res.status(403).json({ message: 'Only organizer can view the control-panel bid preview.' });
+  try {
+    const preview = await auctionService.getNextBidPreview({
+      organizerId: req.user.id,
+      tournamentScope: req.tournamentScope,
+      playerId: req.query.playerId
+    });
+    res.json(preview);
+  } catch (error) {
+    sendAuctionError(res, error);
+  }
+});
+
 router.post('/reset-bid', async (req, res) => {
   if (req.teamOwner) return res.status(403).json({ message: 'Only organizer can reset bid.' });
   try {

@@ -120,6 +120,8 @@ function ControlPanel() {
   const [jumpBidTeam, setJumpBidTeam] = useState('');
   const [teamSearch, setTeamSearch] = useState('');
   const [teamFilter, setTeamFilter] = useState('all');
+  const [nextBidPreview, setNextBidPreview] = useState(null);
+  const [isNextBidPreviewLoading, setIsNextBidPreviewLoading] = useState(false);
 
   // 🌟 DYNAMIC BID BUTTONS VALUES 🌟
   const btn1 = tournament?.bidButton1 || 500;
@@ -128,6 +130,38 @@ function ControlPanel() {
   const biddingButtonsCount = tournament?.biddingButtonsCount || 3;
 
   const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString()}`;
+
+  // Preview is read from the same server-side slab calculator used by Common BID.
+  // It is deliberately advisory: the bid action revalidates its state/version.
+  useEffect(() => {
+    let cancelled = false;
+    if (!currentPlayer?._id || playerStatus !== 'bidding') {
+      setNextBidPreview(null);
+      setIsNextBidPreviewLoading(false);
+      return undefined;
+    }
+
+    const loadPreview = async () => {
+      setIsNextBidPreviewLoading(true);
+      try {
+        const token = localStorage.getItem('token');
+        const response = await apiRequest({
+          method: 'get',
+          path: `/api/auction/next-bid-preview?playerId=${encodeURIComponent(currentPlayer._id)}`,
+          headers: { Authorization: `Bearer ${token}` },
+          skipAuthRedirect: true
+        });
+        if (!cancelled) setNextBidPreview(Number(response.data?.nextBid) || null);
+      } catch {
+        if (!cancelled) setNextBidPreview(null);
+      } finally {
+        if (!cancelled) setIsNextBidPreviewLoading(false);
+      }
+    };
+
+    loadPreview();
+    return () => { cancelled = true; };
+  }, [currentPlayer?._id, currentBid, auctionVersion, playerStatus]);
 
   const resolveTeam = useCallback((teamRef) => {
     if (!teamRef) return null;
@@ -754,7 +788,8 @@ function ControlPanel() {
       if (!matchesSearch) return false;
 
       if (teamFilter === 'can-bid') {
-        return currentBid + btn1 <= Number(team.maxBid || 0) && Number(team.remainingPurse || 0) >= currentBid + btn1;
+        const requiredBid = nextBidPreview || currentBid;
+        return requiredBid <= Number(team.maxBid || 0) && Number(team.remainingPurse || 0) >= requiredBid;
       }
       if (teamFilter === 'low-purse') {
         return Number(team.remainingPurse || 0) < 100000;
@@ -767,7 +802,7 @@ function ControlPanel() {
       }
       return true;
     });
-  }, [teams, teamSearch, teamFilter, currentBid, btn1, activeBiddingList, resolveTeam]);
+  }, [teams, teamSearch, teamFilter, currentBid, nextBidPreview, activeBiddingList, resolveTeam]);
 
   return (
     <div className="h-screen bg-slate-100 flex flex-col overflow-hidden text-slate-900 select-none">
@@ -788,8 +823,8 @@ function ControlPanel() {
         openResultsModal={openResultsModal}
         setShowSettingsModal={setShowSettingsModal}
         navigate={navigate}
-      />
-
+      />
+
       {/* 🌟 MAIN OPERATOR WORKSPACE 🌟 */}
       <main className="flex-1 min-h-0 p-2.5 lg:p-3 overflow-hidden">
         {screenView === 'break' ? (
@@ -861,6 +896,8 @@ function ControlPanel() {
                 isCommonBidProcessing={isCommonBidProcessing}
                 isAwaitingTeam={isAwaitingTeam}
                 playerStatus={playerStatus}
+                nextBidPreview={nextBidPreview}
+                isNextBidPreviewLoading={isNextBidPreviewLoading}
               />
 
                             {/* 🌟 ACTIVE BIDDERS ZONE (MAX 4 TEAMS) (REQUIREMENT 3) 🌟 */}
@@ -869,12 +906,8 @@ function ControlPanel() {
                 biddingTeam={biddingTeam}
                 lastBidSource={lastBidSource}
                 formatCurrency={formatCurrency}
-                biddingButtonsCount={biddingButtonsCount}
                 biddingActive={biddingActive}
                 currentBid={currentBid}
-                btn1={btn1}
-                btn2={btn2}
-                btn3={btn3}
                 updateBid={updateBid}
                 isAwaitingTeam={isAwaitingTeam}
               />
@@ -891,10 +924,6 @@ function ControlPanel() {
                 lastBidSource={lastBidSource}
                 activeBiddingTeams={activeBiddingTeams}
                 updateBid={updateBid}
-                btn1={btn1}
-                btn2={btn2}
-                btn3={btn3}
-                biddingButtonsCount={biddingButtonsCount}
                 formatCurrency={formatCurrency}
                 biddingActive={biddingActive}
                 isAwaitingTeam={isAwaitingTeam}

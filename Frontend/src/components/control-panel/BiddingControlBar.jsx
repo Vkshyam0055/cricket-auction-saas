@@ -26,6 +26,8 @@ export default function BiddingControlBar({
   isCommonBidProcessing = false,
   isAwaitingTeam = false,
   playerStatus = 'bidding',
+  nextBidPreview,
+  isNextBidPreviewLoading = false,
 }) {
   return (
     <>
@@ -49,17 +51,23 @@ export default function BiddingControlBar({
                       🔄
                     </button>
                     {handleCommonBid && (
-                      <button
-                        onClick={handleCommonBid}
-                        disabled={isCommonBidProcessing || !biddingActive || playerStatus !== 'bidding' || !currentPlayer}
-                        className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black px-3 py-1.5 rounded-lg shadow-sm active:translate-y-0.5 transition flex items-center gap-1.5 text-xs disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                        title="Auto increment bid without assigning a team"
-                      >
-                        <span>{isCommonBidProcessing ? '⏳' : '⚡'}</span>
-                        <span className="font-extrabold uppercase tracking-wide">
-                          {isCommonBidProcessing ? 'Bidding...' : 'Common BID'}
-                        </span>
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={handleCommonBid}
+                          disabled={isCommonBidProcessing || !biddingActive || playerStatus !== 'bidding' || !currentPlayer}
+                          className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black w-9 h-8 rounded-lg shadow-sm active:translate-y-0.5 transition flex items-center justify-center text-lg disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                          title="Server-calculated next bid without assigning a team"
+                          aria-label="Place common auto-increment bid"
+                        >
+                          {isCommonBidProcessing ? '⏳' : '↑'}
+                        </button>
+                        <div className="min-w-[92px] rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 leading-tight">
+                          <span className="block text-[9px] font-extrabold uppercase tracking-wide text-indigo-500">Next bid</span>
+                          <span className="text-sm font-black text-indigo-800">
+                            {isNextBidPreviewLoading ? '…' : nextBidPreview ? formatCurrency(nextBidPreview) : '—'}
+                          </span>
+                        </div>
+                      </div>
                     )}
                   </div>
 

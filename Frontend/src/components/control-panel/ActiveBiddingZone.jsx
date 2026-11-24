@@ -5,12 +5,8 @@ export default function ActiveBiddingZone({
   biddingTeam,
   lastBidSource,
   formatCurrency,
-  biddingButtonsCount,
   biddingActive,
   currentBid,
-  btn1,
-  btn2,
-  btn3,
   updateBid,
   isAwaitingTeam = false,
 }) {
@@ -89,77 +85,14 @@ export default function ActiveBiddingZone({
                 <span className="text-[9px] text-purple-700 font-semibold">Max {formatCurrency(team.maxBid)}</span>
               </div>
 
-              {/* PRIMARY AUTO BID / CLAIM BUTTON */}
-              <div className="mb-1">
-                <button
-                  disabled={!canTeamBid}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    updateBid(team._id);
-                  }}
-                  className={`w-full py-1 px-1.5 rounded-md font-black text-xs transition flex items-center justify-center gap-1 shadow-2xs ${
-                    isHighestBidder
-                      ? 'bg-amber-200 text-amber-900 cursor-not-allowed opacity-90'
-                      : isAwaitingTeam
-                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white active:translate-y-0.5'
-                        : 'bg-purple-700 hover:bg-purple-800 text-white active:translate-y-0.5'
-                  } disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer`}
-                  title={
-                    isHighestBidder
-                      ? 'Currently leading bidder'
-                      : isAwaitingTeam
-                        ? `Claim bid at ₹${currentBid.toLocaleString()}`
-                        : 'Place bid'
-                  }
-                >
-                  <span>{isHighestBidder ? '👑' : isAwaitingTeam ? '⚡' : '▲'}</span>
-                  <span>
-                    {isHighestBidder
-                      ? 'Leader'
-                      : isAwaitingTeam
-                        ? `Claim ₹${currentBid.toLocaleString()}`
-                        : 'BID'}
-                  </span>
-                </button>
-              </div>
-
-              <div className={`grid ${biddingButtonsCount === 1 ? 'grid-cols-1' : biddingButtonsCount === 2 ? 'grid-cols-2' : 'grid-cols-3'} gap-1`}>
-                {biddingButtonsCount >= 1 && (
-                  <button
-                    disabled={!biddingActive || currentBid + btn1 > Number(team.maxBid || 0) || currentBid + btn1 > Number(team.remainingPurse || 0)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      updateBid(team._id, btn1);
-                    }}
-                    className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
-                  >
-                    {formatCurrency(currentBid + btn1)}
-                  </button>
-                )}
-                {biddingButtonsCount >= 2 && (
-                  <button
-                    disabled={!biddingActive || currentBid + btn2 > Number(team.maxBid || 0) || currentBid + btn2 > Number(team.remainingPurse || 0)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      updateBid(team._id, btn2);
-                    }}
-                    className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
-                  >
-                    {formatCurrency(currentBid + btn2)}
-                  </button>
-                )}
-                {biddingButtonsCount >= 3 && (
-                  <button
-                    disabled={!biddingActive || currentBid + btn3 > Number(team.maxBid || 0) || currentBid + btn3 > Number(team.remainingPurse || 0)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      updateBid(team._id, btn3);
-                    }}
-                    className="bg-purple-100 text-purple-900 font-bold rounded py-0.5 text-[10px] hover:bg-purple-200 border border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
-                  >
-                    {formatCurrency(currentBid + btn3)}
-                  </button>
-                )}
+              <div
+                className={`h-5 rounded-md flex items-center justify-center text-[11px] font-black ${
+                  canTeamBid ? 'bg-purple-700 text-white' : 'bg-purple-100 text-purple-300'
+                }`}
+                title={canTeamBid ? 'Click this team card to place the server-calculated next bid.' : 'This team is not eligible for the current bid.'}
+                aria-label={canTeamBid ? `Select ${team.teamName} for the next bid` : `${team.teamName} is unavailable`}
+              >
+                {isHighestBidder ? '♛' : isAwaitingTeam ? '⚡' : '▲'}
               </div>
             </div>
           );

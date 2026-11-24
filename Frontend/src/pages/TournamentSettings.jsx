@@ -11,7 +11,6 @@ export default function TournamentSettings() {
   
   const [openSection1, setOpenSection1] = useState(true);
   const [openSection2, setOpenSection2] = useState(true);
-  const [openSection3, setOpenSection3] = useState(true);
   const [openSection4, setOpenSection4] = useState(true);
 
   const [formData, setFormData] = useState({
@@ -21,10 +20,6 @@ export default function TournamentSettings() {
     tournamentPoster: '',
     teamBudget: 50000000,
     minPlayersPerTeam: 15,
-    bidButton1: 500,
-    bidButton2: 1000,
-    bidButton3: 5000,
-    biddingButtonsCount: 3,
     autoIncrementSlabs: DEFAULT_AUTO_INCREMENT_SLABS,
   });
 
@@ -42,10 +37,6 @@ export default function TournamentSettings() {
         tournamentPoster: tournament.tournamentPoster || '',
         teamBudget: tournament.teamBudget || 50000000,
         minPlayersPerTeam: tournament.minPlayersPerTeam || 15,
-        bidButton1: tournament.bidButton1 || 500,
-        bidButton2: tournament.bidButton2 || 1000,
-        bidButton3: tournament.bidButton3 || 5000,
-        biddingButtonsCount: tournament.biddingButtonsCount || 3,
         autoIncrementSlabs: tournament.autoIncrementSlabs?.length
           ? tournament.autoIncrementSlabs
           : DEFAULT_AUTO_INCREMENT_SLABS,
@@ -109,10 +100,6 @@ export default function TournamentSettings() {
         tournamentPoster: formData.tournamentPoster,
         teamBudget: formData.teamBudget,
         minPlayersPerTeam: formData.minPlayersPerTeam,
-        bidButton1: formData.bidButton1,
-        bidButton2: formData.bidButton2,
-        bidButton3: formData.bidButton3,
-        biddingButtonsCount: formData.biddingButtonsCount,
         autoIncrementSlabs: formData.autoIncrementSlabs,
         // Preserve existing fields from tournament
         customFields: tournament?.customFields || [],
@@ -133,7 +120,6 @@ export default function TournamentSettings() {
   };
 
   const budgetChanged = formData.teamBudget !== 50000000 || formData.minPlayersPerTeam !== 15;
-  const bidChanged = formData.bidButton1 !== 500 || formData.bidButton2 !== 1000 || formData.bidButton3 !== 5000;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans pb-24">
@@ -249,73 +235,7 @@ export default function TournamentSettings() {
           )}
         </div>
 
-        {/* Section 3 */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
-          <button 
-            onClick={() => setOpenSection3(!openSection3)}
-            className="w-full flex justify-between items-center p-4 bg-slate-800/50 hover:bg-slate-800 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-slate-100">🔨 Auction Bidding Config (नीलामी बोली कॉन्फिग)</h2>
-              {bidChanged && <span className="text-[10px] font-bold bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/30 uppercase">✅ Set</span>}
-            </div>
-            <span className="text-slate-400">{openSection3 ? '▼' : '▶'}</span>
-          </button>
-          
-          {openSection3 && (
-            <div className="p-4 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-1">Number of Bidding Buttons</label>
-                <select 
-                  value={formData.biddingButtonsCount}
-                  onChange={(e) => setFormData({...formData, biddingButtonsCount: Number(e.target.value)})}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-indigo-500 transition-all"
-                >
-                  <option value={1}>1 Button</option>
-                  <option value={2}>2 Buttons</option>
-                  <option value={3}>3 Buttons</option>
-                </select>
-              </div>
-              <div className={`grid ${formData.biddingButtonsCount === 1 ? 'grid-cols-1' : formData.biddingButtonsCount === 2 ? 'grid-cols-2' : 'grid-cols-3'} gap-3`}>
-                {formData.biddingButtonsCount >= 1 && (
-                  <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">Button 1</label>
-                    <input 
-                      type="number" 
-                      value={formData.bidButton1}
-                      onChange={(e) => setFormData({...formData, bidButton1: Number(e.target.value)})}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-2.5 text-center text-slate-100 focus:outline-none focus:border-indigo-500 transition-all"
-                    />
-                  </div>
-                )}
-                {formData.biddingButtonsCount >= 2 && (
-                  <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">Button 2</label>
-                    <input 
-                      type="number" 
-                      value={formData.bidButton2}
-                      onChange={(e) => setFormData({...formData, bidButton2: Number(e.target.value)})}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-2.5 text-center text-slate-100 focus:outline-none focus:border-indigo-500 transition-all"
-                    />
-                  </div>
-                )}
-                {formData.biddingButtonsCount >= 3 && (
-                  <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">Button 3</label>
-                    <input 
-                      type="number" 
-                      value={formData.bidButton3}
-                      onChange={(e) => setFormData({...formData, bidButton3: Number(e.target.value)})}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-2.5 text-center text-slate-100 focus:outline-none focus:border-indigo-500 transition-all"
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Section 4: Auto Increment Slabs */}
+        {/* Auto Increment Slabs */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
           <button 
             type="button"

@@ -91,6 +91,37 @@ const getStatePayload = async ({ organizerId, tournamentScope }) => {
   return { ...doc, isAwaitingTeam: isAwaiting };
 };
 
+// Read-only helper for the operator UI. The value is advisory only: every bid
+// still recalculates against the latest persisted auction state in placeBid.
+const getNextBidPreview = async ({ organizerId, tournamentScope, playerId }) => {
+  const scope = resolveScope(tournamentScope);
+  const stateQuery = {
+    organizer: organizerId,
+    tournament: scope.tournamentId,
+    status: 'bidding'
+  };
+  if (playerId && mongoose.Types.ObjectId.isValid(playerId)) stateQuery.activePlayer = playerId;
+
+  const state = await AuctionState.findOne(stateQuery).lean();
+  if (!state || !state.activePlayer) throw auctionError('AUCTION_NOT_ACTIVE', 409, 'No active player for bidding.');
+
+  const tournament = await Tournament.findOne({ _id: scope.tournamentId, organizer: organizerId }).lean();
+  if (!tournament) throw auctionError('AUCTION_REFERENCE_NOT_FOUND', 404, 'Tournament was not found.');
+
+  const autoInc = calculateAutoIncrement({
+    currentBid: state.currentBid,
+    teamPurse: Number(tournament.teamBudget || 50000000),
+    slabs: getEffectiveAutoIncrementSlabs(tournament)
+  });
+
+  return {
+    currentBid: Number(state.currentBid),
+    nextBid: autoInc.nextBid,
+    incrementAmount: autoInc.rupeeIncrement,
+    version: state.version
+  };
+};
+
 const startAuction = async ({ organizerId, tournamentScope, playerId }) => {
   const scope = resolveScope(tournamentScope);
   const player = await Player.findOne(mergeWithTournamentScope({
@@ -356,4 +387,4 @@ const resetAuctionBid = async ({ organizerId, tournamentScope, playerId, expecte
   return { state: updated, player };
 };
 
-module.exports = { auctionError, configuredIncrements, assertExpectedVersion, calculateNextBid, getStatePayload, startAuction, placeBid, placeCommonBid, resetAuctionBid };
+module.exports = { auctionError, configuredIncrements, assertExpectedVersion, calculateNextBid, getStatePayload, getNextBidPreview, startAuction, placeBid, placeCommonBid, resetAuctionBid };
