@@ -45,7 +45,7 @@ function LiveScreen() {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    if (!token) return;
+    if (!token || !tournament?._id) return;
 
     const fetchAuctionState = () => {
       apiRequest({
@@ -93,7 +93,7 @@ function LiveScreen() {
     fetchAuctionState();
 
     const socket = io(getSocketBaseUrl(), {
-      auth: { token }
+      auth: { token, tournamentId: tournament._id }
     });
 
     socket.on('connect', () => {
@@ -189,7 +189,7 @@ function LiveScreen() {
       socket.off('connect_error');
       socket.disconnect();
     };
-  }, [navigate]);
+  }, [navigate, tournament?._id]);
 
   const modeTheme = DISPLAY_MODES[displayMode] || DISPLAY_MODES.night;
   const photoWidthClass = PHOTO_SIZE_CLASS[photoSize] || PHOTO_SIZE_CLASS.medium;

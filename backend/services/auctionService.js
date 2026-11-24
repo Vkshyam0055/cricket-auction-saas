@@ -104,7 +104,8 @@ const startAuction = async ({ organizerId, tournamentScope, playerId }) => {
 
   const activeState = await AuctionState.findOne({ organizer: organizerId, tournament: scope.tournamentId, status: 'bidding' }).lean();
   if (activeState && String(activeState.activePlayer) !== String(player._id)) {
-    if (activeState.highestBidder) {
+    const isUnbidLoadedPlayer = !activeState.highestBidder && !activeState.isAwaitingTeam;
+    if (!isUnbidLoadedPlayer) {
       throw auctionError('AUCTION_ALREADY_ACTIVE', 409, 'Another player is already active for bidding.');
     }
   }
@@ -115,7 +116,7 @@ const startAuction = async ({ organizerId, tournamentScope, playerId }) => {
       tournament: scope.tournamentId,
       $or: [
         { status: { $ne: 'bidding' } },
-        { highestBidder: null }
+        { highestBidder: null, isAwaitingTeam: false }
       ]
     },
     {
@@ -193,9 +194,6 @@ const placeBid = async ({ organizerId, tournamentScope, teamId, playerId, amount
   }
 
   const [teamWithMaxBid] = decorateTeamsWithMaxBid({ teams: [team], auctionState, currentBasePrice: player.basePrice });
-  if (teamWithMaxBid.remainingRequiredPlayers <= 0) {
-    throw auctionError('SQUAD_FULL', 409, 'Team squad is full.');
-  }
   if (nextBid > Number(teamWithMaxBid.remainingPurse || 0) || nextBid > Number(teamWithMaxBid.maxBid || 0)) {
     throw auctionError('BID_LIMIT_EXCEEDED', 409, 'Bid exceeds the team purse or maximum permitted bid.');
   }
@@ -294,7 +292,6 @@ const placeCommonBid = async ({ organizerId, tournamentScope, playerId, expected
   });
 
   const affordableTeams = decoratedTeams.filter(t =>
-    t.remainingRequiredPlayers > 0 &&
     Number(t.remainingPurse || 0) >= nextBid &&
     Number(t.maxBid || 0) >= nextBid
   );

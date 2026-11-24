@@ -329,8 +329,8 @@ describe('Phase 3: Backend Common BID & Bid Claiming Logic Test Suite', () => {
       assert.equal(mockAuctionState.version, 1);
     });
 
-    test('1E. Common BID rejects action if all teams have full squads', async () => {
-      // Simulate teams having full squads: owned 15 of 15 players
+    test('1E. Common BID allows teams that have already fulfilled the minimum squad requirement', async () => {
+      // Teams already own the required 15 players, but may still purchase more.
       Player.aggregate = () => ({
         session: async () => [
           { _id: mockTeam1._id, count: 15 },
@@ -338,20 +338,13 @@ describe('Phase 3: Backend Common BID & Bid Claiming Logic Test Suite', () => {
         ]
       });
 
-      await assert.rejects(
-        async () => {
-          await auctionService.placeCommonBid({
-            organizerId,
-            tournamentScope: { tournamentId },
-            playerId,
-            expectedVersion: 1
-          });
-        },
-        (err) => {
-          assert.equal(err.message, 'NO_ELIGIBLE_TEAMS');
-          return true;
-        }
-      );
+      const result = await auctionService.placeCommonBid({
+        organizerId,
+        tournamentScope: { tournamentId },
+        playerId,
+        expectedVersion: 1
+      });
+      assert.equal(result.state.isAwaitingTeam, true);
     });
 
     test('1F. Common BID rejects stale expectedVersion', async () => {
@@ -491,8 +484,8 @@ describe('Phase 3: Backend Common BID & Bid Claiming Logic Test Suite', () => {
       );
     });
 
-    test('2E. Case D (Squad Full): Rejects when team squad is full', async () => {
-      // Team 2 has 15 owned players
+    test('2E. Case D: Team that fulfilled its minimum squad can still bid', async () => {
+      // Team 2 has 15 owned players, satisfying its minimum but not a maximum.
       Player.aggregate = () => ({
         session: async () => [
           { _id: mockTeam2._id, count: 15 }
@@ -503,22 +496,14 @@ describe('Phase 3: Backend Common BID & Bid Claiming Logic Test Suite', () => {
       mockAuctionState.highestBidder = mockTeam1._id;
       mockAuctionState.version = 2;
 
-      await assert.rejects(
-        async () => {
-          await auctionService.placeBid({
-            organizerId,
-            tournamentScope: { tournamentId },
-            teamId: team2Id,
-            playerId,
-            expectedVersion: 2
-          });
-        },
-        (err) => {
-          assert.equal(err.message, 'SQUAD_FULL');
-          assert.equal(err.statusCode, 409);
-          return true;
-        }
-      );
+      const result = await auctionService.placeBid({
+        organizerId,
+        tournamentScope: { tournamentId },
+        teamId: team2Id,
+        playerId,
+        expectedVersion: 2
+      });
+      assert.equal(String(result.state.highestBidder), String(team2Id));
     });
   });
 
@@ -834,6 +819,55 @@ describe('Phase 3: Backend Common BID & Bid Claiming Logic Test Suite', () => {
       assert.ok(audienceEvent, 'updateAudienceScreen must be emitted');
       assert.equal(audienceEvent.payload.isAwaitingTeam, false);
       assert.equal(audienceEvent.payload.currentBid, basePrice);
+    });
+  });
+
+  describe('6. NEXT PLAYER unbid skip behavior', () => {
+    test('6A. An unbid loaded player can be replaced repeatedly without changing team purse', async () => {
+      const playerA = { ...mockPlayer, _id: new mongoose.Types.ObjectId(), name: 'Player A' };
+      const playerB = { ...mockPlayer, _id: new mongoose.Types.ObjectId(), name: 'Player B' };
+      const playerC = { ...mockPlayer, _id: new mongoose.Types.ObjectId(), name: 'Player C' };
+      const players = new Map([[String(playerA._id), playerA], [String(playerB._id), playerB], [String(playerC._id), playerC]]);
+      const pursesBefore = [mockTeam1.remainingPurse, mockTeam2.remainingPurse];
+
+      mockAuctionState.activePlayer = playerA._id;
+      mockAuctionState.currentBid = playerA.basePrice;
+      mockAuctionState.highestBidder = null;
+      mockAuctionState.isAwaitingTeam = false;
+      mockAuctionState.status = 'bidding';
+
+      Player.findOne = (query) => {
+        const id = query?._id || query?.$and?.find((clause) => clause?._id)?._id;
+        return { lean: async () => ({ ...players.get(String(id)) }) };
+      };
+
+      const second = await auctionService.startAuction({ organizerId, tournamentScope: { tournamentId }, playerId: playerB._id });
+      const third = await auctionService.startAuction({ organizerId, tournamentScope: { tournamentId }, playerId: playerC._id });
+
+      assert.equal(String(second.player._id), String(playerB._id));
+      assert.equal(String(third.player._id), String(playerC._id));
+      assert.equal(mockAuctionState.status, 'bidding');
+      assert.equal(mockAuctionState.highestBidder, null);
+      assert.deepEqual([mockTeam1.remainingPurse, mockTeam2.remainingPurse], pursesBefore);
+    });
+
+    test('6B. NEXT PLAYER remains blocked after a Common BID or a team bid', async () => {
+      const nextPlayer = { ...mockPlayer, _id: new mongoose.Types.ObjectId(), name: 'Next Player' };
+      Player.findOne = () => ({ lean: async () => ({ ...nextPlayer }) });
+
+      mockAuctionState.isAwaitingTeam = true;
+      mockAuctionState.highestBidder = null;
+      await assert.rejects(
+        () => auctionService.startAuction({ organizerId, tournamentScope: { tournamentId }, playerId: nextPlayer._id }),
+        (error) => error.message === 'AUCTION_ALREADY_ACTIVE'
+      );
+
+      mockAuctionState.isAwaitingTeam = false;
+      mockAuctionState.highestBidder = mockTeam1._id;
+      await assert.rejects(
+        () => auctionService.startAuction({ organizerId, tournamentScope: { tournamentId }, playerId: nextPlayer._id }),
+        (error) => error.message === 'AUCTION_ALREADY_ACTIVE'
+      );
     });
   });
 });

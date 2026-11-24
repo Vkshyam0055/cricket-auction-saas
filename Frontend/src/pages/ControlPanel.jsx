@@ -232,6 +232,7 @@ function ControlPanel() {
     normalizeTeam,
     setIsAwaitingTeam,
     isAwaitingTeamRef,
+    tournamentId: tournament?._id,
   });
 
   useControlPanelSocket({

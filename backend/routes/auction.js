@@ -120,11 +120,6 @@ router.post('/start', async (req, res) => {
     setBiddingActive(req.user.id, false);
     const io = req.app.get('io');
     if (io) {
-      io.to("organizer:" + req.user.id).emit('biddingStateUpdate', {
-        biddingActive: false,
-        organizerId: req.user.id,
-        tournamentId: req.tournamentScope?.tournamentId
-      });
       if (req.tournamentScope?.tournamentId) {
         io.to(`tournament:${req.tournamentScope.tournamentId}`).emit('biddingStateUpdate', {
           biddingActive: false,
@@ -145,11 +140,6 @@ router.post('/toggle-bidding', async (req, res) => {
     setBiddingActive(req.user.id, active);
     const io = req.app.get('io');
     if (io) {
-      io.to("organizer:" + req.user.id).emit('biddingStateUpdate', {
-        biddingActive: active,
-        organizerId: req.user.id,
-        tournamentId: req.tournamentScope?.tournamentId
-      });
       if (req.tournamentScope?.tournamentId) {
         io.to(`tournament:${req.tournamentScope.tournamentId}`).emit('biddingStateUpdate', {
           biddingActive: active,
@@ -218,9 +208,7 @@ router.post('/bid', async (req, res) => {
         biddingActive: isBiddingActive(organizerId)
       };
 
-      let broadcaster = io.to("organizer:" + organizerId);
-      if (tournamentId) broadcaster = broadcaster.to("tournament:" + tournamentId);
-      broadcaster.emit('updateAudienceScreen', liveBidPayload);
+      io.to(`tournament:${tournamentId}`).emit('updateAudienceScreen', liveBidPayload);
     }
 
     res.json(result);
@@ -265,9 +253,7 @@ router.post('/common-bid', async (req, res) => {
         biddingActive: isBiddingActive(organizerId)
       };
 
-      let broadcaster = io.to("organizer:" + organizerId);
-      if (tournamentId) broadcaster = broadcaster.to("tournament:" + tournamentId);
-      broadcaster.emit('updateAudienceScreen', commonBidPayload);
+      io.to(`tournament:${tournamentId}`).emit('updateAudienceScreen', commonBidPayload);
     }
 
     res.json(result);
@@ -310,9 +296,7 @@ router.post('/reset-bid', async (req, res) => {
         biddingActive: isBiddingActive(organizerId)
       };
 
-      let broadcaster = io.to("organizer:" + organizerId);
-      if (tournamentId) broadcaster = broadcaster.to("tournament:" + tournamentId);
-      broadcaster.emit('updateAudienceScreen', resetPayload);
+      io.to(`tournament:${tournamentId}`).emit('updateAudienceScreen', resetPayload);
     }
 
     res.json(result);

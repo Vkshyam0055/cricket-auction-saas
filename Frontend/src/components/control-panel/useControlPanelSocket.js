@@ -35,15 +35,16 @@ export function useControlPanelSocket({
   selectedSquadTeam,
   setIsAwaitingTeam,
   isAwaitingTeamRef,
+  tournamentId,
 }) {
   const internalVersionRef = useRef(0);
   const versionRef = auctionVersionRef || internalVersionRef;
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    if (!token) return;
+    if (!token || !tournamentId) return;
     const socket = io(getSocketBaseUrl(), {
-      auth: { token, clientType: 'operator' }
+      auth: { token, clientType: 'operator', tournamentId }
     });
     socketRef.current = socket;
 
@@ -181,6 +182,7 @@ export function useControlPanelSocket({
     setSelectedSquadTeam,
     configVersionRef,
     lastSyncedConfigRef
+    , tournamentId
   ]);
 
   useEffect(() => {

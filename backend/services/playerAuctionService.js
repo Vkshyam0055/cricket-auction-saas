@@ -45,17 +45,36 @@ const sellPlayer = async ({ organizerId, tournamentScope, playerId, teamId, team
                 throw new Error('PLAYER_NOT_ELIGIBLE');
             }
 
+            const activeState = await AuctionState.findOne({
+                organizer: organizerId,
+                tournament: tournamentScope.tournamentId,
+                activePlayer: player._id,
+                status: 'bidding',
+                isAwaitingTeam: { $ne: true },
+                highestBidder: { $ne: null }
+            }).session(session).lean();
+            if (!activeState) throw new Error('NO_LEADING_BID');
+
+            const authoritativePrice = Number(activeState.currentBid);
+            if (!Number.isFinite(authoritativePrice) || numericSoldPrice !== authoritativePrice) {
+                throw new Error('SOLD_PRICE_MISMATCH');
+            }
+
+            if (teamId && String(teamId) !== String(activeState.highestBidder)) {
+                throw new Error('LEADING_TEAM_MISMATCH');
+            }
+
             const teamWithMaxBid = await getTeamWithDynamicMaxBid({
                 organizerId,
                 tournamentScope,
-                teamId,
-                teamName,
+                teamId: activeState.highestBidder,
+                teamName: null,
                 currentBasePrice: player.basePrice,
                 session
             });
             if (!teamWithMaxBid) throw new Error('TEAM_NOT_FOUND');
 
-            if (numericSoldPrice > teamWithMaxBid.maxBid) {
+            if (authoritativePrice > teamWithMaxBid.maxBid) {
                 const displayName = teamWithMaxBid.teamName || teamName || 'Team';
                 const err = new Error('MAX_BID_BLOCK');
                 err.meta = {
@@ -70,16 +89,16 @@ const sellPlayer = async ({ organizerId, tournamentScope, playerId, teamId, team
                 mergeWithTournamentScope({
                     _id: teamWithMaxBid._id,
                     organizer: organizerId,
-                    remainingPurse: { $gte: numericSoldPrice }
+                    remainingPurse: { $gte: authoritativePrice }
                 }, tournamentScope),
-                { $inc: { remainingPurse: -numericSoldPrice } },
+                { $inc: { remainingPurse: -authoritativePrice } },
                 { new: true, session }
             );
 
             if (!teamUpdate) throw new Error('PURSE_CONFLICT');
 
             player.soldTo = teamWithMaxBid._id;
-            player.soldPrice = numericSoldPrice;
+            player.soldPrice = authoritativePrice;
             player.auctionStatus = 'Sold';
             await player.save({ session });
 
@@ -89,16 +108,15 @@ const sellPlayer = async ({ organizerId, tournamentScope, playerId, teamId, team
                     tournament: tournamentScope.tournamentId,
                     activePlayer: player._id,
                     status: 'bidding',
-                    $or: [
-                        { highestBidder: teamWithMaxBid._id },
-                        { highestBidder: null, currentBid: numericSoldPrice }
-                    ]
+                    highestBidder: teamWithMaxBid._id,
+                    currentBid: authoritativePrice,
+                    isAwaitingTeam: { $ne: true }
                 },
                 {
                     $set: {
                         status: 'sold',
                         highestBidder: teamWithMaxBid._id,
-                        currentBid: numericSoldPrice,
+                        currentBid: authoritativePrice,
                         isAwaitingTeam: false
                     },
                     $inc: { version: 1 }

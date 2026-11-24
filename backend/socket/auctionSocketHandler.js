@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const Tournament = require('../models/Tournament');
 const Team = require('../models/Team');
 const User = require('../models/User');
@@ -67,6 +68,20 @@ function initAuctionSockets(io) {
             }
         }
 
+        if (socket.role === 'Organizer') {
+            const requestedTournamentId = socket.handshake.auth?.tournamentId;
+            if (!requestedTournamentId || !mongoose.Types.ObjectId.isValid(requestedTournamentId)) {
+                socket.emit('sessionExpired', { message: 'Tournament scope is required.' });
+                return socket.disconnect(true);
+            }
+            const tournament = await Tournament.findOne({ _id: requestedTournamentId, organizer: socket.organizerId }).select('_id').lean();
+            if (!tournament) {
+                socket.emit('sessionExpired', { message: 'Invalid tournament scope.' });
+                return socket.disconnect(true);
+            }
+            socket.tournamentId = String(tournament._id);
+        }
+
         const expiryMs = (Number(socket.tokenExp || 0) * 1000) - Date.now();
         if (expiryMs <= 0) {
             socket.emit('sessionExpired', { message: 'Session expired' });
@@ -120,7 +135,7 @@ function initAuctionSockets(io) {
         });
 
         const room = `organizer:${socket.organizerId}`;
-        const organizerKey = String(socket.organizerId);
+        const tournamentKey = String(socket.tournamentId);
         socket.join(room);
 
         let tournamentRoom = socket.tournamentId ? `tournament:${socket.tournamentId}` : null;
@@ -131,13 +146,13 @@ function initAuctionSockets(io) {
         const broadcastToTournament = (event, data, includeSender = true) => {
             if (includeSender) {
                 if (tournamentRoom) {
-                    io.to(room).to(tournamentRoom).emit(event, data);
+                    io.to(tournamentRoom).emit(event, data);
                 } else {
                     io.to(room).emit(event, data);
                 }
             } else {
                 if (tournamentRoom) {
-                    socket.to(room).to(tournamentRoom).emit(event, data);
+                    socket.to(tournamentRoom).emit(event, data);
                 } else {
                     socket.to(room).emit(event, data);
                 }
@@ -146,7 +161,7 @@ function initAuctionSockets(io) {
 
         console.log(`⚡ organizer ${socket.organizerId} connected to live socket`);
         socket.emit('activeBiddingSync', {
-            lastBidActions: organizerActiveBids.get(organizerKey) || []
+            lastBidActions: organizerActiveBids.get(tournamentKey) || []
         });
         const defaultScreenConfig = {
             displayMode: 'night',
@@ -158,22 +173,17 @@ function initAuctionSockets(io) {
             version: 0,
             updatedAtMs: 0
         };
-        socket.emit('liveScreenConfigSync', organizerScreenConfigs.get(organizerKey) || defaultScreenConfig);
-        socket.emit('breakDataSnapshotSync', organizerBreakSnapshots.get(organizerKey) || null);
+        socket.emit('liveScreenConfigSync', organizerScreenConfigs.get(tournamentKey) || defaultScreenConfig);
+        socket.emit('breakDataSnapshotSync', organizerBreakSnapshots.get(tournamentKey) || null);
 
-        Tournament.findOne({ organizer: socket.organizerId })
+        Tournament.findOne({ _id: socket.tournamentId, organizer: socket.organizerId })
             .select('_id liveScreenConfig')
             .lean()
             .then((tournament) => {
                 if (!tournament) return;
-                if (!tournamentRoom) {
-                    socket.tournamentId = String(tournament._id);
-                    tournamentRoom = `tournament:${tournament._id}`;
-                    socket.join(tournamentRoom);
-                }
                 if (tournament.liveScreenConfig) {
                     const persistedConfig = { ...defaultScreenConfig, ...tournament.liveScreenConfig };
-                    organizerScreenConfigs.set(organizerKey, persistedConfig);
+                    organizerScreenConfigs.set(tournamentKey, persistedConfig);
                     broadcastToTournament('liveScreenConfigSync', persistedConfig);
                 }
             })
@@ -269,10 +279,10 @@ function initAuctionSockets(io) {
                     isAwaitingTeam: false
                 };
 
-                const current = organizerActiveBids.get(organizerKey) || [];
+                const current = organizerActiveBids.get(tournamentKey) || [];
                 const filteredCurrent = current.filter((id) => String(id) !== String(result.team._id) && String(id) !== String(result.team.teamName));
                 const nextList = [...filteredCurrent, String(result.team._id)].slice(-4);
-                organizerActiveBids.set(organizerKey, nextList);
+                organizerActiveBids.set(tournamentKey, nextList);
 
                 broadcastToTournament('updateAudienceScreen', liveBidPayload);
                 broadcastToTournament('activeBiddingUpdate', { lastBidActions: nextList });
@@ -333,7 +343,7 @@ function initAuctionSockets(io) {
         socket.on('activeBiddingUpdate', (payload = {}) => {
             if (socket.role === 'TeamOwner') return;
 
-            const current = organizerActiveBids.get(organizerKey) || [];
+            const current = organizerActiveBids.get(tournamentKey) || [];
             let next = current;
 
             if (payload.type === 'replace') {
@@ -348,14 +358,14 @@ function initAuctionSockets(io) {
                 return;
             }
 
-            organizerActiveBids.set(organizerKey, next);
+            organizerActiveBids.set(tournamentKey, next);
             broadcastToTournament('activeBiddingUpdate', { lastBidActions: next });
         });
 
         socket.on('liveScreenConfigUpdate', async (payload = {}) => {
             if (socket.role === 'TeamOwner') return;
 
-            const currentConfig = organizerScreenConfigs.get(organizerKey) || defaultScreenConfig;
+            const currentConfig = organizerScreenConfigs.get(tournamentKey) || defaultScreenConfig;
             const incomingVersion = Number(payload.version || 0);
             if (incomingVersion < Number(currentConfig.version || 0)) {
                 return;
@@ -371,7 +381,7 @@ function initAuctionSockets(io) {
                 updatedAtMs: Number(payload.updatedAtMs || Date.now())
             };
 
-            organizerScreenConfigs.set(organizerKey, nextConfig);
+            organizerScreenConfigs.set(tournamentKey, nextConfig);
             broadcastToTournament('liveScreenConfigUpdate', nextConfig);
 
             if (nextConfig.screenView === 'break') {
@@ -384,7 +394,7 @@ function initAuctionSockets(io) {
             }
 
             Tournament.findOneAndUpdate(
-                { organizer: socket.organizerId },
+                { _id: socket.tournamentId, organizer: socket.organizerId },
                 { $set: { liveScreenConfig: nextConfig } },
                 { returnDocument: 'after' }
             ).catch((error) => {
@@ -396,7 +406,7 @@ function initAuctionSockets(io) {
             if (socket.role === 'TeamOwner') return;
 
             if (!payload || typeof payload !== 'object') return;
-            organizerBreakSnapshots.set(organizerKey, payload);
+            organizerBreakSnapshots.set(tournamentKey, payload);
             broadcastToTournament('breakDataSnapshotUpdate', payload);
         });
 
@@ -407,7 +417,7 @@ function initAuctionSockets(io) {
             }
 
             const active = Boolean(payload?.active);
-            const currentConfig = organizerScreenConfigs.get(organizerKey);
+            const currentConfig = organizerScreenConfigs.get(tournamentKey);
             if (active && currentConfig?.screenView === 'break') {
                 if (typeof callback === 'function') {
                     callback({ success: false, message: 'Cannot start bidding while viewing Break Content.' });

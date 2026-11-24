@@ -283,7 +283,7 @@ router.put('/sell/:id', async (req, res) => {
         if (error.message === 'PLAYER_NOT_FOUND') return res.status(404).json({ message: 'Player not found' });
         if (error.message === 'TEAM_NOT_FOUND') return res.status(404).json({ message: 'Team not found' });
         if (error.message === 'PLAYER_NOT_ELIGIBLE') return res.status(409).json({ message: 'Player is not eligible to be sold right now' });
-        if (error.message === 'PURSE_CONFLICT' || error.message === 'AUCTION_STATE_CONFLICT') return res.status(409).json({ message: 'Auction state changed, please refresh and retry.' });
+        if (['PURSE_CONFLICT', 'AUCTION_STATE_CONFLICT', 'NO_LEADING_BID', 'LEADING_TEAM_MISMATCH', 'SOLD_PRICE_MISMATCH'].includes(error.message)) return res.status(409).json({ message: 'Auction state changed, please refresh and retry.' });
         if (error.message === 'MAX_BID_BLOCK') return res.status(400).json(error.meta);
         return res.status(500).json({ message: 'एरर!' });
     }
