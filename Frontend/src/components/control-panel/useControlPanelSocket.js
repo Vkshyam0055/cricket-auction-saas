@@ -35,6 +35,9 @@ export function useControlPanelSocket({
   selectedSquadTeam,
   setIsAwaitingTeam,
   isAwaitingTeamRef,
+  setCurrentPlayer,
+  setPlayerStatus,
+  playerStatusRef,
   tournamentId,
 }) {
   const internalVersionRef = useRef(0);
@@ -49,26 +52,60 @@ export function useControlPanelSocket({
     socketRef.current = socket;
 
     socket.on('biddingStateUpdate', (data) => {
+      if (data?.tournamentId && String(data.tournamentId) !== String(tournamentId)) return;
       if (data && typeof data.biddingActive === 'boolean') {
         setBiddingActive(data.biddingActive);
       }
     });
 
     socket.on('updateAudienceScreen', (data) => {
-      if (data && data.bidAmount !== undefined) {
-        const incomingVersion = Number(data.version);
-        const hasValidVersion = data.version !== undefined && data.version !== null && Number.isFinite(incomingVersion) && incomingVersion > 0;
+      if (!data) return;
+      if (data.tournamentId && String(data.tournamentId) !== String(tournamentId)) return;
 
-        // Prevent stale echo packets or delayed broadcasts from regressing newer state
-        if (hasValidVersion && incomingVersion < versionRef.current) {
-          return;
+      const incomingVersion = Number(data.version);
+      const hasValidVersion = data.version !== undefined && data.version !== null && Number.isFinite(incomingVersion) && incomingVersion > 0;
+
+      // Prevent stale echo packets, duplicates, or delayed broadcasts from regressing newer state
+      if (hasValidVersion && incomingVersion <= versionRef.current) {
+        return;
+      }
+
+      if (hasValidVersion && incomingVersion > versionRef.current) {
+        versionRef.current = incomingVersion;
+        setAuctionVersion(incomingVersion);
+      }
+
+      const incomingStatus = data.status || data.playerStatus;
+      if (incomingStatus && incomingStatus !== 'bidding') {
+        setHasBiddingStarted(false);
+        if (setIsAwaitingTeam) setIsAwaitingTeam(false);
+        if (isAwaitingTeamRef) isAwaitingTeamRef.current = false;
+        if (incomingStatus === 'idle') {
+          if (setCurrentPlayer) setCurrentPlayer(null);
+          if (currentPlayerRef) currentPlayerRef.current = null;
+          if (setPlayerStatus) setPlayerStatus('bidding');
+          if (playerStatusRef) playerStatusRef.current = 'bidding';
+          setCurrentBid(0);
+          if (currentBidRef) currentBidRef.current = 0;
+          setBiddingTeam('');
+          if (biddingTeamRef) biddingTeamRef.current = '';
+        } else {
+          if (data.player !== undefined && setCurrentPlayer) setCurrentPlayer(data.player);
+          if (data.player !== undefined && currentPlayerRef) currentPlayerRef.current = data.player;
+          if (setPlayerStatus) setPlayerStatus(incomingStatus);
+          if (playerStatusRef) playerStatusRef.current = incomingStatus;
         }
+        return;
+      }
 
-        if (hasValidVersion && incomingVersion > versionRef.current) {
-          versionRef.current = incomingVersion;
-          setAuctionVersion(incomingVersion);
-        }
+      if (data.player !== undefined) {
+        if (setCurrentPlayer) setCurrentPlayer(data.player);
+        if (currentPlayerRef) currentPlayerRef.current = data.player;
+      }
+      if (setPlayerStatus) setPlayerStatus('bidding');
+      if (playerStatusRef) playerStatusRef.current = 'bidding';
 
+      if (data.bidAmount !== undefined) {
         const nextBidVal = Number(data.bidAmount);
         setCurrentBid(nextBidVal);
         if (currentBidRef) currentBidRef.current = nextBidVal;

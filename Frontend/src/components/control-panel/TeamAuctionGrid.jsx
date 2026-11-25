@@ -18,7 +18,7 @@ export default function TeamAuctionGrid({
 }) {
   return (
     <>
-              <div className="flex items-center justify-between gap-2 py-1.5 shrink-0">
+              <div className="flex items-center justify-between gap-2 py-1 shrink-0">
                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
                   <input
                     type="text"
@@ -89,7 +89,7 @@ export default function TeamAuctionGrid({
 
               {/* 🌟 20–50+ TEAMS COMPACT GRID (REQUIREMENTS 2 & 4, PHASE 5) 🌟 */}
               <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1.5 auto-rows-fr">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1">
                   {filteredTeams.map((team) => {
                     const isHighestBidder = !isAwaitingTeam && Boolean(biddingTeam) && (String(biddingTeam) === String(team._id) || biddingTeam === team.teamName);
                     const isSquadFull = team.remainingRequiredPlayers !== undefined && team.remainingRequiredPlayers <= 0;
@@ -103,15 +103,15 @@ export default function TeamAuctionGrid({
                         onClick={() => {
                           if (canTeamBid) updateBid(team._id);
                         }}
-                        className={`rounded-lg border p-1.5 transition-all flex flex-col justify-between ${canTeamBid ? 'cursor-pointer hover:shadow-sm' : ''} ${
+                        className={`rounded-lg border px-1.5 py-1 transition-all flex flex-col justify-between ${canTeamBid ? 'cursor-pointer hover:shadow-sm' : ''} ${
                           isHighestBidder
                             ? 'border-amber-400 bg-amber-50/80 ring-2 ring-amber-400/30 shadow-xs'
                             : 'border-slate-200 bg-white hover:border-blue-300 shadow-2xs'
                         }`}
                       >
                         {/* Team identity and purse */}
-                        <div className="flex justify-between items-center mb-0.5 gap-1">
-                          <div className="flex items-center gap-1.5 min-w-0">
+                        <div className="flex justify-between items-start mb-0.5 gap-1">
+                          <div className="flex items-start gap-1.5 min-w-0 flex-1">
                             {team.logoUrl || team.logo ? (
                               <img src={team.logoUrl || team.logo} alt="" className="w-5 h-5 rounded object-contain bg-white border border-slate-200 shrink-0" />
                             ) : (
@@ -119,17 +119,27 @@ export default function TeamAuctionGrid({
                                 {team.shortName || team.teamName.slice(0, 2).toUpperCase()}
                               </div>
                             )}
-                            <h4 className="font-bold text-xs text-slate-900 truncate" title={team.teamName}>
-                              {team.teamName}
-                              {team.shortName && (
-                                <span className="ml-1 text-[9px] text-slate-500 font-extrabold">({team.shortName})</span>
+                            <div className="min-w-0 flex-1">
+                              <h4
+                                className="font-bold text-xs text-slate-900 leading-tight break-words"
+                                title={team.teamName}
+                                style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                              >
+                                {team.teamName}
+                              </h4>
+                              {(team.shortName || isHighestBidder) && (
+                                <div className="flex items-center gap-1 flex-wrap mt-0.5 leading-none">
+                                  {team.shortName && (
+                                    <span className="text-[9px] leading-none text-slate-500 font-extrabold">{team.shortName}</span>
+                                  )}
+                                  {isHighestBidder && (
+                                    <span className="text-[9px] leading-none text-amber-900 bg-amber-200/90 px-1 py-[1px] rounded font-black whitespace-nowrap">
+                                      {lastBidSource === 'remote' ? '★ Leader (📱 Remote)' : '★ Leader (🏢 Onsite)'}
+                                    </span>
+                                  )}
+                                </div>
                               )}
-                              {isHighestBidder && (
-                                <span className="ml-1 text-[9px] text-amber-900 bg-amber-200/90 px-1 py-0.2 rounded font-black shrink-0">
-                                  {lastBidSource === 'remote' ? '★ Leader (📱 Remote)' : '★ Leader (🏢 Onsite)'}
-                                </span>
-                              )}
-                            </h4>
+                            </div>
                           </div>
                           <span
                             className={`font-black text-xs shrink-0 ${
@@ -141,13 +151,13 @@ export default function TeamAuctionGrid({
                         </div>
 
                         {/* ROW 2: MAX BID & NEED */}
-                        <div className="flex justify-between items-center text-[10px] text-slate-500 mb-1 leading-tight">
+                        <div className="flex justify-between items-center text-[10px] text-slate-500 mb-0.5 leading-tight">
                           <span className="font-semibold text-amber-700">Max: {formatCurrency(team.maxBid)}</span>
                           <span>Need {team.remainingRequiredPlayers}</span>
                         </div>
 
                         <div
-                          className={`h-5 rounded-md flex items-center justify-center text-[11px] font-black ${
+                          className={`h-4 rounded-md flex items-center justify-center text-[10px] font-black ${
                             canTeamBid ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'
                           }`}
                           title={canTeamBid ? 'Click this team card to place the server-calculated next bid.' : 'This team is not eligible for the current bid.'}

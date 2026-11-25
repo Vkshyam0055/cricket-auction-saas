@@ -11,8 +11,8 @@ export default function ActiveBiddingZone({
   isAwaitingTeam = false,
 }) {
   return (
-    <div className="py-2 shrink-0">
-      <div className="flex items-center justify-between mb-1">
+    <div className="py-1 shrink-0">
+      <div className="flex items-center justify-between mb-0.5">
         <h3 className="text-[10px] font-black uppercase tracking-wider text-purple-800">
           Active Bidders (Max 4)
         </h3>
@@ -28,7 +28,7 @@ export default function ActiveBiddingZone({
             return (
               <div
                 key={`empty-slot-${slotIdx}`}
-                className="rounded-lg border border-dashed border-purple-200 bg-purple-50/40 p-1.5 flex items-center justify-center text-[10px] font-semibold text-purple-400"
+                className="rounded-lg border border-dashed border-purple-200 bg-purple-50/40 px-1.5 py-1 flex items-center justify-center text-[10px] font-semibold text-purple-400"
               >
                 + Slot {slotIdx + 1}
               </div>
@@ -47,7 +47,7 @@ export default function ActiveBiddingZone({
               onClick={() => {
                 if (canTeamBid) updateBid(team._id);
               }}
-              className={`rounded-lg border p-1.5 flex flex-col justify-between transition-all ${canTeamBid ? 'cursor-pointer hover:shadow-sm' : ''} ${
+              className={`rounded-lg border px-1.5 py-1 flex flex-col justify-between transition-all ${canTeamBid ? 'cursor-pointer hover:shadow-sm' : ''} ${
                 isHighestBidder
                   ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-400/30 shadow-xs'
                   : 'border-purple-300 bg-purple-50/80 hover:border-purple-400'
@@ -80,13 +80,13 @@ export default function ActiveBiddingZone({
                   </span>
                 )}
               </div>
-              <div className="flex justify-between items-center text-[10px] text-purple-900 font-bold mb-1 leading-tight">
+              <div className="flex justify-between items-center text-[10px] text-purple-900 font-bold mb-0.5 leading-tight">
                 <span>₹{team.remainingPurse.toLocaleString()}</span>
                 <span className="text-[9px] text-purple-700 font-semibold">Max {formatCurrency(team.maxBid)}</span>
               </div>
 
               <div
-                className={`h-5 rounded-md flex items-center justify-center text-[11px] font-black ${
+                className={`h-4 rounded-md flex items-center justify-center text-[10px] font-black ${
                   canTeamBid ? 'bg-purple-700 text-white' : 'bg-purple-100 text-purple-300'
                 }`}
                 title={canTeamBid ? 'Click this team card to place the server-calculated next bid.' : 'This team is not eligible for the current bid.'}

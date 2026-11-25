@@ -117,18 +117,46 @@ router.get('/state', async (req, res) => {
 router.post('/start', async (req, res) => {
   if (req.teamOwner) return res.status(403).json({ message: 'Only organizer can start auction.' });
   try {
+    const result = await auctionService.startAuction({
+      organizerId: req.user.id,
+      tournamentScope: req.tournamentScope,
+      playerId: req.body.playerId
+    });
+
     setBiddingActive(req.user.id, false);
     const io = req.app.get('io');
-    if (io) {
-      if (req.tournamentScope?.tournamentId) {
-        io.to(`tournament:${req.tournamentScope.tournamentId}`).emit('biddingStateUpdate', {
-          biddingActive: false,
-          organizerId: req.user.id,
-          tournamentId: req.tournamentScope.tournamentId
-        });
-      }
+    const tournamentId = req.tournamentScope?.tournamentId;
+    if (io && tournamentId) {
+      io.to(`tournament:${tournamentId}`).emit('biddingStateUpdate', {
+        biddingActive: false,
+        organizerId: req.user.id,
+        tournamentId
+      });
+
+      const initialBid = Number(result.state?.currentBid ?? result.player?.basePrice ?? 0);
+      io.to(`tournament:${tournamentId}`).emit('updateAudienceScreen', {
+        tournamentId,
+        bidAmount: initialBid,
+        currentBid: initialBid,
+        teamId: '',
+        biddingTeamId: '',
+        teamName: '',
+        biddingTeamName: '',
+        shortName: '',
+        logoUrl: '',
+        player: result.player,
+        currentPlayer: result.player,
+        status: result.state?.status || 'bidding',
+        playerStatus: result.state?.status || 'bidding',
+        version: result.state?.version,
+        isRemote: false,
+        bidSource: 'onsite',
+        isAwaitingTeam: false,
+        biddingActive: false
+      });
     }
-    res.json(await auctionService.startAuction({ organizerId: req.user.id, tournamentScope: req.tournamentScope, playerId: req.body.playerId }));
+
+    res.json(result);
   }
   catch (error) { sendAuctionError(res, error); }
 });
@@ -186,9 +214,10 @@ router.post('/bid', async (req, res) => {
     });
 
     const io = req.app.get('io');
-    if (io) {
-      const tournamentId = req.tournamentScope?.tournamentId;
+    const tournamentId = req.tournamentScope?.tournamentId;
+    if (io && tournamentId) {
       const liveBidPayload = {
+        tournamentId,
         bidAmount: result.state.currentBid,
         currentBid: result.state.currentBid,
         teamId: result.team._id,
@@ -231,9 +260,10 @@ router.post('/common-bid', async (req, res) => {
     });
 
     const io = req.app.get('io');
-    if (io) {
-      const tournamentId = req.tournamentScope?.tournamentId;
+    const tournamentId = req.tournamentScope?.tournamentId;
+    if (io && tournamentId) {
       const commonBidPayload = {
+        tournamentId,
         bidAmount: result.state.currentBid,
         currentBid: result.state.currentBid,
         teamId: '',
@@ -289,10 +319,11 @@ router.post('/reset-bid', async (req, res) => {
     });
 
     const io = req.app.get('io');
-    if (io) {
-      const organizerId = req.user.id;
-      const tournamentId = req.tournamentScope?.tournamentId;
+    const organizerId = req.user.id;
+    const tournamentId = req.tournamentScope?.tournamentId;
+    if (io && tournamentId) {
       const resetPayload = {
+        tournamentId,
         bidAmount: result.state.currentBid,
         currentBid: result.state.currentBid,
         teamId: '',
@@ -318,6 +349,63 @@ router.post('/reset-bid', async (req, res) => {
     res.json(result);
   }
   catch (error) { sendAuctionError(res, error); }
+});
+
+router.post('/restore-state', async (req, res) => {
+  if (req.teamOwner) return res.status(403).json({ message: 'Only organizer can undo/restore auction state.' });
+  try {
+    const organizerId = req.user.id;
+    const result = await auctionService.restoreAuctionState({
+      organizerId,
+      tournamentScope: req.tournamentScope,
+      playerId: req.body?.playerId || null,
+      bidAmount: req.body?.bidAmount,
+      teamId: req.body?.teamId || null,
+      status: req.body?.status || 'idle',
+      isAwaitingTeam: Boolean(req.body?.isAwaitingTeam),
+      expectedVersion: sanitizeExpectedVersion(req.body?.expectedVersion)
+    });
+
+    setBiddingActive(organizerId, false);
+    const io = req.app.get('io');
+    const tournamentId = req.tournamentScope?.tournamentId;
+    if (io && tournamentId) {
+      io.to(`tournament:${tournamentId}`).emit('biddingStateUpdate', {
+        biddingActive: false,
+        organizerId,
+        tournamentId
+      });
+
+      const committedBid = Number(result.state?.currentBid || 0);
+      const committedStatus = result.state?.status || 'idle';
+      const hasTeam = Boolean(result.team?._id && !result.state?.isAwaitingTeam && committedStatus !== 'unsold' && committedStatus !== 'idle');
+
+      io.to(`tournament:${tournamentId}`).emit('updateAudienceScreen', {
+        tournamentId,
+        bidAmount: committedBid,
+        currentBid: committedBid,
+        teamId: hasTeam ? result.team._id : '',
+        biddingTeamId: hasTeam ? result.team._id : '',
+        teamName: hasTeam ? result.team.teamName : '',
+        biddingTeamName: hasTeam ? result.team.teamName : '',
+        shortName: hasTeam ? result.team.shortName : '',
+        logoUrl: hasTeam ? (result.team.logoUrl || result.team.logo || '') : '',
+        player: result.player || null,
+        currentPlayer: result.player || null,
+        status: committedStatus,
+        playerStatus: committedStatus,
+        version: result.state?.version,
+        isRemote: false,
+        bidSource: 'onsite',
+        isAwaitingTeam: Boolean(result.state?.isAwaitingTeam),
+        biddingActive: false
+      });
+    }
+
+    res.json({ ...result, biddingActive: false });
+  } catch (error) {
+    sendAuctionError(res, error);
+  }
 });
 
 // =========================================================================

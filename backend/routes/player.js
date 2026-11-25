@@ -248,6 +248,30 @@ router.post('/validate-bid', async (req, res) => {
     }
 });
 
+const emitTournamentBiddingStopped = (req) => {
+    setBiddingActive(req.user.id, false);
+    const io = req.app.get('io');
+    const tournamentId = req.tournamentScope?.tournamentId;
+    if (!io || !tournamentId) return;
+
+    io.to(`tournament:${tournamentId}`).emit('biddingStateUpdate', {
+        biddingActive: false,
+        organizerId: req.user.id,
+        tournamentId
+    });
+};
+
+const emitTournamentAudienceUpdate = (req, payload) => {
+    const io = req.app.get('io');
+    const tournamentId = req.tournamentScope?.tournamentId;
+    if (!io || !tournamentId) return;
+
+    io.to(`tournament:${tournamentId}`).emit('updateAudienceScreen', {
+        tournamentId,
+        ...payload
+    });
+};
+
 router.put('/sell/:id', async (req, res) => {
     try {
         const { teamId, teamName, soldPrice } = req.body;
@@ -260,22 +284,27 @@ router.put('/sell/:id', async (req, res) => {
             soldPrice
         });
 
-        setBiddingActive(req.user.id, false);
-        const io = req.app.get('io');
-        if (io) {
-            io.to(`organizer:${req.user.id}`).emit('biddingStateUpdate', {
-                biddingActive: false,
-                organizerId: req.user.id,
-                tournamentId: req.tournamentScope?.tournamentId
-            });
-            if (req.tournamentScope?.tournamentId) {
-                io.to(`tournament:${req.tournamentScope.tournamentId}`).emit('biddingStateUpdate', {
-                    biddingActive: false,
-                    organizerId: req.user.id,
-                    tournamentId: req.tournamentScope.tournamentId
-                });
-            }
-        }
+        emitTournamentBiddingStopped(req);
+        const authoritativeBid = Number(responsePayload.state?.currentBid ?? responsePayload.player?.soldPrice ?? soldPrice ?? 0);
+        emitTournamentAudienceUpdate(req, {
+            bidAmount: authoritativeBid,
+            currentBid: authoritativeBid,
+            teamId: responsePayload.team?._id || '',
+            biddingTeamId: responsePayload.team?._id || '',
+            teamName: responsePayload.team?.teamName || '',
+            biddingTeamName: responsePayload.team?.teamName || '',
+            shortName: responsePayload.team?.shortName || '',
+            logoUrl: responsePayload.team?.logoUrl || responsePayload.team?.logo || '',
+            player: responsePayload.player,
+            currentPlayer: responsePayload.player,
+            status: 'sold',
+            playerStatus: 'sold',
+            version: responsePayload.state?.version,
+            isRemote: false,
+            bidSource: 'onsite',
+            isAwaitingTeam: false,
+            biddingActive: false
+        });
 
         return res.json(responsePayload);
     } catch (error) {
@@ -297,22 +326,27 @@ router.put('/unsold/:id', async (req, res) => {
             playerId: req.params.id
         });
 
-        setBiddingActive(req.user.id, false);
-        const io = req.app.get('io');
-        if (io) {
-            io.to(`organizer:${req.user.id}`).emit('biddingStateUpdate', {
-                biddingActive: false,
-                organizerId: req.user.id,
-                tournamentId: req.tournamentScope?.tournamentId
-            });
-            if (req.tournamentScope?.tournamentId) {
-                io.to(`tournament:${req.tournamentScope.tournamentId}`).emit('biddingStateUpdate', {
-                    biddingActive: false,
-                    organizerId: req.user.id,
-                    tournamentId: req.tournamentScope.tournamentId
-                });
-            }
-        }
+        emitTournamentBiddingStopped(req);
+        const baseBid = Number(responsePayload.state?.currentBid ?? responsePayload.player?.basePrice ?? 0);
+        emitTournamentAudienceUpdate(req, {
+            bidAmount: baseBid,
+            currentBid: baseBid,
+            teamId: '',
+            biddingTeamId: '',
+            teamName: '',
+            biddingTeamName: '',
+            shortName: '',
+            logoUrl: '',
+            player: responsePayload.player,
+            currentPlayer: responsePayload.player,
+            status: 'unsold',
+            playerStatus: 'unsold',
+            version: responsePayload.state?.version,
+            isRemote: false,
+            bidSource: 'onsite',
+            isAwaitingTeam: false,
+            biddingActive: false
+        });
 
         res.json(responsePayload);
     } catch (error) {
@@ -329,6 +363,30 @@ router.put('/undo/:id', async (req, res) => {
             tournamentScope: req.tournamentScope,
             playerId: req.params.id
         });
+
+        if (responsePayload?.state) {
+            emitTournamentBiddingStopped(req);
+            emitTournamentAudienceUpdate(req, {
+                bidAmount: 0,
+                currentBid: 0,
+                teamId: '',
+                biddingTeamId: '',
+                teamName: '',
+                biddingTeamName: '',
+                shortName: '',
+                logoUrl: '',
+                player: null,
+                currentPlayer: null,
+                status: 'idle',
+                playerStatus: 'idle',
+                version: responsePayload.state.version,
+                isRemote: false,
+                bidSource: 'onsite',
+                isAwaitingTeam: false,
+                biddingActive: false
+            });
+        }
+
         res.json(responsePayload);
     } catch (error) {
         if (error.statusCode && error.publicMessage) return res.status(error.statusCode).json({ message: error.publicMessage });
@@ -371,6 +429,28 @@ router.post('/reset-auction', async (req, res) => {
             organizerId: req.user.id,
             tournamentScope: req.tournamentScope
         });
+
+        emitTournamentBiddingStopped(req);
+        emitTournamentAudienceUpdate(req, {
+            bidAmount: 0,
+            currentBid: 0,
+            teamId: '',
+            biddingTeamId: '',
+            teamName: '',
+            biddingTeamName: '',
+            shortName: '',
+            logoUrl: '',
+            player: null,
+            currentPlayer: null,
+            status: 'idle',
+            playerStatus: 'idle',
+            version: responsePayload?.state?.version,
+            isRemote: false,
+            bidSource: 'onsite',
+            isAwaitingTeam: false,
+            biddingActive: false
+        });
+
         res.json(responsePayload);
     } catch (error) {
         console.error("Reset auction error:", error);

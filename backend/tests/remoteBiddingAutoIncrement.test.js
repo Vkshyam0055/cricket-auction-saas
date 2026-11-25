@@ -25,7 +25,7 @@ const auctionService = require('../services/auctionService');
  * 3. Remote Owner can bid when another team is leading.
  * 4. Remote Owner cannot bid when their own team is leading.
  * 5. Admin's first Team Claim during Awaiting Team still uses existing amount without increment.
- * 6. Insufficient purse and full squad are rejected.
+ * 6. Exceeding purse/maxBid is rejected while teams meeting minimum squad size can keep bidding.
  * 7. Concurrent requests cannot create duplicate bids.
  * 8. Admin and Remote Owner receive consistent updated auction state.
  */
@@ -347,31 +347,28 @@ describe('Phase 5 Correction: Remote Bidding Auto Increment Behavior Suite', () 
     });
   });
 
-  describe('6. Ineligible Team Checks (Case D)', () => {
-    it('6A. Rejects bid when team squad is full', async () => {
-      // Mock player aggregate returning 15 players (full squad)
+  describe('6. Ineligible Team & Minimum Squad Checks (Case D)', () => {
+    it('6A. Allows remote bid when team has fulfilled minimum squad size (minPlayersPerTeam is not a max cap)', async () => {
+      // Mock player aggregate returning 15 players (minimum requirement fulfilled, not a maximum cap)
       Player.aggregate = () => ({
         session: async () => [{ _id: mockTeam1._id, count: 15 }]
       });
 
-      await assert.rejects(
-        async () => {
-          await auctionService.placeBid({
-            organizerId,
-            tournamentScope: { tournamentId },
-            teamId: team1Id,
-            playerId,
-            bidType: 'auto',
-            expectedVersion: 2,
-            isRemote: true
-          });
-        },
-        (err) => {
-          assert.equal(err.message, 'SQUAD_FULL');
-          assert.equal(err.statusCode, 409);
-          return true;
-        }
-      );
+      const result = await auctionService.placeBid({
+        organizerId,
+        tournamentScope: { tournamentId },
+        teamId: team1Id,
+        playerId,
+        bidType: 'auto',
+        expectedVersion: 2,
+        isRemote: true
+      });
+
+      assert.equal(result.state.currentBid, 2900000);
+      assert.equal(String(result.state.highestBidder), String(team1Id));
+      assert.equal(result.state.version, 3);
+      assert.equal(result.team.remainingRequiredPlayers, 0);
+      assert.equal(result.team.maxBid, mockTeam1.remainingPurse);
     });
 
     it('6B. Rejects bid when next bid exceeds maximum permitted bid or purse', async () => {

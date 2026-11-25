@@ -551,8 +551,14 @@ describe('Phase 7B: Auction Data Integrity & Stability Suite', () => {
 
     test('F1. Live MongoDB undoPlayerAction transaction commits cleanly', { skip: skipReason }, async () => {
       await connectSafeTestMongo();
-      // Only executes when TEST_MONGO_URI points to an isolated local MongoDB replica set
-      assert.ok(mongoose.connection.readyState !== 0);
+      try {
+        // Only executes when TEST_MONGO_URI points to an isolated local MongoDB replica set
+        assert.ok(mongoose.connection.readyState !== 0);
+      } finally {
+        if (mongoose.connection.readyState !== 0) {
+          await mongoose.disconnect();
+        }
+      }
     });
   });
 

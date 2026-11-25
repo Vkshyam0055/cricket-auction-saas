@@ -387,4 +387,173 @@ const resetAuctionBid = async ({ organizerId, tournamentScope, playerId, expecte
   return { state: updated, player };
 };
 
-module.exports = { auctionError, configuredIncrements, assertExpectedVersion, calculateNextBid, getStatePayload, getNextBidPreview, startAuction, placeBid, placeCommonBid, resetAuctionBid };
+const restoreAuctionState = async ({
+  organizerId,
+  tournamentScope,
+  playerId = null,
+  bidAmount = 0,
+  teamId = null,
+  status = 'idle',
+  isAwaitingTeam = false,
+  expectedVersion
+}) => {
+  const scope = resolveScope(tournamentScope);
+  const existingState = await AuctionState.findOne({
+    organizer: organizerId,
+    tournament: scope.tournamentId
+  }).lean();
+
+  if (existingState) {
+    assertExpectedVersion(existingState, expectedVersion);
+  } else if (expectedVersion !== undefined && expectedVersion !== null && expectedVersion !== '' && Number(expectedVersion) > 0) {
+    throw auctionError('STALE_AUCTION_STATE', 409, 'Auction state changed. Refresh and retry.');
+  }
+
+  // Restoring to idle (e.g., undoing the very first player load)
+  if (!playerId || status === 'idle') {
+    if (existingState && existingState.status === 'bidding' && (existingState.highestBidder || existingState.isAwaitingTeam)) {
+      throw auctionError('AUCTION_ALREADY_ACTIVE', 409, 'Cannot revert to idle while current player has active bids.');
+    }
+
+    const filter = existingState
+      ? { _id: existingState._id, version: existingState.version }
+      : { organizer: organizerId, tournament: scope.tournamentId };
+
+    const updated = await AuctionState.findOneAndUpdate(
+      filter,
+      {
+        $set: {
+          organizer: organizerId,
+          tournament: scope.tournamentId,
+          activePlayer: null,
+          currentBid: 0,
+          highestBidder: null,
+          isAwaitingTeam: false,
+          status: 'idle'
+        },
+        $inc: { version: 1 }
+      },
+      { new: true, upsert: !existingState, setDefaultsOnInsert: true }
+    ).lean();
+
+    if (!updated) {
+      const latestState = existingState ? await AuctionState.findById(existingState._id).select('version').lean() : null;
+      const err = auctionError('BID_CONFLICT', 409, 'Auction state changed. Refresh and retry.');
+      err.currentVersion = latestState?.version;
+      throw err;
+    }
+
+    return { state: updated, player: null, team: null };
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(playerId)) {
+    throw auctionError('INVALID_AUCTION_REFERENCE', 400, 'Invalid player reference for restore.');
+  }
+
+  const player = await Player.findOne(mergeWithTournamentScope({
+    _id: playerId,
+    organizer: organizerId,
+    approvalStatus: 'Approved',
+    isIcon: { $ne: true }
+  }, scope)).lean();
+  if (!player) {
+    throw auctionError('PLAYER_NOT_ELIGIBLE', 409, 'Restored player was not found or is ineligible.');
+  }
+
+  // If switching back from a different active player in 'bidding', block if that player already has bids
+  if (
+    existingState &&
+    existingState.status === 'bidding' &&
+    existingState.activePlayer &&
+    String(existingState.activePlayer) !== String(player._id) &&
+    (existingState.highestBidder || existingState.isAwaitingTeam)
+  ) {
+    throw auctionError('AUCTION_ALREADY_ACTIVE', 409, 'Another player already has active bids.');
+  }
+
+  // Reconcile restored status & bid strictly with persisted DB Player record
+  let resolvedStatus = 'bidding';
+  let resolvedBid = Number(bidAmount ?? player.basePrice ?? 0);
+  let resolvedTeam = null;
+  let resolvedAwaiting = Boolean(isAwaitingTeam);
+
+  if (player.auctionStatus === 'Sold') {
+    resolvedStatus = 'sold';
+    resolvedBid = Number(player.soldPrice || player.basePrice || 0);
+    resolvedAwaiting = false;
+    if (player.soldTo) {
+      const teamQuery = mongoose.Types.ObjectId.isValid(player.soldTo)
+        ? { _id: player.soldTo, organizer: organizerId }
+        : { teamName: player.soldTo, organizer: organizerId };
+      resolvedTeam = await Team.findOne(mergeWithTournamentScope(teamQuery, scope)).lean();
+    }
+  } else if (player.auctionStatus === 'Unsold') {
+    resolvedStatus = 'unsold';
+    resolvedBid = Number(player.basePrice || 0);
+    resolvedAwaiting = false;
+    resolvedTeam = null;
+  } else if (player.auctionStatus === 'ReadyForAuction') {
+    resolvedStatus = 'bidding';
+    const basePrice = Number(player.basePrice || 0);
+    if (!Number.isFinite(resolvedBid) || resolvedBid < basePrice) {
+      resolvedBid = basePrice;
+    }
+    if (teamId && !resolvedAwaiting) {
+      if (!mongoose.Types.ObjectId.isValid(teamId)) {
+        throw auctionError('INVALID_AUCTION_REFERENCE', 400, 'Invalid team reference for restore.');
+      }
+      const [teamDoc, auctionState] = await Promise.all([
+        Team.findOne(mergeWithTournamentScope({ _id: teamId, organizer: organizerId }, scope)).lean(),
+        getAuctionStateForOrganizer({ organizerId, tournamentScope: scope })
+      ]);
+      if (!teamDoc) {
+        throw auctionError('AUCTION_REFERENCE_NOT_FOUND', 404, 'Restored team was not found.');
+      }
+      const [teamWithMaxBid] = decorateTeamsWithMaxBid({
+        teams: [teamDoc],
+        auctionState,
+        currentBasePrice: basePrice
+      });
+      if (resolvedBid > Number(teamWithMaxBid.remainingPurse || 0) || resolvedBid > Number(teamWithMaxBid.maxBid || 0)) {
+        throw auctionError('BID_LIMIT_EXCEEDED', 409, 'Restored bid exceeds team purse or max bid.');
+      }
+      resolvedTeam = teamWithMaxBid;
+    } else if (!resolvedAwaiting && resolvedBid > basePrice) {
+      resolvedAwaiting = true;
+    }
+  } else {
+    throw auctionError('PLAYER_NOT_ELIGIBLE', 409, 'Restored player is not ready for auction.');
+  }
+
+  const filter = existingState
+    ? { _id: existingState._id, version: existingState.version }
+    : { organizer: organizerId, tournament: scope.tournamentId };
+
+  const updated = await AuctionState.findOneAndUpdate(
+    filter,
+    {
+      $set: {
+        organizer: organizerId,
+        tournament: scope.tournamentId,
+        activePlayer: player._id,
+        currentBid: resolvedBid,
+        highestBidder: resolvedTeam?._id || null,
+        isAwaitingTeam: resolvedAwaiting,
+        status: resolvedStatus
+      },
+      $inc: { version: 1 }
+    },
+    { new: true, upsert: !existingState, setDefaultsOnInsert: true }
+  ).lean();
+
+  if (!updated) {
+    const latestState = existingState ? await AuctionState.findById(existingState._id).select('version').lean() : null;
+    const err = auctionError('BID_CONFLICT', 409, 'Auction state changed. Refresh and retry.');
+    err.currentVersion = latestState?.version;
+    throw err;
+  }
+
+  return { state: updated, player, team: resolvedTeam };
+};
+
+module.exports = { auctionError, configuredIncrements, assertExpectedVersion, calculateNextBid, getStatePayload, getNextBidPreview, startAuction, placeBid, placeCommonBid, resetAuctionBid, restoreAuctionState };

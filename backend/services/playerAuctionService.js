@@ -125,7 +125,12 @@ const sellPlayer = async ({ organizerId, tournamentScope, playerId, teamId, team
             );
             if (!finalizedState) throw new Error('AUCTION_STATE_CONFLICT');
 
-            responsePayload = { message: 'खिलाड़ी बिक गया!', player, team: teamUpdate };
+            responsePayload = {
+                message: 'खिलाड़ी बिक गया!',
+                player,
+                team: teamUpdate,
+                state: finalizedState?.toObject ? finalizedState.toObject() : finalizedState
+            };
         });
 
         return responsePayload;
@@ -154,7 +159,11 @@ const unsoldPlayer = async ({ organizerId, tournamentScope, playerId }) => {
             player.soldTo = null;
             player.soldPrice = 0;
             await player.save({ session });
-            responsePayload = { message: "खिलाड़ी अनसोल्ड हो गया!", player };
+            responsePayload = {
+                message: "खिलाड़ी अनसोल्ड हो गया!",
+                player,
+                state: finalizedState?.toObject ? finalizedState.toObject() : finalizedState
+            };
         });
 
         return responsePayload;
@@ -207,13 +216,17 @@ const undoPlayerAction = async ({ organizerId, tournamentScope, playerId }) => {
             player.soldPrice = 0;
             await player.save({ session });
 
-            await AuctionState.findOneAndUpdate(
+            const updatedState = await AuctionState.findOneAndUpdate(
                 { organizer: organizerId, tournament: tournamentScope.tournamentId, activePlayer: player._id },
                 { $set: { status: 'idle', activePlayer: null, currentBid: 0, highestBidder: null, isAwaitingTeam: false }, $inc: { version: 1 } },
-                { session }
+                { new: true, session }
             );
 
-            responsePayload = { message: "Undo Successful!", player };
+            responsePayload = {
+                message: "Undo Successful!",
+                player,
+                state: updatedState ? (updatedState.toObject ? updatedState.toObject() : updatedState) : null
+            };
         });
 
         return responsePayload;
@@ -311,15 +324,17 @@ const resetAuction = async ({ organizerId, tournamentScope }) => {
         );
     }));
 
-    await AuctionState.findOneAndUpdate(
+    const resetState = await AuctionState.findOneAndUpdate(
         { organizer: organizerId, tournament: tournamentScope.tournamentId },
-        { $set: { status: 'idle', activePlayer: null, currentBid: 0, highestBidder: null, isAwaitingTeam: false }, $inc: { version: 1 } }
+        { $set: { status: 'idle', activePlayer: null, currentBid: 0, highestBidder: null, isAwaitingTeam: false }, $inc: { version: 1 } },
+        { new: true }
     );
 
     return {
         message: "ऑक्शन 100% सफलतापूर्वक रीसेट हो गया है!",
         playersReset: playerResult.modifiedCount,
-        teamsReset: teams.length
+        teamsReset: teams.length,
+        state: resetState ? (resetState.toObject ? resetState.toObject() : resetState) : null
     };
 };
 

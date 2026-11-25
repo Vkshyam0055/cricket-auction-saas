@@ -266,11 +266,11 @@ function ControlPanel() {
     normalizeTeam,
     setIsAwaitingTeam,
     isAwaitingTeamRef,
-    tournamentId: tournament?._id,
   });
 
   useControlPanelSocket({
     socketRef,
+    tournamentId: tournament?._id,
     setBiddingActive,
     setCurrentBid,
     currentBidRef,
@@ -302,6 +302,9 @@ function ControlPanel() {
     selectedSquadTeam,
     setIsAwaitingTeam,
     isAwaitingTeamRef,
+    setCurrentPlayer,
+    setPlayerStatus,
+    playerStatusRef,
   });
 
   useEffect(() => {
@@ -334,31 +337,6 @@ function ControlPanel() {
     teamsRef.current = teams;
   }, [teams]);
 
-  useEffect(() => {
-    const syncInterval = setInterval(() => {
-      if (currentPlayerRef.current && socketRef.current) {
-        const p = currentPlayerRef.current;
-        const currentTeams = teamsRef.current || [];
-        const isAwaiting = Boolean(isAwaitingTeamRef?.current);
-        const winningTeamObj = (!isAwaiting && biddingTeamRef.current)
-          ? currentTeams.find((t) => t._id === biddingTeamRef.current || t.teamName === biddingTeamRef.current)
-          : null;
-        socketRef.current.emit('newLiveBid', {
-          bidAmount: currentBidRef.current,
-          teamId: winningTeamObj?._id || '',
-          teamName: winningTeamObj?.teamName || (!isAwaiting ? biddingTeamRef.current || '' : ''),
-          shortName: winningTeamObj?.shortName || '',
-          logoUrl: winningTeamObj?.logoUrl || winningTeamObj?.logo || '',
-          player: p,
-          status: playerStatusRef.current,
-          version: auctionVersionRef.current || undefined,
-          isAwaitingTeam: isAwaiting
-        });
-      }
-    }, 2000);
-    return () => clearInterval(syncInterval);
-  }, []);
-
   const {
     actionHistory,
     setActionHistory,
@@ -369,17 +347,25 @@ function ControlPanel() {
     currentBid,
     biddingTeam,
     playerStatus,
+    isAwaitingTeam,
     players,
     teams,
     activeBiddingList,
     teamBidActivity,
     setCurrentPlayer,
     setCurrentBid,
+    currentBidRef,
     setBiddingTeam,
+    biddingTeamRef,
     setPlayerStatus,
     setHasBiddingStarted,
+    setIsAwaitingTeam,
+    isAwaitingTeamRef,
+    setBiddingActive,
+    auctionVersion,
+    auctionVersionRef,
+    setAuctionVersion,
     setPlayers,
-    setTeams,
     setActiveBiddingList,
     setTeamBidActivity,
     syncActiveBiddingState,
@@ -387,7 +373,6 @@ function ControlPanel() {
     fetchData,
     currentPlayerRef,
     playerStatusRef,
-    socketRef,
   });
 
   const pickRandomPlayer = async () => {
@@ -407,8 +392,6 @@ function ControlPanel() {
     setIsActionProcessing(true);
 
     try {
-      saveStateToHistory('PICK_PLAYER');
-
       let selectionPool = availablePlayers;
       if (playerOrderMode === 'category-random') {
         const fallbackOrder = Array.from(new Set(availablePlayers.map((player) => normalizeCategory(player.category))));
@@ -441,6 +424,7 @@ function ControlPanel() {
         return;
       }
 
+      saveStateToHistory('PICK_PLAYER');
       setCurrentPlayer(selected);
       currentPlayerRef.current = selected;
       setCurrentBid(selected.basePrice);
@@ -457,20 +441,6 @@ function ControlPanel() {
       setActiveBiddingList([]);
       setTeamBidActivity({});
       syncActiveBiddingState('reset');
-
-      socketRef.current?.emit('newLiveBid', {
-        bidAmount: selected.basePrice,
-        teamId: '',
-        teamName: '',
-        shortName: '',
-        logoUrl: '',
-        player: selected,
-        status: 'bidding',
-        version: Number(result.data.state.version),
-        isRemote: false,
-        bidSource: 'onsite',
-        isAwaitingTeam: false
-      });
     } finally {
       isActionProcessingRef.current = false;
       setIsActionProcessing(false);
@@ -503,19 +473,6 @@ function ControlPanel() {
     setActiveBiddingList([]);
     setTeamBidActivity({});
     syncActiveBiddingState('reset');
-    socketRef.current?.emit('newLiveBid', {
-      bidAmount: currentPlayer.basePrice,
-      teamId: '',
-      teamName: '',
-      shortName: '',
-      logoUrl: '',
-      player: currentPlayer,
-      status: playerStatus,
-      version: newResetVersion,
-      isRemote: false,
-      bidSource: 'onsite',
-      isAwaitingTeam: false
-    });
     return true;
   };
 
@@ -540,18 +497,26 @@ function ControlPanel() {
     setIsActionProcessing(true);
 
     try {
-      saveStateToHistory(status.toUpperCase(), currentPlayer);
-
       const token = localStorage.getItem('token');
       const endpoint = status === 'Sold' ? `/api/players/sell/${currentPlayer._id}` : `/api/players/unsold/${currentPlayer._id}`;
       const payload = status === 'Sold' ? { teamId: winningTeam?._id, teamName: winningTeam?.teamName, soldPrice } : {};
 
-      await apiRequest({
+      const result = await apiRequest({
         method: 'put',
         path: endpoint,
         data: payload,
         headers: { Authorization: `Bearer ${token}` }
       });
+
+      saveStateToHistory(status.toUpperCase(), currentPlayer);
+
+      const newFinalVer = Number(result?.data?.state?.version);
+      if (Number.isFinite(newFinalVer) && newFinalVer > (auctionVersionRef.current || 0)) {
+        auctionVersionRef.current = newFinalVer;
+      }
+      if (Number.isFinite(newFinalVer) && newFinalVer > 0) {
+        setAuctionVersion(newFinalVer);
+      }
 
       const updatedPlayers = players.filter((p) => p._id !== currentPlayer._id);
       setPlayers(updatedPlayers);
@@ -567,17 +532,6 @@ function ControlPanel() {
       setActiveBiddingList([]);
       setTeamBidActivity({});
       syncActiveBiddingState('reset');
-
-      socketRef.current?.emit('newLiveBid', {
-        bidAmount: soldPrice,
-        teamId: winningTeam?._id || '',
-        teamName: winningTeam?.teamName || '',
-        shortName: winningTeam?.shortName || '',
-        logoUrl: winningTeam?.logoUrl || winningTeam?.logo || '',
-        player: currentPlayer,
-        status: status.toLowerCase(),
-        isAwaitingTeam: false
-      });
 
       await Promise.all([fetchTeamsWithMaxBid(), fetchData()]);
     } catch (error) {
@@ -643,6 +597,9 @@ function ControlPanel() {
     isAwaitingTeam,
     setIsAwaitingTeam,
     isAwaitingTeamRef,
+    setCurrentPlayer,
+    setPlayerStatus,
+    playerStatusRef,
   });
 
   useEffect(() => {
@@ -716,6 +673,11 @@ function ControlPanel() {
     setBiddingTeam,
     setPlayerStatus,
     setHasBiddingStarted,
+    setIsAwaitingTeam,
+    isAwaitingTeamRef,
+    setBiddingActive,
+    auctionVersionRef,
+    setAuctionVersion,
     setActionHistory,
     setActiveBiddingList,
     setTeamBidActivity,
@@ -826,7 +788,7 @@ function ControlPanel() {
       />
 
       {/* 🌟 MAIN OPERATOR WORKSPACE 🌟 */}
-      <main className="flex-1 min-h-0 p-2.5 lg:p-3 overflow-hidden">
+      <main className="flex-1 min-h-0 p-2 overflow-hidden">
         {screenView === 'break' ? (
           <BreakModeManager
             setScreenView={setScreenView}
@@ -866,7 +828,7 @@ function ControlPanel() {
 
                         {/* 🌟 RIGHT COLUMN: BID STATUS, QUICK BIDS, ACTIVE BIDDERS & 16-TEAM GRID 🌟 */}
             <div
-              className={`lg:col-span-8 bg-white rounded-2xl shadow-sm border border-slate-200/80 p-3 flex flex-col overflow-hidden transition-all ${
+              className={`lg:col-span-8 bg-white rounded-2xl shadow-sm border border-slate-200/80 p-2.5 flex flex-col overflow-hidden transition-all ${
                 !currentPlayer || playerStatus !== 'bidding' ? 'opacity-60 pointer-events-none' : ''
               }`}
             >

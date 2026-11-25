@@ -51,40 +51,52 @@ function LiveScreen() {
       apiRequest({
         method: 'get',
         path: '/api/auction/state',
+        params: { tournamentId: tournament._id },
         headers: { Authorization: 'Bearer ' + token },
         skipAuthRedirect: true
       })
         .then((res) => {
           const data = res.data;
-          if (data && data.activePlayer) {
-            const incomingVersion = Number(data.version) || 0;
-            if (incomingVersion > 0 && incomingVersion < lastAuctionVersionRef.current) {
-              return;
-            }
-            if (incomingVersion > 0) {
-              lastAuctionVersionRef.current = incomingVersion;
-            }
-            setCurrentPlayer(data.activePlayer);
-            setLiveBid(Number(data.currentBid || 0));
-            const isAwaiting = data.isAwaitingTeam !== undefined
-              ? Boolean(data.isAwaitingTeam)
-              : Boolean(!data.highestBidder && Number(data.currentBid || 0) > Number(data.activePlayer?.basePrice || 0));
-            setIsAwaitingTeam(isAwaiting);
-            if (data.highestBidder && !isAwaiting) {
-              setLiveTeam(data.highestBidder.teamName || '');
-              setLiveTeamData({
-                _id: data.highestBidder._id,
-                teamName: data.highestBidder.teamName,
-                shortName: data.highestBidder.shortName,
-                logoUrl: data.highestBidder.logoUrl || data.highestBidder.logo || ''
-              });
-            } else {
-              setLiveTeam('');
-              setLiveTeamData(null);
-            }
-            if (data.status) {
-              setPlayerStatus(data.status);
-            }
+          if (!data) return;
+
+          const incomingVersion = Number(data.version) || 0;
+          if (incomingVersion > 0 && incomingVersion < lastAuctionVersionRef.current) {
+            return;
+          }
+          if (incomingVersion > 0) {
+            lastAuctionVersionRef.current = incomingVersion;
+          }
+
+          if (data.status === 'idle' || !data.activePlayer) {
+            setCurrentPlayer(null);
+            setLiveBid(0);
+            setLiveTeam('');
+            setLiveTeamData(null);
+            setIsAwaitingTeam(false);
+            setPlayerStatus('bidding');
+            return;
+          }
+
+          setCurrentPlayer(data.activePlayer);
+          setLiveBid(Number(data.currentBid || 0));
+          const isAwaiting = data.isAwaitingTeam !== undefined
+            ? Boolean(data.isAwaitingTeam)
+            : Boolean(!data.highestBidder && Number(data.currentBid || 0) > Number(data.activePlayer?.basePrice || 0));
+          setIsAwaitingTeam(isAwaiting);
+          if (data.highestBidder && !isAwaiting && data.status !== 'unsold') {
+            setLiveTeam(data.highestBidder.teamName || '');
+            setLiveTeamData({
+              _id: data.highestBidder._id,
+              teamName: data.highestBidder.teamName,
+              shortName: data.highestBidder.shortName,
+              logoUrl: data.highestBidder.logoUrl || data.highestBidder.logo || ''
+            });
+          } else {
+            setLiveTeam('');
+            setLiveTeamData(null);
+          }
+          if (data.status) {
+            setPlayerStatus(data.status);
           }
         })
         .catch(() => {});
@@ -102,9 +114,12 @@ function LiveScreen() {
 
     socket.on('updateAudienceScreen', (data) => {
       if (!data) return;
+      if (data.tournamentId && tournament?._id && String(data.tournamentId) !== String(tournament._id)) {
+        return;
+      }
       const incomingVersion = Number(data.version);
       if (Number.isFinite(incomingVersion) && incomingVersion > 0) {
-        if (incomingVersion < lastAuctionVersionRef.current) return;
+        if (incomingVersion <= lastAuctionVersionRef.current) return;
         lastAuctionVersionRef.current = incomingVersion;
       }
       const nextBidVal = Number(data.bidAmount !== undefined ? data.bidAmount : data.currentBid || 0);
@@ -116,7 +131,8 @@ function LiveScreen() {
 
       setLiveBid(nextBidVal);
       setIsAwaitingTeam(isAwaiting);
-      if (hasTeam && !isAwaiting) {
+      const nextStatus = data.status || 'bidding';
+      if (hasTeam && !isAwaiting && nextStatus !== 'unsold' && nextStatus !== 'idle') {
         setLiveTeam(data.teamName || '');
         setLiveTeamData(data.teamId || data.logoUrl ? {
           _id: data.teamId,
@@ -128,9 +144,11 @@ function LiveScreen() {
         setLiveTeam('');
         setLiveTeamData(null);
       }
-      setPlayerStatus(data.status || 'bidding');
+      setPlayerStatus(nextStatus);
       if (data.player !== undefined) {
         setCurrentPlayer(data.player);
+      } else if (data.currentPlayer !== undefined) {
+        setCurrentPlayer(data.currentPlayer);
       }
     });
 
@@ -717,7 +735,7 @@ function LiveScreen() {
       </main>
 
       {/* 🌟 ANIMATED HAMMER / STAMP OVERLAY (SOLD / UNSOLD - REQUIREMENT 1) 🌟 */}
-      {effectiveScreenView === 'live' && playerStatus !== 'bidding' && (
+      {effectiveScreenView === 'live' && (playerStatus === 'sold' || playerStatus === 'unsold') && (
         <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none p-4 bg-black/10">
           {playerStatus === 'sold' ? (
             <div className="animate-stamp-sold border-4 sm:border-8 border-emerald-400 bg-slate-950/92 text-emerald-400 rounded-3xl p-6 sm:p-10 text-center shadow-[0_0_80px_rgba(16,185,129,0.55)] ring-4 ring-emerald-500/30 max-w-lg w-full flex flex-col items-center">

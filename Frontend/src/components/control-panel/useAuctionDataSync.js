@@ -5,7 +5,6 @@ export function useAuctionDataSync({
   currentPlayer,
   currentPlayerRef,
   playerStatusRef,
-  socketRef,
   setAllPlayers,
   setCurrentPlayer,
   setCurrentBid,
@@ -57,6 +56,16 @@ export function useAuctionDataSync({
 
       const auctionRes = await apiRequest({ method: 'get', path: '/api/auction/state', headers });
       const authoritativeState = auctionRes.data;
+      const authVer = Number(authoritativeState?.version);
+      if (Number.isFinite(authVer) && authVer > 0) {
+        if (auctionVersionRef && authVer > (auctionVersionRef.current || 0)) {
+          auctionVersionRef.current = authVer;
+        }
+        if (setAuctionVersion) {
+          setAuctionVersion(authVer);
+        }
+      }
+
       if (authoritativeState?.status === 'bidding' && authoritativeState?.activePlayer) {
         const activePlayer = allPlayersPayload.find((player) => String(player._id) === String(authoritativeState.activePlayer._id)) || authoritativeState.activePlayer;
         setCurrentPlayer(activePlayer);
@@ -72,11 +81,6 @@ export function useAuctionDataSync({
         setHasBiddingStarted(Boolean(hbId && !awaiting));
         setPlayerStatus('bidding');
         playerStatusRef.current = 'bidding';
-        const sVer = Number(authoritativeState.version);
-        if (auctionVersionRef && Number.isFinite(sVer) && sVer > (auctionVersionRef.current || 0)) {
-          auctionVersionRef.current = sVer;
-        }
-        setAuctionVersion(sVer);
         setBiddingActive(Boolean(authoritativeState.biddingActive));
       }
 
@@ -117,7 +121,6 @@ export function useAuctionDataSync({
           localStorage.removeItem('activeBiddingList');
           localStorage.removeItem('lastBidActions');
           localStorage.removeItem('teamBidActivity');
-          socketRef.current?.emit('newLiveBid', { bidAmount: 0, teamName: '', player: null, status: 'bidding' });
         } else if (dbPlayer.auctionStatus?.trim().toLowerCase() === 'sold') {
           if (currStatus === 'bidding') {
             setCurrentPlayer(null);
@@ -133,7 +136,6 @@ export function useAuctionDataSync({
             localStorage.removeItem('activeBiddingList');
             localStorage.removeItem('lastBidActions');
             localStorage.removeItem('teamBidActivity');
-            socketRef.current?.emit('newLiveBid', { bidAmount: 0, teamName: '', player: null, status: 'bidding' });
           } else {
             setCurrentPlayer(dbPlayer);
             if (dbPlayer.soldPrice) setCurrentBid(dbPlayer.soldPrice);
@@ -154,7 +156,6 @@ export function useAuctionDataSync({
             localStorage.removeItem('activeBiddingList');
             localStorage.removeItem('lastBidActions');
             localStorage.removeItem('teamBidActivity');
-            socketRef.current?.emit('newLiveBid', { bidAmount: 0, teamName: '', player: null, status: 'bidding' });
           } else {
             setCurrentPlayer(dbPlayer);
           }
@@ -174,7 +175,6 @@ export function useAuctionDataSync({
           localStorage.removeItem('activeBiddingList');
           localStorage.removeItem('lastBidActions');
           localStorage.removeItem('teamBidActivity');
-          socketRef.current?.emit('newLiveBid', { bidAmount: 0, teamName: '', player: null, status: 'bidding' });
         }
       }
     } catch (error) {
@@ -197,7 +197,8 @@ export function useAuctionDataSync({
     setPlayerStatus,
     setPlayers,
     setTeamBidActivity,
-    socketRef
+    setIsAwaitingTeam,
+    isAwaitingTeamRef
   ]);
 
   // 1. Fetch data ONCE on mount (Main branch parity - prevents infinite loop)

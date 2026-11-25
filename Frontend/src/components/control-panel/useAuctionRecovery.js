@@ -11,6 +11,11 @@ export function useAuctionRecovery({
   setBiddingTeam,
   setPlayerStatus,
   setHasBiddingStarted,
+  setIsAwaitingTeam,
+  isAwaitingTeamRef,
+  setBiddingActive,
+  auctionVersionRef,
+  setAuctionVersion,
   setActionHistory,
   setActiveBiddingList,
   setTeamBidActivity,
@@ -25,7 +30,6 @@ export function useAuctionRecovery({
   setIsProcessingRecovery,
   currentPlayerRef,
   playerStatusRef,
-  socketRef,
 }) {
   const [isLoadingResults, setIsLoadingResults] = useState(false);
   const [resultsError, setResultsError] = useState(null);
@@ -229,12 +233,20 @@ export function useAuctionRecovery({
     setIsProcessingRecovery(true);
     try {
       const token = localStorage.getItem('token');
-      await apiRequest({
+      const resetRes = await apiRequest({
         method: 'post',
         path: '/api/players/reset-auction',
         data: {},
         headers: { Authorization: `Bearer ${token}` }
       });
+
+      const resetVer = Number(resetRes?.data?.state?.version);
+      if (auctionVersionRef && Number.isFinite(resetVer) && resetVer > (auctionVersionRef.current || 0)) {
+        auctionVersionRef.current = resetVer;
+      }
+      if (setAuctionVersion && Number.isFinite(resetVer) && resetVer > 0) {
+        setAuctionVersion(resetVer);
+      }
 
       setCurrentPlayer(null);
       currentPlayerRef.current = null;
@@ -243,6 +255,9 @@ export function useAuctionRecovery({
       setPlayerStatus('bidding');
       playerStatusRef.current = 'bidding';
       setHasBiddingStarted(false);
+      if (setIsAwaitingTeam) setIsAwaitingTeam(false);
+      if (isAwaitingTeamRef) isAwaitingTeamRef.current = false;
+      if (setBiddingActive) setBiddingActive(false);
       setActionHistory([]);
       setActiveBiddingList([]);
       setTeamBidActivity({});
@@ -256,8 +271,6 @@ export function useAuctionRecovery({
       localStorage.removeItem('activeBiddingList');
       localStorage.removeItem('lastBidActions');
       localStorage.removeItem('teamBidActivity');
-
-      socketRef.current?.emit('newLiveBid', { bidAmount: 0, teamName: '', player: null, status: 'bidding' });
 
       setAuctionResultDatabase([]);
       setShowResultsModal(false);

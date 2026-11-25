@@ -242,25 +242,6 @@ export function useAuctionBidding({
       setActiveBiddingList(nextList);
       setTeamBidActivity(nextActivity);
       syncActiveBiddingState('replace', { lastBidActions: nextList });
-
-      socketRef.current?.emit('newLiveBid', {
-        bidAmount: acceptedBid,
-        currentBid: acceptedBid,
-        teamId: team._id,
-        biddingTeamId: team._id,
-        teamName: team.teamName,
-        biddingTeamName: team.teamName,
-        shortName: team.shortName,
-        logoUrl: team.logoUrl || team.logo || '',
-        player: currentPlayer,
-        currentPlayer: currentPlayer,
-        status: playerStatus,
-        playerStatus: playerStatus,
-        version: newVer,
-        isRemote: false,
-        bidSource: 'onsite',
-        isAwaitingTeam: false
-      });
       return true;
     };
 
@@ -391,25 +372,6 @@ export function useAuctionBidding({
       setHasBiddingStarted(false);
       setLastBidSource('onsite');
       saveStateToHistory('COMMON_BID');
-
-      socketRef.current?.emit('newLiveBid', {
-        bidAmount: acceptedBid,
-        currentBid: acceptedBid,
-        teamId: '',
-        biddingTeamId: '',
-        teamName: '',
-        biddingTeamName: '',
-        shortName: '',
-        logoUrl: '',
-        player: currentPlayerRef.current,
-        currentPlayer: currentPlayerRef.current,
-        status: playerStatus,
-        playerStatus: playerStatus,
-        version: newVer,
-        isRemote: false,
-        bidSource: 'onsite',
-        isAwaitingTeam: true
-      });
 
       return true;
     };

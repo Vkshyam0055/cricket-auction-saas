@@ -261,6 +261,7 @@ function initAuctionSockets(io) {
 
                 const acceptedBid = Number(result.state.currentBid);
                 const liveBidPayload = {
+                    tournamentId: socket.teamOwner.tournamentId,
                     bidAmount: acceptedBid,
                     currentBid: acceptedBid,
                     teamId: result.team._id,
@@ -320,6 +321,7 @@ function initAuctionSockets(io) {
                 try {
                     const liveState = await AuctionState.findOne({
                         organizer: socket.organizerId,
+                        ...(socket.tournamentId ? { tournament: socket.tournamentId } : {}),
                         activePlayer: data.player._id,
                         status: 'bidding'
                     }).select('version').lean();
@@ -332,6 +334,7 @@ function initAuctionSockets(io) {
             }
             const payload = {
                 ...data,
+                ...(socket.tournamentId ? { tournamentId: socket.tournamentId } : {}),
                 version: (currentVersion !== undefined && currentVersion !== null && currentVersion > 0) ? currentVersion : (data?.version || undefined),
                 isRemote: Boolean(data?.isRemote),
                 bidSource: data?.bidSource || (data?.isRemote ? 'remote' : 'onsite'),

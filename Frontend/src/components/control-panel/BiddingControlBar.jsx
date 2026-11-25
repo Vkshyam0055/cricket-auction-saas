@@ -51,23 +51,26 @@ export default function BiddingControlBar({
                       🔄
                     </button>
                     {handleCommonBid && (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={handleCommonBid}
-                          disabled={isCommonBidProcessing || !biddingActive || playerStatus !== 'bidding' || !currentPlayer}
-                          className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black w-9 h-8 rounded-lg shadow-sm active:translate-y-0.5 transition flex items-center justify-center text-lg disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                          title="Server-calculated next bid without assigning a team"
-                          aria-label="Place common auto-increment bid"
-                        >
+                      <button
+                        type="button"
+                        onClick={handleCommonBid}
+                        disabled={isCommonBidProcessing || !biddingActive || playerStatus !== 'bidding' || !currentPlayer}
+                        className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg shadow-sm border border-indigo-500/30 active:translate-y-0.5 transition inline-flex items-center gap-2 px-2.5 py-1 min-h-[38px] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                        title="Server-calculated next bid without assigning a team"
+                        aria-label="Place common auto-increment bid"
+                      >
+                        <span className="w-6 h-6 rounded-md bg-white/15 flex items-center justify-center text-sm font-black shrink-0">
                           {isCommonBidProcessing ? '⏳' : '↑'}
-                        </button>
-                        <div className="min-w-[92px] rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 leading-tight">
-                          <span className="block text-[9px] font-extrabold uppercase tracking-wide text-indigo-500">Next bid</span>
-                          <span className="text-sm font-black text-indigo-800">
+                        </span>
+                        <span className="text-left leading-tight pr-0.5">
+                          <span className="block text-[9px] font-extrabold uppercase tracking-wider text-indigo-100/90 leading-none">
+                            NEXT BID
+                          </span>
+                          <span className="block text-sm font-black text-white leading-tight mt-0.5 tabular-nums">
                             {isNextBidPreviewLoading ? '…' : nextBidPreview ? formatCurrency(nextBidPreview) : '—'}
                           </span>
-                        </div>
-                      </div>
+                        </span>
+                      </button>
                     )}
                   </div>
 
